@@ -4,7 +4,13 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AuthError, authService as defaultAuthService } from "./auth.js";
-import { getSchoolDetail, listSchoolGuideCards, listTimelineEvents } from "./db/data-access.js";
+import {
+  getGuideDetail,
+  getSchoolDetail,
+  listGuides,
+  listSchoolGuideCards,
+  listTimelineEvents
+} from "./db/data-access.js";
 import {
   renderAdminPage,
   renderNotFound,
@@ -145,6 +151,21 @@ function parseSchoolListFilters(url) {
   };
 }
 
+function parseGuideListFilters(url) {
+  const status = optionalStringParam(url, "status");
+
+  if (status && !guideStatuses.has(status)) {
+    throw new RequestError("invalid_status", "Guide status is not supported.");
+  }
+
+  return {
+    year: optionalYearParam(url),
+    schoolId: optionalStringParam(url, "schoolId"),
+    status,
+    keyword: optionalStringParam(url, "keyword")
+  };
+}
+
 function shouldSendSchoolListJson(request, url) {
   if (url.pathname === "/api/schools" || url.searchParams.get("format") === "json") {
     return true;
@@ -157,6 +178,36 @@ function shouldSendSchoolListJson(request, url) {
   }
 
   return accept.length === 0 || accept.includes("*/*") || accept.includes("application/json");
+}
+
+function guideSourceJson(guide) {
+  return {
+    officialSourceUrl: guide.officialSourceUrl,
+    sourceType: guide.sourceType,
+    sourceTitle: guide.sourceTitle,
+    publishedAt: guide.sourcePublishedAt,
+    updatedAt: guide.sourceUpdatedAt
+  };
+}
+
+function guideListItemJson(guide) {
+  return {
+    id: guide.id,
+    schoolId: guide.schoolId,
+    year: guide.admissionYear,
+    provinceScope: guide.provinceScope,
+    status: guide.status,
+    version: guide.version,
+    isCurrent: guide.isCurrent,
+    guideTitle: guide.guideTitle,
+    summary: guide.summary,
+    applicationStatus: guide.applicationStatus,
+    applicationStartAt: guide.applicationStartAt,
+    applicationDeadlineAt: guide.applicationDeadlineAt,
+    source: guideSourceJson(guide),
+    publishedAt: guide.publishedAt,
+    updatedAt: guide.updatedAt
+  };
 }
 
 function schoolCardJson(card) {
@@ -232,6 +283,10 @@ function schoolDetailJson(detail) {
       applicationDeadlineAt: detail.guide.applicationDeadlineAt,
       officialSourceUrl: detail.guide.officialSourceUrl,
       applicationUrl: detail.guide.applicationUrl,
+      sourceType: detail.guide.sourceType,
+      sourceTitle: detail.guide.sourceTitle,
+      sourcePublishedAt: detail.guide.sourcePublishedAt,
+      sourceUpdatedAt: detail.guide.sourceUpdatedAt,
       guideTitle: detail.guide.guideTitle,
       summary: detail.guide.summary,
       majors: detail.guide.majors,
@@ -266,6 +321,60 @@ function schoolDetailJson(detail) {
   };
 }
 
+function guideDetailJson(detail) {
+  return {
+    school: {
+      id: detail.school.id,
+      name: detail.school.name,
+      provinceScope: detail.school.provinceScope,
+      city: detail.school.city,
+      schoolType: detail.school.schoolType,
+      officialWebsiteUrl: detail.school.officialWebsiteUrl
+    },
+    guide: {
+      id: detail.guide.id,
+      schoolId: detail.guide.schoolId,
+      year: detail.guide.admissionYear,
+      provinceScope: detail.guide.provinceScope,
+      status: detail.guide.status,
+      version: detail.guide.version,
+      isCurrent: detail.guide.isCurrent,
+      guideTitle: detail.guide.guideTitle,
+      summary: detail.guide.summary,
+      applicationStatus: detail.guide.applicationStatus,
+      publishedAt: detail.guide.publishedAt,
+      updatedAt: detail.guide.updatedAt
+    },
+    source: guideSourceJson(detail.guide),
+    structuredFields: {
+      applicationUrl: detail.guide.applicationUrl,
+      applicationStartAt: detail.guide.applicationStartAt,
+      applicationDeadlineAt: detail.guide.applicationDeadlineAt,
+      majors: detail.guide.majors,
+      subjectRequirements: detail.guide.subjectRequirements,
+      academicTestRequirements: detail.guide.academicTestRequirements,
+      assessmentMethod: detail.guide.assessmentMethod,
+      admissionRule: detail.guide.admissionRule,
+      fees: detail.guide.fees,
+      contact: detail.guide.contact
+    },
+    versionSummary: {
+      currentVersion: detail.guide.version,
+      currentGuideId: detail.versionHistory.find((guide) => guide.isCurrent)?.id ?? detail.guide.id,
+      versions: detail.versionHistory.map((guide) => ({
+        id: guide.id,
+        version: guide.version,
+        status: guide.status,
+        isCurrent: guide.isCurrent,
+        publishedAt: guide.publishedAt,
+        updatedAt: guide.updatedAt,
+        sourceUpdatedAt: guide.sourceUpdatedAt,
+        versionNotes: guide.versionNotes
+      }))
+    }
+  };
+}
+
 function sendSchoolListJson(response, filters) {
   const schools = listSchoolGuideCards(filters).map(schoolCardJson);
 
@@ -273,6 +382,16 @@ function sendSchoolListJson(response, filters) {
     filters,
     count: schools.length,
     schools
+  });
+}
+
+function sendGuideListJson(response, filters) {
+  const guides = listGuides(filters).map(guideListItemJson);
+
+  sendJson(response, 200, {
+    filters,
+    count: guides.length,
+    guides
   });
 }
 
@@ -287,6 +406,20 @@ function parseSchoolDetailPath(pathname) {
     return decodeURIComponent(match.groups.schoolId);
   } catch {
     throw new RequestError("invalid_school_id", "School id must be URL encoded correctly.");
+  }
+}
+
+function parseGuideDetailPath(pathname) {
+  const match = pathname.match(/^\/(?:api\/)?guides\/(?<guideId>[^/]+)$/);
+
+  if (!match?.groups?.guideId) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match.groups.guideId);
+  } catch {
+    throw new RequestError("invalid_guide_id", "Guide id must be URL encoded correctly.");
   }
 }
 
@@ -487,6 +620,37 @@ export async function handleRequest(request, response, context = {}) {
     }
 
     sendJson(response, 200, { mine: false, events: listTimelineEvents() });
+    return;
+  }
+
+  if ((url.pathname === "/guides" || url.pathname === "/api/guides") && request.method === "GET") {
+    try {
+      sendGuideListJson(response, parseGuideListFilters(url));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "guide_list_error", error.message);
+    }
+
+    return;
+  }
+
+  let guideId;
+
+  try {
+    guideId = parseGuideDetailPath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "guide_detail_error", error.message);
+    return;
+  }
+
+  if (guideId && request.method === "GET") {
+    const detail = getGuideDetail({ guideId });
+
+    if (!detail) {
+      sendError(response, 404, "not_found", "No published admission guide was found.");
+      return;
+    }
+
+    sendJson(response, 200, guideDetailJson(detail));
     return;
   }
 

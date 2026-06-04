@@ -204,6 +204,60 @@ describe("web routes", () => {
     assert.doesNotMatch(body, /Working Draft/);
   });
 
+  it("returns the guide list API with year, schoolId, status, and keyword filters", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/guides?year=2025&schoolId=${seedIds.schools.scut}&status=published&keyword=timeline`
+    );
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.count, 1);
+    assert.equal(body.filters.year, 2025);
+    assert.equal(body.filters.schoolId, seedIds.schools.scut);
+    assert.equal(body.filters.status, "published");
+    assert.equal(body.filters.keyword, "timeline");
+    assert.equal(body.guides[0].id, seedIds.guides.scut2025);
+    assert.equal(body.guides[0].status, "published");
+    assert.equal(body.guides[0].source.sourceType, "admission_guide");
+    assert.equal(body.guides[0].source.officialSourceUrl, "https://example.edu/scut/2025-comprehensive-evaluation-guide");
+  });
+
+  it("hides unpublished guides from guide list and detail visitors", async () => {
+    const listResponse = await fetch(`${baseUrl}/api/guides?year=2026&status=pending_review`);
+    const listBody = await listResponse.json();
+
+    assert.equal(listResponse.status, 200);
+    assert.equal(listBody.count, 0);
+
+    const detailResponse = await fetch(`${baseUrl}/api/guides/${seedIds.guides.scut2026Pending}`);
+    const detailBody = await detailResponse.json();
+
+    assert.equal(detailResponse.status, 404);
+    assert.equal(detailBody.error, "not_found");
+  });
+
+  it("returns guide detail source attribution, structured fields, and version summary", async () => {
+    const response = await fetch(`${baseUrl}/api/guides/${seedIds.guides.sysu2026}`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.school.id, seedIds.schools.sysu);
+    assert.equal(body.guide.id, seedIds.guides.sysu2026);
+    assert.equal(body.guide.status, "published");
+    assert.equal(body.guide.version, 2);
+    assert.equal(body.source.officialSourceUrl, "https://example.edu/sysu/2026-comprehensive-evaluation-guide");
+    assert.equal(body.source.sourceType, "admission_guide");
+    assert.equal(body.source.publishedAt, "2026-03-15T02:00:00.000Z");
+    assert.equal(body.source.updatedAt, "2026-04-10T08:30:00.000Z");
+    assert.equal(body.structuredFields.applicationUrl, "https://example.edu/apply");
+    assert.ok(body.structuredFields.majors.some((major) => major.name === "Experimental science program"));
+    assert.equal(body.versionSummary.currentVersion, 2);
+    assert.deepEqual(body.versionSummary.versions.map((version) => version.version), [2, 1]);
+    assert.equal(body.versionSummary.versions[1].id, seedIds.guides.sysu2026Initial);
+    assert.doesNotMatch(serialized, /Draft Review Guide|Working Draft/);
+  });
+
   it("returns the school detail API for one published school year", async () => {
     const response = await fetch(`${baseUrl}/schools/${seedIds.schools.sysu}?year=2026`);
     const body = await response.json();

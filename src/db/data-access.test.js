@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  createGuideVersion,
   getExperienceById,
+  getGuideDetail,
   getGuideById,
   getSchoolDetail,
   getSchoolById,
@@ -128,6 +130,52 @@ describe("student-facing data access helpers", () => {
       seedIds.guides.sysu2026,
       seedIds.guides.sysu2025
     ]);
+    assert.deepEqual(ids(listGuides({ year: 2026, keyword: "score conversion" })), [
+      seedIds.guides.sysu2026
+    ]);
+  });
+
+  it("builds guide detail aggregates with source attribution and version history", () => {
+    const detail = getGuideDetail({ guideId: seedIds.guides.sysu2026 });
+
+    assert.equal(detail?.school.id, seedIds.schools.sysu);
+    assert.equal(detail?.guide.version, 2);
+    assert.equal(detail?.guide.sourceType, "admission_guide");
+    assert.equal(detail?.guide.sourcePublishedAt, "2026-03-15T02:00:00.000Z");
+    assert.equal(detail?.guide.sourceUpdatedAt, "2026-04-10T08:30:00.000Z");
+    assert.deepEqual(detail?.versionHistory.map((guide) => guide.version), [2, 1]);
+    assert.equal(detail?.versionHistory[1].id, seedIds.guides.sysu2026Initial);
+    assert.equal(getGuideDetail({ guideId: seedIds.guides.scut2026Pending }), null);
+    assert.equal(getGuideDetail({ guideId: seedIds.guides.sustech2026Draft }), null);
+    assert.equal(getGuideDetail({ guideId: seedIds.guides.sysu2024Archived }), null);
+  });
+
+  it("creates new guide versions without overwriting published records", () => {
+    const original = getGuideById(seedIds.guides.scut2025);
+    const result = createGuideVersion({
+      guideId: seedIds.guides.scut2025,
+      id: "10000000-0000-4000-8000-000000009999",
+      updatedAt: "2025-04-05T09:00:00.000Z",
+      versionNotes: "Corrected subject requirement after reviewer check.",
+      fields: {
+        summary: "Corrected published guide summary.",
+        subjectRequirements: ["Physics track required for listed engineering programs"],
+        version: 99,
+        isCurrent: false
+      }
+    });
+
+    const previous = result?.guides.find((guide) => guide.id === seedIds.guides.scut2025);
+
+    assert.equal(original?.summary, "Published guide with timeline data but no explicit score formula.");
+    assert.equal(result?.guide.version, 2);
+    assert.equal(result?.guide.isCurrent, true);
+    assert.equal(result?.guide.summary, "Corrected published guide summary.");
+    assert.deepEqual(result?.guide.subjectRequirements, ["Physics track required for listed engineering programs"]);
+    assert.equal(result?.guide.versionNotes, "Corrected subject requirement after reviewer check.");
+    assert.equal(previous?.version, 1);
+    assert.equal(previous?.isCurrent, false);
+    assert.equal(previous?.summary, original?.summary);
   });
 
   it("reads only visible records by id", () => {

@@ -11,6 +11,7 @@ const publishedStatus = "published";
  * @property {string} [schoolId]
  * @property {number} [year]
  * @property {string} [status]
+ * @property {string} [keyword]
  *
  * @typedef {object} SchoolGuideCardFilters
  * @property {number} [year]
@@ -50,6 +51,10 @@ function compareSchoolNames(left, right) {
 function compareGuideRecency(left, right) {
   if (right.admissionYear !== left.admissionYear) {
     return right.admissionYear - left.admissionYear;
+  }
+
+  if (right.version !== left.version) {
+    return right.version - left.version;
   }
 
   const leftSchool = getPublishedSchoolById(left.schoolId);
@@ -160,12 +165,43 @@ function getPublishedSchoolById(schoolId) {
   return seedData.schools.find((school) => school.id === schoolId && isPublished(school)) ?? null;
 }
 
-function visibleGuides() {
+function publishedGuides() {
   return seedData.admissionGuides.filter((guide) => isPublished(guide) && getPublishedSchoolById(guide.schoolId));
+}
+
+function visibleGuides() {
+  return publishedGuides().filter((guide) => guide.isCurrent);
 }
 
 function visibleGuideIds() {
   return new Set(visibleGuides().map((guide) => guide.id));
+}
+
+function sameGuideSeries(left, right) {
+  return left.schoolId === right.schoolId &&
+    left.admissionYear === right.admissionYear &&
+    left.provinceScope === right.provinceScope;
+}
+
+function guideKeywordMatches(guide, keyword) {
+  if (!keyword) {
+    return true;
+  }
+
+  const school = getPublishedSchoolById(guide.schoolId);
+
+  return [
+    school?.name,
+    school?.normalizedName,
+    school?.city,
+    guide.guideTitle,
+    guide.summary,
+    guide.sourceTitle,
+    guide.sourceType,
+    guide.applicationStatus
+  ]
+    .filter(Boolean)
+    .some((value) => value.toLowerCase().includes(keyword));
 }
 
 function schoolGuideKeywordMatches(card, keyword) {
@@ -292,10 +328,13 @@ export function getSchoolById(schoolId) {
  * @returns {ReadonlyArray<import("./seed-data.js").AdmissionGuideSeed>}
  */
 export function listGuides(filters = {}) {
+  const keyword = normalizeKeyword(filters.keyword);
+
   return visibleGuides()
     .filter((guide) => !filters.schoolId || guide.schoolId === filters.schoolId)
     .filter((guide) => !filters.year || guide.admissionYear === filters.year)
     .filter((guide) => !filters.status || guide.status === filters.status)
+    .filter((guide) => guideKeywordMatches(guide, keyword))
     .sort(compareGuideRecency);
 }
 
@@ -383,7 +422,106 @@ export function getSchoolDetail(filters) {
  * @returns {import("./seed-data.js").AdmissionGuideSeed | null}
  */
 export function getGuideById(guideId) {
-  return listGuides().find((guide) => guide.id === guideId) ?? null;
+  return publishedGuides().find((guide) => guide.id === guideId) ?? null;
+}
+
+/**
+ * Reads one published admission guide with school context and a published
+ * version history summary.
+ *
+ * @param {{guideId: string}} filters
+ * @returns {{
+ *   school: import("./seed-data.js").SchoolSeed,
+ *   guide: import("./seed-data.js").AdmissionGuideSeed,
+ *   versionHistory: ReadonlyArray<import("./seed-data.js").AdmissionGuideSeed>
+ * } | null}
+ */
+export function getGuideDetail(filters) {
+  const guide = getGuideById(filters.guideId);
+
+  if (!guide) {
+    return null;
+  }
+
+  const school = getPublishedSchoolById(guide.schoolId);
+
+  if (!school) {
+    return null;
+  }
+
+  return {
+    school,
+    guide,
+    versionHistory: publishedGuides()
+      .filter((versionedGuide) => sameGuideSeries(versionedGuide, guide))
+      .sort((left, right) => right.version - left.version)
+  };
+}
+
+/**
+ * Creates the next immutable guide version for dependency-free tests and local
+ * draft workflows. The input guide is never modified; older records in the same
+ * school/year/scope series are returned with `isCurrent: false`.
+ *
+ * @param {{
+ *   guideId: string,
+ *   fields?: Partial<import("./seed-data.js").AdmissionGuideSeed>,
+ *   guides?: ReadonlyArray<import("./seed-data.js").AdmissionGuideSeed>,
+ *   id?: string,
+ *   updatedAt?: string,
+ *   versionNotes?: string
+ * }} input
+ * @returns {{
+ *   guide: import("./seed-data.js").AdmissionGuideSeed,
+ *   guides: ReadonlyArray<import("./seed-data.js").AdmissionGuideSeed>
+ * } | null}
+ */
+export function createGuideVersion(input) {
+  const guides = input.guides ?? seedData.admissionGuides;
+  const sourceGuide = guides.find((guide) => guide.id === input.guideId);
+
+  if (!sourceGuide) {
+    return null;
+  }
+
+  const series = guides.filter((guide) => sameGuideSeries(guide, sourceGuide));
+  const nextVersion = Math.max(...series.map((guide) => guide.version)) + 1;
+  const {
+    id: ignoredFieldId,
+    isCurrent: ignoredIsCurrent,
+    version: ignoredVersion,
+    ...fieldUpdates
+  } = input.fields ?? {};
+  void ignoredFieldId;
+  void ignoredIsCurrent;
+  void ignoredVersion;
+
+  const updatedAt = input.updatedAt ?? new Date().toISOString();
+  const nextGuide = {
+    ...sourceGuide,
+    ...fieldUpdates,
+    id: input.id ?? `${sourceGuide.id}-v${nextVersion}`,
+    version: nextVersion,
+    isCurrent: true,
+    updatedAt,
+    sourceUpdatedAt: fieldUpdates.sourceUpdatedAt ?? updatedAt,
+    versionNotes: input.versionNotes ?? fieldUpdates.versionNotes ?? "Structured guide fields updated."
+  };
+  const nextGuides = guides.map((guide) => {
+    if (!sameGuideSeries(guide, sourceGuide)) {
+      return guide;
+    }
+
+    return {
+      ...guide,
+      isCurrent: false
+    };
+  });
+
+  return {
+    guide: nextGuide,
+    guides: [...nextGuides, nextGuide]
+  };
 }
 
 /**

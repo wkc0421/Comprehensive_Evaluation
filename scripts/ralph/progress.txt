@@ -13,6 +13,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Student-facing pages should consume published-only helpers from `src/db/data-access.js` instead of importing `seed-data.js` directly.
 - Public school browsing should use `listSchoolGuideCards()` from `src/db/data-access.js`; it keeps `/schools`, `/api/schools`, and the HTML school list aligned on published-only guides, filters, sort order, key timeline nodes, formula availability, and experience signals.
 - Public school detail pages and APIs should use `getSchoolDetail()` from `src/db/data-access.js`; it keeps `/schools/:id`, `/api/schools/:id`, year defaulting, published-only visibility, timeline/formula aggregation, and featured experience ranking aligned.
+- Public admission guide APIs should use `listGuides()` and `getGuideDetail()` from `src/db/data-access.js`; current guide lists stay published-only while detail responses can include source attribution, structured fields, and published version summaries.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -230,4 +231,35 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Use `getSchoolDetail()` for school detail API and page work; it centralizes published-only guide visibility, current/latest year defaulting, timeline/formula aggregation, and featured experience ranking.
   - `/schools/:id` follows the same content-negotiation pattern as `/schools`: browser requests with `Accept: text/html` receive HTML, while API-style requests and `/api/schools/:id` receive JSON.
   - Mobile browser checks should prefer exact role-based heading locators because hidden navigation text can be matched before visible section headings.
+---
+
+## Thu Jun  4 11:55:36 AM CST 2026 - Ralph runner
+- Iteration: 7
+- Story: US-007
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-104510/iteration-7
+---
+
+## Thu Jun  4 12:01:58 PM CST 2026 - US-008
+- What was implemented
+  - Added public guide list APIs on `/guides` and `/api/guides` with year, schoolId, status, and keyword filters over current published guide versions.
+  - Added public guide detail APIs on `/guides/:id` and `/api/guides/:id` with school context, official source attribution, source type, source published or updated time, structured admission fields, and version summary.
+  - Added source attribution fields and a two-version published SYSU 2026 fixture, plus a dependency-free `createGuideVersion()` helper that creates a next version without mutating or overwriting the prior record.
+- Files changed
+  - `AGENTS.md`
+  - `src/app.js`, `src/app.test.js`
+  - `src/db/data-access.js`, `src/db/data-access.test.js`, `src/db/seed-data.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Not applicable; this story added public JSON APIs, source/version data helpers, and tests.
+- **Learnings for future iterations:**
+  - `listGuides()` returns only current published guide versions for student-facing lists, preventing older published versions from duplicating guide cards or home content.
+  - `getGuideDetail()` is the public detail aggregate for admission guide APIs; it includes only published guide records and summarizes published versions in the same school/year/Guangdong scope series.
+  - `createGuideVersion()` is a pure helper for dependency-free tests and local workflows: pass field updates and it returns a new current version while preserving the previous guide record as non-current.
 ---

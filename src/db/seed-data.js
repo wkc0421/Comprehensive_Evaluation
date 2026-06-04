@@ -22,6 +22,10 @@
  * @property {number} version
  * @property {boolean} isCurrent
  * @property {string} officialSourceUrl
+ * @property {"official_notice" | "admission_guide" | "application_portal" | "education_exam_authority" | "manual_upload"} sourceType
+ * @property {string} sourceTitle
+ * @property {string | null} sourcePublishedAt
+ * @property {string | null} sourceUpdatedAt
  * @property {string} applicationUrl
  * @property {string} guideTitle
  * @property {string} summary
@@ -35,6 +39,7 @@
  * @property {string} admissionRule
  * @property {{applicationFeeCny?: number, assessmentFeeCny?: number}} fees
  * @property {{phone?: string, email?: string}} contact
+ * @property {string} versionNotes
  * @property {string} publishedAt
  * @property {string} updatedAt
  *
@@ -116,7 +121,8 @@ export const seedIds = deepFreeze({
     scut2024: "10000000-0000-4000-8000-000000000006",
     sustech2026Draft: "10000000-0000-4000-8000-000000000007",
     sustech2025: "10000000-0000-4000-8000-000000000008",
-    sustech2024: "10000000-0000-4000-8000-000000000009"
+    sustech2024: "10000000-0000-4000-8000-000000000009",
+    sysu2026Initial: "10000000-0000-4000-8000-000000000010"
   },
   formulas: {
     sysu2026: "20000000-0000-4000-8000-000000000001",
@@ -174,6 +180,10 @@ function guideFields(overrides) {
     provinceScope: "guangdong",
     version: 1,
     isCurrent: true,
+    sourceType: overrides.sourceType ?? "admission_guide",
+    sourceTitle: overrides.sourceTitle ?? overrides.guideTitle ?? "Official admission guide",
+    sourcePublishedAt: overrides.sourcePublishedAt ?? overrides.publishedAt ?? null,
+    sourceUpdatedAt: overrides.sourceUpdatedAt ?? overrides.updatedAt ?? overrides.publishedAt ?? null,
     applicationUrl: "https://example.edu/apply",
     applicationStatus: "open",
     majors: [
@@ -186,6 +196,7 @@ function guideFields(overrides) {
     admissionRule: "Comprehensive score is used with the official admissions rules.",
     fees: { applicationFeeCny: 0, assessmentFeeCny: 0 },
     contact: { phone: "020-00000000", email: "admission@example.edu" },
+    versionNotes: overrides.versionNotes ?? "Initial structured guide version.",
     ...overrides
   };
 }
@@ -197,13 +208,33 @@ const admissionGuides = [
     schoolId: seedIds.schools.sysu,
     admissionYear: 2026,
     status: "published",
+    version: 2,
     officialSourceUrl: "https://example.edu/sysu/2026-comprehensive-evaluation-guide",
     guideTitle: "Sun Yat-sen University 2026 Guangdong Comprehensive Evaluation Guide",
     summary: "Published guide for Guangdong candidates with application dates, assessment requirements, and score conversion rules.",
     applicationStartAt: "2026-03-18T01:00:00.000Z",
     applicationDeadlineAt: "2026-04-20T15:59:59.000Z",
     publishedAt: "2026-03-15T02:00:00.000Z",
-    updatedAt: "2026-04-10T09:00:00.000Z"
+    updatedAt: "2026-04-10T09:00:00.000Z",
+    sourceUpdatedAt: "2026-04-10T08:30:00.000Z",
+    versionNotes: "Updated application deadline and score conversion wording from the official notice."
+  }),
+  guideFields({
+    id: seedIds.guides.sysu2026Initial,
+    schoolId: seedIds.schools.sysu,
+    admissionYear: 2026,
+    status: "published",
+    version: 1,
+    isCurrent: false,
+    officialSourceUrl: "https://example.edu/sysu/2026-comprehensive-evaluation-guide",
+    guideTitle: "Sun Yat-sen University 2026 Guangdong Comprehensive Evaluation Guide",
+    summary: "Initial published guide for Guangdong candidates before the official deadline supplement.",
+    applicationStartAt: "2026-03-18T01:00:00.000Z",
+    applicationDeadlineAt: "2026-04-18T15:59:59.000Z",
+    publishedAt: "2026-03-15T02:00:00.000Z",
+    updatedAt: "2026-03-15T02:00:00.000Z",
+    sourceUpdatedAt: "2026-03-15T02:00:00.000Z",
+    versionNotes: "Initial official publication captured from the admissions site."
   }),
   guideFields({
     id: seedIds.guides.sysu2025,

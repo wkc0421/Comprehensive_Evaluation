@@ -124,8 +124,8 @@
         "Tests cover guide detail access control, source attribution, and version increment behavior."
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented public guide list and detail APIs with year, schoolId, status, and keyword filters; published-only access; source attribution; structured fields; version summary; and dependency-free version increment helper tests."
     },
     {
       "id": "US-009",
