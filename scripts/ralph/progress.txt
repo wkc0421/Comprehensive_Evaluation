@@ -15,6 +15,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public school detail pages and APIs should use `getSchoolDetail()` from `src/db/data-access.js`; it keeps `/schools/:id`, `/api/schools/:id`, year defaulting, published-only visibility, timeline/formula aggregation, and featured experience ranking aligned.
 - Public admission guide APIs should use `listGuides()` and `getGuideDetail()` from `src/db/data-access.js`; current guide lists stay published-only while detail responses can include source attribution, structured fields, and published version summaries.
 - Admin official guide review uses `listAdminGuideReviews()`, `getAdminGuideReviewDetail()`, and the admin guide transition helpers in `src/db/data-access.js`; public student APIs still use `listGuides()`/`getGuideDetail()` and only see admin guide records after a transition sets status to `published` and `isCurrent`.
+- Admin timeline and formula management use `listAdminTimelineNodes()`, `overrideAdminTimelineNode()`, `listAdminFormulas()`, `upsertAdminFormulaDraft()`, and `publishAdminFormula()` from `src/db/data-access.js`; timeline overrides require an override reason and operator audit, while formula publication requires at least one passing sample calculation before the formula becomes visible to public calculator helpers.
 - Public timelines should use `listTimelineNodes()` and `buildSiteTimelineReminders()` from `src/db/data-access.js`; they keep `/timeline`, `/api/timeline`, status calculation, required generated event keys, unknown-date handling, published-only visibility, and site-only reminder indicators aligned.
 - Public score calculation should use `calculateScore()` from `src/db/data-access.js`; it keeps formula visibility, input normalization, validation errors, contribution breakdowns, source links, and disclaimer text aligned for `/score/calculate`, `/api/score/calculate`, and future calculator pages.
 - Public score calculator UI should use `renderScoreCalculatorPage()` with `listSchoolGuideCards()` and `getSchoolDetail()` for published school/year/formula loading, while `public/calculator.js` posts final calculations to `/api/score/calculate`; when `detail.formula` is null, hide the score-entry form and show the unavailable state.
@@ -529,4 +530,35 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Official guide admin routes use `data_reviewer` or `admin`; `content_reviewer` remains blocked from `/admin/guides` because publishing official data is a data-review workflow.
   - Admin guide transitions append `reviewAudit` entries and keep pending supplement as `supplementStatus: "pending_supplement"` while official guide `status` stays within draft, pending_review, published, and archived.
   - Browser checks for repeated guide titles should use role-based heading locators because the same guide title can appear in both headings and definition rows.
+---
+
+## Thu Jun  4 04:02:56 PM CST 2026 - Ralph runner
+- Iteration: 8
+- Story: US-016
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-8
+---
+
+## Thu Jun  4 04:16:26 PM CST 2026 - US-017
+- What was implemented
+  - Added protected admin timeline management on `/admin/timeline` and `/api/admin/timeline` with generated guide nodes, audited manual overrides for title/date/description, required override reasons, and public timeline visibility after override.
+  - Added protected admin formula management on `/admin/formulas` and `/api/admin/formulas` with draft create/update, inputs schema, max scores, weights/custom config, explanations, source URLs, sample calculation tests, audited publication, and public calculator visibility only after a passing sample test.
+  - Added mobile-first admin pages for timeline overrides and formula drafts, plus admin navigation entries.
+- Files changed
+  - `public/styles.css`
+  - `src/app.js`, `src/app.test.js`, `src/db/data-access.js`, `src/db/seed-data.js`, `src/lib/product.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for logged-in `/admin/timeline?year=2026` and `/admin/formulas` at 390px and 1280px; required management sections were visible and no horizontal overflow was present.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-141724/iteration-9/admin-timeline-390.png`, `admin-timeline-1280.png`, `admin-formulas-390.png`, and `admin-formulas-1280.png`.
+- **Learnings for future iterations:**
+  - Use `overrideAdminTimelineNode()` for official timeline corrections so generated nodes, override reasons, operator identity, operation time, and public timeline visibility stay aligned.
+  - Use `upsertAdminFormulaDraft()` and `publishAdminFormula()` for score formula admin work; drafts remain hidden from `calculateScore()` until publication succeeds with at least one passing sample calculation.
+  - Browser verification for protected admin pages can run through a temporary test-style server that injects `authService`, creates a `data_reviewer`, and reuses the normal `handleRequest()` route handler.
 ---

@@ -272,8 +272,8 @@
         "Tests cover override reason requirements, formula sample validation, and published formula visibility in the calculator."
       ],
       "priority": 17,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented protected admin timeline override and formula management APIs/pages with required override reasons, operator audit records, formula draft create/update, sample-test-gated publication, and published calculator visibility after approval."
     },
     {
       "id": "US-018",

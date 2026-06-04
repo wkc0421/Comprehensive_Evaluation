@@ -534,6 +534,35 @@ h1 {
   font: inherit;
 }
 
+.admin-inline-form,
+.admin-draft-form,
+.admin-form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-inline-form,
+.admin-draft-form {
+  min-width: 0;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 12px;
+}
+
+.admin-inline-form .form-field textarea,
+.admin-draft-form .form-field textarea {
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+.admin-draft-form textarea[name="formulaConfig"],
+.admin-draft-form textarea[name="sampleTests"] {
+  min-height: 180px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
 .filter-panel {
   display: grid;
   gap: 12px;
@@ -1231,6 +1260,15 @@ h1 {
 
   .admin-review-columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-inline-form,
+  .admin-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-wide-field {
+    grid-column: 1 / -1;
   }
 
   .admin-action-row {

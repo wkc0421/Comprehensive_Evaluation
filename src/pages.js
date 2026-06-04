@@ -32,8 +32,9 @@ const entryPoints = [
 ];
 
 const workflowPlaceholders = [
-  { title: "Official guide review", status: "Awaiting data model" },
-  { title: "Timeline management", status: "Awaiting guide fields" },
+  { title: "Official guide review", status: "Data review active" },
+  { title: "Timeline management", status: "Override workflow active" },
+  { title: "Formula management", status: "Draft and publish workflow active" },
   { title: "Experience moderation", status: "Awaiting submissions" }
 ];
 
@@ -1669,6 +1670,372 @@ export function renderAdminGuideReviewPage({ reviews, filters = {}, user }) {
           <p class="section-kicker">Draft and pending_review official data</p>
         </div>
         <div class="admin-review-list">${renderAdminGuideCards(reviews)}</div>
+      </section>
+    </main>`
+  });
+}
+
+function renderAdminTimelineFilters(filters = {}) {
+  return `<form class="filter-panel admin-filter-panel" method="get" action="/admin/timeline" aria-label="Admin timeline filters">
+    <label class="filter-field">
+      <span>Year</span>
+      <input name="year" inputmode="numeric" value="${escapeHtml(filters.year ?? "")}" placeholder="2026">
+    </label>
+    <label class="filter-field">
+      <span>School id</span>
+      <input name="schoolId" value="${escapeHtml(filters.schoolId ?? "")}" placeholder="Optional school id">
+    </label>
+    <label class="filter-field">
+      <span>Event key</span>
+      <input name="eventKey" value="${escapeHtml(filters.eventKey ?? "")}" placeholder="application_deadline">
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/admin/timeline">Reset</a>
+    </div>
+  </form>`;
+}
+
+function renderAdminTimelineOverrideForm(node) {
+  return `<form class="admin-inline-form" method="post" action="/admin/timeline/overrides" aria-label="Override ${escapeHtml(node.title)}">
+    <input type="hidden" name="admissionGuideId" value="${escapeHtml(node.admissionGuideId)}">
+    <input type="hidden" name="eventKey" value="${escapeHtml(node.eventKey)}">
+    <label class="form-field">
+      <span>Title</span>
+      <input name="title" value="${escapeHtml(node.title)}" required>
+    </label>
+    <label class="form-field">
+      <span>Start date</span>
+      <input name="startsAt" value="${escapeHtml(node.startsAt ?? "")}" placeholder="YYYY-MM-DD or ISO time">
+    </label>
+    <label class="form-field">
+      <span>End date</span>
+      <input name="endsAt" value="${escapeHtml(node.endsAt ?? "")}" placeholder="YYYY-MM-DD or ISO time">
+    </label>
+    <label class="form-field admin-wide-field">
+      <span>Description</span>
+      <textarea name="description" rows="3">${escapeHtml(node.description ?? "")}</textarea>
+    </label>
+    <label class="form-field admin-wide-field">
+      <span>Override reason</span>
+      <textarea name="overrideReason" rows="2" required placeholder="Official notice checked and date/title corrected"></textarea>
+    </label>
+    <div class="form-actions admin-wide-field">
+      <button class="primary-action" type="submit">Save override</button>
+    </div>
+  </form>`;
+}
+
+function renderAdminTimelineCards(timelineNodes) {
+  if (timelineNodes.length === 0) {
+    return `<p class="empty-state">No generated timeline nodes match these filters.</p>`;
+  }
+
+  return timelineNodes
+    .map((node) => `<article class="admin-review-card">
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(node.guide.admissionYear)}</span>
+        <span class="soft-badge">${escapeHtml(humanizeToken(node.eventKey))}</span>
+        <span class="muted-badge">${escapeHtml(humanizeToken(node.source))}</span>
+      </div>
+      <div class="section-heading">
+        <div>
+          <h3>${escapeHtml(node.title)}</h3>
+          <p class="section-kicker">${escapeHtml(node.school.name)} - ${escapeHtml(formatDate(node.startsAt ?? node.endsAt))}</p>
+        </div>
+      </div>
+      <div class="admin-review-columns">
+        <section class="admin-review-section" aria-label="Guide-generated timeline data">
+          <h4>Guide-generated event</h4>
+          ${renderDetailRows([
+            { label: "Generated title", value: node.generated.title },
+            { label: "Generated start", value: formatDate(node.generated.startsAt) },
+            { label: "Generated end", value: formatDate(node.generated.endsAt) },
+            { label: "Guide", value: node.guide.guideTitle }
+          ])}
+        </section>
+        <section class="admin-review-section" aria-label="Manual timeline override">
+          <h4>Manual override</h4>
+          ${renderDetailRows([
+            { label: "Current title", value: node.title },
+            { label: "Current start", value: formatDate(node.startsAt) },
+            { label: "Current end", value: formatDate(node.endsAt) },
+            { label: "Description", value: displayValue(node.description) },
+            { label: "Last reason", value: displayValue(node.override?.reason) }
+          ])}
+          ${renderAdminTimelineOverrideForm(node)}
+        </section>
+      </div>
+      <section class="admin-review-section" aria-label="Timeline audit trail">
+        <h4>Timeline audit</h4>
+        ${renderAdminAuditTrail({ reviewAudit: node.override?.reviewAudit ?? [] })}
+      </section>
+    </article>`)
+    .join("");
+}
+
+export function renderAdminTimelineManagementPage({ timelineNodes, filters = {}, user }) {
+  return htmlPage({
+    title: `Timeline Management | ${productName}`,
+    body: `    <main class="app-shell admin-main admin-review-main">
+      <header class="admin-header">
+        <a class="brand" href="/admin">
+          <span class="brand-mark">Admin</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <p class="eyebrow">Timeline management</p>
+        <h1>Timeline overrides</h1>
+        <p class="lead">Review guide-generated timeline events and apply audited manual overrides for dates, titles, and descriptions.</p>
+        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
+        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
+      </header>
+
+      <section class="section" aria-label="Admin timeline filters">
+        ${renderAdminTimelineFilters(filters)}
+      </section>
+
+      <section class="section" aria-labelledby="admin-timeline-results-title">
+        <div class="section-heading">
+          <h2 id="admin-timeline-results-title">${escapeHtml(timelineNodes.length)} ${escapeHtml(pluralize(timelineNodes.length, "timeline node"))}</h2>
+          <p class="section-kicker">Generated from current published guide fields</p>
+        </div>
+        <div class="admin-review-list">${renderAdminTimelineCards(timelineNodes)}</div>
+      </section>
+    </main>`
+  });
+}
+
+function defaultFormulaConfigJson() {
+  return safeScriptJson({
+    inputs: [
+      { key: "gaokao", label: "Gaokao score", maxScore: 750, weight: 0.85 },
+      { key: "schoolAssessment", label: "School assessment", maxScore: 100, weight: 0.15 }
+    ],
+    outputMaxScore: 100,
+    customConfig: {
+      note: "Optional reviewer-only custom configuration"
+    }
+  });
+}
+
+function defaultFormulaSamplesJson() {
+  return safeScriptJson([
+    {
+      name: "Full score sample",
+      scores: { gaokao: 750, schoolAssessment: 100 },
+      expectedTotalScore: 100
+    }
+  ]);
+}
+
+function renderAdminFormulaFilters(filters = {}) {
+  const statusOptions = [
+    renderOption("", "All formula statuses", filters.status ?? ""),
+    renderOption("draft", "Draft", filters.status),
+    renderOption("pending_review", "Pending review", filters.status),
+    renderOption("published", "Published", filters.status),
+    renderOption("archived", "Archived", filters.status)
+  ].join("");
+
+  return `<form class="filter-panel admin-filter-panel" method="get" action="/admin/formulas" aria-label="Admin formula filters">
+    <label class="filter-field">
+      <span>Year</span>
+      <input name="year" inputmode="numeric" value="${escapeHtml(filters.year ?? "")}" placeholder="2026">
+    </label>
+    <label class="filter-field">
+      <span>School id</span>
+      <input name="schoolId" value="${escapeHtml(filters.schoolId ?? "")}" placeholder="Optional school id">
+    </label>
+    <label class="filter-field">
+      <span>Status</span>
+      <select name="status">${statusOptions}</select>
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/admin/formulas">Reset</a>
+    </div>
+  </form>`;
+}
+
+function renderFormulaDraftForm() {
+  return `<form class="admin-draft-form" method="post" action="/admin/formulas" aria-label="Create or update formula draft">
+    <div class="admin-form-grid">
+      <label class="form-field">
+        <span>Formula id for update</span>
+        <input name="id" placeholder="Leave blank for a new draft">
+      </label>
+      <label class="form-field">
+        <span>Admission guide id</span>
+        <input name="admissionGuideId" placeholder="Current published guide id">
+      </label>
+      <label class="form-field">
+        <span>School id</span>
+        <input name="schoolId" placeholder="Required if guide id is blank">
+      </label>
+      <label class="form-field">
+        <span>Year</span>
+        <input name="year" inputmode="numeric" placeholder="2026">
+      </label>
+      <label class="form-field">
+        <span>Status</span>
+        <select name="status">
+          <option value="draft">Draft</option>
+          <option value="pending_review">Pending review</option>
+        </select>
+      </label>
+      <label class="form-field">
+        <span>Formula type</span>
+        <select name="formulaType">
+          <option value="weighted_sum">Weighted sum</option>
+          <option value="custom">Custom with weighted inputs</option>
+        </select>
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Formula name</span>
+        <input name="formulaName" placeholder="85/15 comprehensive score">
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Official source URL</span>
+        <input name="officialSourceUrl" placeholder="https://example.edu/source">
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Explanation</span>
+        <textarea name="explanation" rows="3" placeholder="Explain the score inputs, max scores, and weights"></textarea>
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Inputs schema and weights JSON</span>
+        <textarea name="formulaConfig" rows="8">${escapeHtml(defaultFormulaConfigJson())}</textarea>
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Sample calculation tests JSON</span>
+        <textarea name="sampleTests" rows="6">${escapeHtml(defaultFormulaSamplesJson())}</textarea>
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Review note</span>
+        <textarea name="note" rows="2" placeholder="Source checked against official guide"></textarea>
+      </label>
+      <div class="form-actions admin-wide-field">
+        <button class="primary-action" type="submit">Save formula draft</button>
+      </div>
+    </div>
+  </form>`;
+}
+
+function renderFormulaInputRows(formula) {
+  return renderDetailRows([
+    { label: "Formula type", value: humanizeToken(formula.formulaType) },
+    { label: "Output max score", value: formula.formulaConfig.outputMaxScore },
+    {
+      label: "Inputs",
+      value: formula.formulaConfig.inputs
+        .map((input) => `${input.label}: max ${input.maxScore}, weight ${input.weight}`)
+        .join("; ")
+    },
+    { label: "Custom config", value: formula.formulaConfig.customConfig ? JSON.stringify(formula.formulaConfig.customConfig) : missingOfficialText },
+    { label: "Official source", html: renderDetailLink(formula.officialSourceUrl, "Open source") }
+  ]);
+}
+
+function renderFormulaSampleResults(sampleResults) {
+  if (!sampleResults || sampleResults.length === 0) {
+    return `<p class="inline-empty">No sample calculation tests configured.</p>`;
+  }
+
+  return `<ol class="admin-audit-list">${sampleResults
+    .map((sample) => `<li>
+      <strong>${escapeHtml(sample.name)}</strong>
+      <span>${sample.passed ? "Passed" : "Failed"}</span>
+      <em>Expected ${escapeHtml(sample.expectedTotalScore)} / Actual ${escapeHtml(sample.actualTotalScore ?? "Error")}</em>
+      ${sample.error ? `<p>${escapeHtml(sample.error)}</p>` : ""}
+    </li>`)
+    .join("")}</ol>`;
+}
+
+function renderAdminFormulaActions(formula) {
+  const encodedId = escapeHtml(encodeURIComponent(formula.id));
+
+  return `<div class="admin-action-row" aria-label="Formula actions">
+    <form method="post" action="/admin/formulas/${encodedId}/publish">
+      <button class="primary-action" type="submit">Publish formula</button>
+    </form>
+  </div>`;
+}
+
+function renderAdminFormulaCards(formulas) {
+  if (formulas.length === 0) {
+    return `<p class="empty-state">No formulas match these filters.</p>`;
+  }
+
+  return formulas
+    .map(({ formula, school, guide, sampleResults }) => `<article class="admin-review-card">
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(formula.admissionYear)}</span>
+        <span class="soft-badge">${escapeHtml(humanizeToken(formula.status))}</span>
+        <span class="muted-badge">Version ${escapeHtml(formula.version)}</span>
+      </div>
+      <div class="section-heading">
+        <div>
+          <h3>${escapeHtml(formula.formulaName)}</h3>
+          <p class="section-kicker">${escapeHtml(school.name)} - ${escapeHtml(guide.guideTitle)}</p>
+        </div>
+        ${renderAdminFormulaActions(formula)}
+      </div>
+      <div class="admin-review-columns">
+        <section class="admin-review-section" aria-label="Formula configuration">
+          <h4>Inputs schema and weights</h4>
+          ${renderFormulaInputRows(formula)}
+        </section>
+        <section class="admin-review-section" aria-label="Formula sample tests">
+          <h4>Sample calculation tests</h4>
+          ${renderFormulaSampleResults(sampleResults)}
+        </section>
+      </div>
+      <section class="admin-review-section" aria-label="Formula explanation">
+        <h4>Explanation</h4>
+        <p>${escapeHtml(formula.explanation)}</p>
+      </section>
+      <section class="admin-review-section" aria-label="Formula audit trail">
+        <h4>Formula audit</h4>
+        ${renderAdminAuditTrail(formula)}
+      </section>
+    </article>`)
+    .join("");
+}
+
+export function renderAdminFormulaManagementPage({ formulas, filters = {}, user }) {
+  return htmlPage({
+    title: `Formula Management | ${productName}`,
+    body: `    <main class="app-shell admin-main admin-review-main">
+      <header class="admin-header">
+        <a class="brand" href="/admin">
+          <span class="brand-mark">Admin</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <p class="eyebrow">Formula management</p>
+        <h1>Score formula drafts</h1>
+        <p class="lead">Create, update, sample-test, and publish score formula records before they appear in the student calculator.</p>
+        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
+        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
+      </header>
+
+      <section class="section" aria-label="Formula draft editor">
+        <div class="section-heading">
+          <h2>Create or update formula draft</h2>
+          <p class="section-kicker">Inputs schema, max scores, weights, source URL, status, and sample tests</p>
+        </div>
+        ${renderFormulaDraftForm()}
+      </section>
+
+      <section class="section" aria-label="Admin formula filters">
+        ${renderAdminFormulaFilters(filters)}
+      </section>
+
+      <section class="section" aria-labelledby="admin-formula-results-title">
+        <div class="section-heading">
+          <h2 id="admin-formula-results-title">${escapeHtml(formulas.length)} ${escapeHtml(pluralize(formulas.length, "formula"))}</h2>
+          <p class="section-kicker">Drafts stay hidden until publication has a passing sample test</p>
+        </div>
+        <div class="admin-review-list">${renderAdminFormulaCards(formulas)}</div>
       </section>
     </main>`
   });

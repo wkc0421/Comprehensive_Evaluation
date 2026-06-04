@@ -5,6 +5,8 @@ import { seedData } from "./seed-data.js";
 const publishedStatus = "published";
 const reviewQueueStatuses = new Set(["draft", "pending_review"]);
 const officialDataStatuses = new Set(["draft", "pending_review", "published", "archived"]);
+const formulaDraftStatuses = new Set(["draft", "pending_review"]);
+const formulaTypes = new Set(["weighted_sum", "custom"]);
 const guideSourceTypes = new Set([
   "official_notice",
   "admission_guide",
@@ -13,7 +15,10 @@ const guideSourceTypes = new Set([
   "manual_upload"
 ]);
 const dueSoonWindowMs = 7 * 24 * 60 * 60 * 1000;
+const sampleScoreTolerance = 0.01;
 let admissionGuideRecords = seedData.admissionGuides.map(cloneAdmissionGuide);
+let timelineEventRecords = seedData.timelineEvents.map(cloneTimelineEvent);
+let scoreFormulaRecords = seedData.scoreFormulas.map(cloneScoreFormula);
 
 export const timelineEventDefinitions = Object.freeze([
   { eventKey: "guide_publication", title: "Guide published", dateField: "publishedAt" },
@@ -86,6 +91,24 @@ export class AdminGuideReviewError extends Error {
   constructor(code, message, statusCode = 400) {
     super(message);
     this.name = "AdminGuideReviewError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
+export class AdminTimelineReviewError extends Error {
+  constructor(code, message, statusCode = 400) {
+    super(message);
+    this.name = "AdminTimelineReviewError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
+export class AdminFormulaReviewError extends Error {
+  constructor(code, message, statusCode = 400) {
+    super(message);
+    this.name = "AdminFormulaReviewError";
     this.code = code;
     this.statusCode = statusCode;
   }
@@ -317,8 +340,58 @@ function cloneAdmissionGuide(guide) {
   };
 }
 
+function cloneTimelineEvent(event) {
+  return {
+    ...event,
+    description: event.description ?? "",
+    overrideReason: event.overrideReason ?? null,
+    updatedAt: event.updatedAt ?? null,
+    reviewAudit: Array.isArray(event.reviewAudit)
+      ? event.reviewAudit.map((entry) => ({ ...entry }))
+      : []
+  };
+}
+
+function cloneFormulaConfig(config) {
+  return {
+    ...config,
+    inputs: Array.isArray(config?.inputs)
+      ? config.inputs.map((input) => ({ ...input }))
+      : [],
+    customConfig: config?.customConfig && typeof config.customConfig === "object"
+      ? { ...config.customConfig }
+      : undefined
+  };
+}
+
+function cloneScoreFormula(formula) {
+  return {
+    ...formula,
+    formulaConfig: cloneFormulaConfig(formula.formulaConfig),
+    sampleTests: Array.isArray(formula.sampleTests)
+      ? formula.sampleTests.map((sample) => ({
+          ...sample,
+          scores: sample.scores && typeof sample.scores === "object" ? { ...sample.scores } : {}
+        }))
+      : [],
+    publishedAt: formula.publishedAt ?? null,
+    updatedAt: formula.updatedAt ?? null,
+    reviewAudit: Array.isArray(formula.reviewAudit)
+      ? formula.reviewAudit.map((entry) => ({ ...entry }))
+      : []
+  };
+}
+
 function admissionGuides() {
   return admissionGuideRecords;
+}
+
+function timelineEvents() {
+  return timelineEventRecords;
+}
+
+function scoreFormulas() {
+  return scoreFormulaRecords;
 }
 
 function currentIsoDate(now) {
@@ -456,6 +529,12 @@ function assertPublishedSchoolForAdmin(schoolId) {
   return school;
 }
 
+function requireAdminOperator(operator, ErrorClass, code) {
+  if (!operator?.id || !operator?.nickname || !operator?.role) {
+    throw new ErrorClass(code, "Operator identity is required for this admin action.", 403);
+  }
+}
+
 function operatorAuditFields(operator) {
   return {
     operatorId: operator.id,
@@ -483,6 +562,26 @@ function appendGuideAudit(guide, operation, operator, operatedAt, note) {
   };
 }
 
+function appendTimelineAudit(event, operation, operator, operatedAt, note) {
+  return {
+    ...event,
+    reviewAudit: [
+      ...(event.reviewAudit ?? []),
+      auditEntry({ operation, operator, operatedAt, note })
+    ]
+  };
+}
+
+function appendFormulaAudit(formula, operation, operator, operatedAt, note) {
+  return {
+    ...formula,
+    reviewAudit: [
+      ...(formula.reviewAudit ?? []),
+      auditEntry({ operation, operator, operatedAt, note })
+    ]
+  };
+}
+
 function guideSeriesFor(guide, guides = admissionGuides()) {
   return guides.filter((candidate) => sameGuideSeries(candidate, guide));
 }
@@ -495,6 +594,18 @@ function nextGuideVersion({ schoolId, admissionYear, provinceScope }) {
         guide.provinceScope === provinceScope;
     })
     .map((guide) => guide.version);
+
+  return versions.length === 0 ? 1 : Math.max(...versions) + 1;
+}
+
+function nextFormulaVersion({ schoolId, admissionYear, provinceScope }) {
+  const versions = scoreFormulas()
+    .filter((formula) => {
+      return formula.schoolId === schoolId &&
+        formula.admissionYear === admissionYear &&
+        formula.provinceScope === provinceScope;
+    })
+    .map((formula) => formula.version);
 
   return versions.length === 0 ? 1 : Math.max(...versions) + 1;
 }
@@ -565,6 +676,381 @@ function normalizedGuideDraft(body, operator, now) {
   };
 
   return appendGuideAudit(guide, "create_draft", operator, createdAt, body.note);
+}
+
+function normalizeTimelineText(value, label, options = {}) {
+  const text = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+
+  if (text.length === 0) {
+    if (options.optional) {
+      return options.fallback ?? "";
+    }
+
+    throw new AdminTimelineReviewError("missing_timeline_field", `${label} is required.`);
+  }
+
+  if (text.length > (options.maxLength ?? 2000)) {
+    throw new AdminTimelineReviewError("timeline_field_too_long", `${label} is too long.`);
+  }
+
+  return text;
+}
+
+function normalizeOverrideReason(value) {
+  const reason = normalizeTimelineText(value, "Override reason", {
+    optional: true,
+    fallback: ""
+  });
+
+  if (!reason) {
+    throw new AdminTimelineReviewError("missing_override_reason", "Override reason is required.");
+  }
+
+  return reason;
+}
+
+function fieldWasProvided(body, fieldName) {
+  return Object.hasOwn(body, fieldName);
+}
+
+function overrideDateValue(body, fieldName, fallback) {
+  if (!fieldWasProvided(body, fieldName)) {
+    return fallback;
+  }
+
+  return normalizeAdminDate(body[fieldName]);
+}
+
+function generatedTimelineDatesFor(definition, guide) {
+  if (!definition.dateField) {
+    return {
+      startsAt: null,
+      endsAt: null
+    };
+  }
+
+  const dateValue = guide[definition.dateField] ?? null;
+
+  return {
+    startsAt: dateValue,
+    endsAt: dateValue
+  };
+}
+
+function generatedTimelineNodeFor(admissionGuideId, eventKey) {
+  const guide = visibleGuides().find((candidate) => candidate.id === admissionGuideId);
+  const definition = timelineEventDefinitions.find((candidate) => candidate.eventKey === eventKey);
+
+  if (!guide || !definition) {
+    return null;
+  }
+
+  const school = getPublishedSchoolById(guide.schoolId);
+
+  if (!school) {
+    return null;
+  }
+
+  const generatedDates = generatedTimelineDatesFor(definition, guide);
+
+  return {
+    guide,
+    school,
+    definition,
+    generated: {
+      title: definition.title,
+      startsAt: generatedDates.startsAt,
+      endsAt: generatedDates.endsAt,
+      description: ""
+    }
+  };
+}
+
+function normalizeFormulaText(value, label, options = {}) {
+  const text = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+
+  if (text.length === 0) {
+    if (options.optional) {
+      return options.fallback ?? "";
+    }
+
+    throw new AdminFormulaReviewError("missing_formula_field", `${label} is required.`);
+  }
+
+  if (text.length > (options.maxLength ?? 4000)) {
+    throw new AdminFormulaReviewError("formula_field_too_long", `${label} is too long.`);
+  }
+
+  return text;
+}
+
+function parseFormulaJsonValue(value, label, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new AdminFormulaReviewError("invalid_formula_json", `${label} must be valid JSON.`);
+  }
+}
+
+function normalizeFormulaNumber(value, label) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number) || number <= 0) {
+    throw new AdminFormulaReviewError("invalid_formula_number", `${label} must be greater than 0.`);
+  }
+
+  return number;
+}
+
+function normalizeFormulaWeight(value, label) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number) || number < 0) {
+    throw new AdminFormulaReviewError("invalid_formula_weight", `${label} must be 0 or greater.`);
+  }
+
+  return number;
+}
+
+function normalizeFormulaType(value) {
+  const formulaType = normalizeFormulaText(value ?? "weighted_sum", "Formula type");
+
+  if (!formulaTypes.has(formulaType)) {
+    throw new AdminFormulaReviewError("invalid_formula_type", "Formula type is not supported.");
+  }
+
+  return formulaType;
+}
+
+function normalizeFormulaDraftStatus(value) {
+  const status = normalizeFormulaText(value ?? "draft", "Formula status");
+
+  if (!formulaDraftStatuses.has(status)) {
+    throw new AdminFormulaReviewError(
+      "invalid_formula_status",
+      "Formula drafts can only use draft or pending_review before publication."
+    );
+  }
+
+  return status;
+}
+
+function normalizeFormulaConfig(value) {
+  const config = parseFormulaJsonValue(value, "Formula config", {});
+
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    throw new AdminFormulaReviewError("invalid_formula_config", "Formula config must be an object.");
+  }
+
+  if (!Array.isArray(config.inputs) || config.inputs.length === 0) {
+    throw new AdminFormulaReviewError("invalid_formula_config", "Formula config must include at least one input.");
+  }
+
+  const inputs = config.inputs.map((input, index) => {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new AdminFormulaReviewError("invalid_formula_config", "Formula inputs must be objects.");
+    }
+
+    return {
+      key: normalizeFormulaText(input.key, `Input ${index + 1} key`, { maxLength: 80 }),
+      label: normalizeFormulaText(input.label, `Input ${index + 1} label`, { maxLength: 120 }),
+      maxScore: normalizeFormulaNumber(input.maxScore, `Input ${index + 1} max score`),
+      weight: normalizeFormulaWeight(input.weight, `Input ${index + 1} weight`)
+    };
+  });
+  const weightTotal = inputs.reduce((total, input) => total + input.weight, 0);
+
+  if (weightTotal <= 0) {
+    throw new AdminFormulaReviewError("invalid_formula_config", "At least one formula weight must be greater than 0.");
+  }
+
+  return {
+    inputs,
+    outputMaxScore: normalizeFormulaNumber(config.outputMaxScore ?? 100, "Output max score"),
+    customConfig: config.customConfig && typeof config.customConfig === "object" && !Array.isArray(config.customConfig)
+      ? { ...config.customConfig }
+      : undefined
+  };
+}
+
+function normalizeFormulaScores(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new AdminFormulaReviewError("invalid_formula_sample", `${label} scores must be an object.`);
+  }
+
+  return { ...value };
+}
+
+function normalizeFormulaSampleTests(value) {
+  const samples = parseFormulaJsonValue(value, "Formula sample tests", []);
+
+  if (!Array.isArray(samples)) {
+    throw new AdminFormulaReviewError("invalid_formula_sample", "Formula sample tests must be a list.");
+  }
+
+  return samples.map((sample, index) => {
+    if (!sample || typeof sample !== "object" || Array.isArray(sample)) {
+      throw new AdminFormulaReviewError("invalid_formula_sample", "Each formula sample test must be an object.");
+    }
+
+    const expectedTotalScore = Number(sample.expectedTotalScore ?? sample.expectedTotal);
+
+    if (!Number.isFinite(expectedTotalScore)) {
+      throw new AdminFormulaReviewError(
+        "invalid_formula_sample",
+        `Sample test ${index + 1} must include an expected total score.`
+      );
+    }
+
+    return {
+      name: normalizeFormulaText(sample.name ?? `Sample ${index + 1}`, "Sample name", {
+        maxLength: 120
+      }),
+      scores: normalizeFormulaScores(sample.scores, `Sample ${index + 1}`),
+      expectedTotalScore
+    };
+  });
+}
+
+function visibleGuideForFormula({ admissionGuideId, schoolId, admissionYear }) {
+  if (admissionGuideId) {
+    const guide = visibleGuides().find((candidate) => candidate.id === admissionGuideId);
+
+    if (!guide) {
+      throw new AdminFormulaReviewError(
+        "formula_guide_not_found",
+        "A published current admission guide is required for formula management.",
+        404
+      );
+    }
+
+    if (schoolId && guide.schoolId !== schoolId) {
+      throw new AdminFormulaReviewError("formula_guide_mismatch", "Formula school does not match the guide.");
+    }
+
+    if (admissionYear && guide.admissionYear !== admissionYear) {
+      throw new AdminFormulaReviewError("formula_guide_mismatch", "Formula year does not match the guide.");
+    }
+
+    return guide;
+  }
+
+  const guide = visibleGuides().find((candidate) => {
+    return candidate.schoolId === schoolId && candidate.admissionYear === admissionYear;
+  });
+
+  if (!guide) {
+    throw new AdminFormulaReviewError(
+      "formula_guide_not_found",
+      "A published current admission guide is required for formula management.",
+      404
+    );
+  }
+
+  return guide;
+}
+
+function normalizeFormulaYear(value) {
+  const year = Number(value);
+
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    throw new AdminFormulaReviewError("invalid_formula_year", "Formula year must be a four-digit admission year.");
+  }
+
+  return year;
+}
+
+function formulaGuideFromDraftBody(body, existing) {
+  const admissionGuideId = body.admissionGuideId
+    ? normalizeFormulaText(body.admissionGuideId, "Admission guide id")
+    : existing?.admissionGuideId;
+  const schoolId = body.schoolId
+    ? normalizeFormulaText(body.schoolId, "School id")
+    : existing?.schoolId;
+  const admissionYear = body.year || body.admissionYear
+    ? normalizeFormulaYear(body.year ?? body.admissionYear)
+    : existing?.admissionYear;
+
+  if (!admissionGuideId && (!schoolId || !admissionYear)) {
+    throw new AdminFormulaReviewError(
+      "missing_formula_guide",
+      "Formula draft requires admissionGuideId or schoolId plus year."
+    );
+  }
+
+  return visibleGuideForFormula({ admissionGuideId, schoolId, admissionYear });
+}
+
+function normalizedFormulaDraft(body, existing, operator, now) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new AdminFormulaReviewError("invalid_formula_body", "Formula payload must be an object.");
+  }
+
+  if (existing?.status === publishedStatus && !body.id) {
+    throw new AdminFormulaReviewError(
+      "published_formula_update",
+      "Published formulas must be replaced with a new draft version."
+    );
+  }
+
+  const guide = formulaGuideFromDraftBody(body, existing);
+  const operatedAt = currentIsoDate(now);
+  const formulaConfig = fieldWasProvided(body, "formulaConfig")
+    ? normalizeFormulaConfig(body.formulaConfig)
+    : existing
+      ? cloneFormulaConfig(existing.formulaConfig)
+      : normalizeFormulaConfig(body.config);
+  const sampleTests = fieldWasProvided(body, "sampleTests")
+    ? normalizeFormulaSampleTests(body.sampleTests)
+    : existing
+      ? cloneScoreFormula(existing).sampleTests
+      : [];
+  const formula = {
+    id: existing?.id ?? (body.id ? normalizeFormulaText(body.id, "Formula id") : randomUUID()),
+    admissionGuideId: guide.id,
+    schoolId: guide.schoolId,
+    admissionYear: guide.admissionYear,
+    provinceScope: guide.provinceScope,
+    status: normalizeFormulaDraftStatus(body.status ?? existing?.status ?? "draft"),
+    version: existing?.version ?? nextFormulaVersion({
+      schoolId: guide.schoolId,
+      admissionYear: guide.admissionYear,
+      provinceScope: guide.provinceScope
+    }),
+    formulaName: fieldWasProvided(body, "formulaName")
+      ? normalizeFormulaText(body.formulaName, "Formula name", { maxLength: 200 })
+      : normalizeFormulaText(existing?.formulaName, "Formula name", { maxLength: 200 }),
+    formulaType: fieldWasProvided(body, "formulaType")
+      ? normalizeFormulaType(body.formulaType)
+      : normalizeFormulaType(existing?.formulaType ?? "weighted_sum"),
+    formulaConfig,
+    explanation: fieldWasProvided(body, "explanation")
+      ? normalizeFormulaText(body.explanation, "Formula explanation")
+      : normalizeFormulaText(existing?.explanation, "Formula explanation"),
+    officialSourceUrl: fieldWasProvided(body, "officialSourceUrl")
+      ? normalizeFormulaText(body.officialSourceUrl, "Official source URL")
+      : normalizeFormulaText(existing?.officialSourceUrl, "Official source URL"),
+    sampleTests,
+    publishedAt: existing?.publishedAt ?? null,
+    updatedAt: operatedAt,
+    reviewAudit: existing?.reviewAudit ?? []
+  };
+
+  return appendFormulaAudit(
+    formula,
+    existing ? "update_formula_draft" : "create_formula_draft",
+    operator,
+    operatedAt,
+    body.note
+  );
 }
 
 function guideReviewErrorForMissing() {
@@ -704,6 +1190,79 @@ function assertWeightedFormulaConfig(formula) {
   }
 
   return outputMaxScore;
+}
+
+function calculateFormulaRecordScore(formula, scores) {
+  const outputMaxScore = assertWeightedFormulaConfig(formula);
+  const breakdown = formula.formulaConfig.inputs.map((configuredInput) => {
+    const score = configuredScoreValue(scores, configuredInput);
+    const normalizedScore = (score / configuredInput.maxScore) * outputMaxScore;
+    const contribution = normalizedScore * configuredInput.weight;
+
+    return {
+      key: configuredInput.key,
+      label: configuredInput.label,
+      score,
+      maxScore: configuredInput.maxScore,
+      normalizedScore: roundScore(normalizedScore),
+      weight: configuredInput.weight,
+      contribution: roundScore(contribution)
+    };
+  });
+
+  return {
+    outputMaxScore,
+    breakdown,
+    totalScore: roundScore(breakdown.reduce((total, item) => total + item.contribution, 0))
+  };
+}
+
+function formulaSampleResults(formula) {
+  return (formula.sampleTests ?? []).map((sample) => {
+    try {
+      const result = calculateFormulaRecordScore(formula, sample.scores);
+      const difference = Math.abs(result.totalScore - sample.expectedTotalScore);
+
+      return {
+        name: sample.name,
+        scores: { ...sample.scores },
+        expectedTotalScore: sample.expectedTotalScore,
+        actualTotalScore: result.totalScore,
+        passed: difference <= sampleScoreTolerance
+      };
+    } catch (error) {
+      return {
+        name: sample.name,
+        scores: { ...sample.scores },
+        expectedTotalScore: sample.expectedTotalScore,
+        actualTotalScore: null,
+        passed: false,
+        error: error.message
+      };
+    }
+  });
+}
+
+function assertFormulaHasPassingSample(formula) {
+  const sampleResults = formulaSampleResults(formula);
+
+  if (sampleResults.length === 0) {
+    throw new AdminFormulaReviewError(
+      "missing_formula_sample",
+      "Formula publication requires at least one sample calculation test.",
+      422
+    );
+  }
+
+  if (!sampleResults.some((sample) => sample.passed)) {
+    throw new AdminFormulaReviewError(
+      "formula_sample_failed",
+      "Formula publication requires at least one passing sample calculation test.",
+      422
+    );
+  }
+
+  return sampleResults;
 }
 
 function getPublishedSchoolById(schoolId) {
@@ -1177,6 +1736,293 @@ export function archiveAdminGuide(input) {
 }
 
 /**
+ * Lists generated timeline nodes for admin review, including any reviewed
+ * explicit event or manual override data attached to the generated guide node.
+ *
+ * @param {TimelineFilters} [filters]
+ * @returns {ReadonlyArray<object>}
+ */
+export function listAdminTimelineNodes(filters = {}) {
+  const requestedSchoolIds = new Set([
+    ...(filters.schoolId ? [filters.schoolId] : []),
+    ...(filters.schoolIds ?? [])
+  ]);
+  const explicitEvents = new Map(
+    timelineEvents()
+      .map((event) => [`${event.admissionGuideId}:${event.eventKey}`, event])
+  );
+
+  return visibleGuides()
+    .filter((guide) => !filters.year || guide.admissionYear === filters.year)
+    .filter((guide) => requestedSchoolIds.size === 0 || requestedSchoolIds.has(guide.schoolId))
+    .flatMap((guide) => {
+      const school = getPublishedSchoolById(guide.schoolId);
+
+      if (!school) {
+        return [];
+      }
+
+      return timelineEventDefinitions
+        .filter((definition) => !filters.eventKey || definition.eventKey === filters.eventKey)
+        .map((definition) => {
+          const explicitEvent = explicitEvents.get(`${guide.id}:${definition.eventKey}`) ?? null;
+          const generatedDates = generatedTimelineDatesFor(definition, guide);
+          const dates = explicitEvent
+            ? { startsAt: explicitEvent.startsAt, endsAt: explicitEvent.endsAt }
+            : generatedDates;
+          const node = {
+            id: explicitEvent?.id ?? `${guide.id}:${definition.eventKey}`,
+            admissionGuideId: guide.id,
+            schoolId: guide.schoolId,
+            eventKey: definition.eventKey,
+            title: explicitEvent?.title ?? definition.title,
+            description: explicitEvent?.description ?? "",
+            startsAt: dates.startsAt,
+            endsAt: dates.endsAt,
+            officialDataStatus: explicitEvent?.status ?? guide.status,
+            isDateKnown: Boolean(dates.startsAt ?? dates.endsAt),
+            source: explicitEvent?.overrideReason
+              ? "manual_override"
+              : explicitEvent
+                ? "reviewed_event"
+                : "guide_generated",
+            generated: {
+              title: definition.title,
+              startsAt: generatedDates.startsAt,
+              endsAt: generatedDates.endsAt,
+              description: ""
+            },
+            override: explicitEvent
+              ? {
+                  reason: explicitEvent.overrideReason ?? null,
+                  updatedAt: explicitEvent.updatedAt ?? null,
+                  reviewAudit: explicitEvent.reviewAudit ?? []
+                }
+              : null,
+            school,
+            guide
+          };
+
+          return {
+            ...node,
+            status: calculateTimelineNodeStatus(node, filters.referenceDate)
+          };
+        });
+    })
+    .sort(compareTimelineNodes);
+}
+
+/**
+ * Applies a manual timeline override to one generated guide event. The override
+ * is immediately published to the public timeline and keeps an audit entry.
+ *
+ * @param {{body: object, operator: object, now?: () => Date | string | number}} input
+ * @returns {object}
+ */
+export function overrideAdminTimelineNode(input) {
+  requireAdminOperator(input.operator, AdminTimelineReviewError, "missing_timeline_operator");
+
+  const body = input.body;
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new AdminTimelineReviewError("invalid_timeline_body", "Timeline override payload must be an object.");
+  }
+
+  const admissionGuideId = normalizeTimelineText(body.admissionGuideId, "Admission guide id");
+  const eventKey = normalizeTimelineText(body.eventKey, "Timeline event key");
+  const baseNode = generatedTimelineNodeFor(admissionGuideId, eventKey);
+
+  if (!baseNode) {
+    throw new AdminTimelineReviewError("timeline_node_not_found", "No generated timeline node was found.", 404);
+  }
+
+  const existing = timelineEvents()
+    .find((event) => event.admissionGuideId === admissionGuideId && event.eventKey === eventKey);
+  const operatedAt = currentIsoDate(input.now);
+  const reason = normalizeOverrideReason(body.overrideReason ?? body.reason);
+  let startsAt = existing?.startsAt ?? baseNode.generated.startsAt;
+  let endsAt = existing?.endsAt ?? baseNode.generated.endsAt;
+
+  if (fieldWasProvided(body, "date")) {
+    const date = normalizeAdminDate(body.date);
+    startsAt = date;
+    endsAt = date;
+  } else {
+    startsAt = overrideDateValue(body, "startsAt", startsAt);
+    endsAt = overrideDateValue(body, "endsAt", endsAt);
+  }
+
+  const event = appendTimelineAudit({
+    id: existing?.id ?? randomUUID(),
+    admissionGuideId,
+    schoolId: baseNode.guide.schoolId,
+    eventKey,
+    title: fieldWasProvided(body, "title")
+      ? normalizeTimelineText(body.title, "Timeline title")
+      : existing?.title ?? baseNode.generated.title,
+    description: fieldWasProvided(body, "description")
+      ? normalizeTimelineText(body.description, "Timeline description", { optional: true, fallback: "" })
+      : existing?.description ?? "",
+    startsAt,
+    endsAt,
+    status: "published",
+    overrideReason: reason,
+    updatedAt: operatedAt,
+    reviewAudit: existing?.reviewAudit ?? []
+  }, "override_timeline", input.operator, operatedAt, reason);
+  const existingIndex = timelineEventRecords.findIndex((candidate) => candidate.id === event.id);
+
+  if (existingIndex === -1) {
+    timelineEventRecords = [...timelineEventRecords, cloneTimelineEvent(event)];
+  } else {
+    timelineEventRecords = timelineEventRecords.map((candidate, index) => {
+      return index === existingIndex ? cloneTimelineEvent(event) : candidate;
+    });
+  }
+
+  return listAdminTimelineNodes({
+    admissionGuideId,
+    eventKey,
+    referenceDate: input.now ? currentIsoDate(input.now) : undefined
+  }).find((node) => node.admissionGuideId === admissionGuideId && node.eventKey === eventKey);
+}
+
+/**
+ * Lists formula records for admin management, including draft and pending
+ * records hidden from student-facing calculator helpers.
+ *
+ * @param {{schoolId?: string, year?: number, status?: string}} [filters]
+ * @returns {ReadonlyArray<object>}
+ */
+export function listAdminFormulas(filters = {}) {
+  if (filters.status && !officialDataStatuses.has(filters.status)) {
+    throw new AdminFormulaReviewError("invalid_formula_status", "Formula status is not supported.");
+  }
+
+  return scoreFormulas()
+    .filter((formula) => !filters.schoolId || formula.schoolId === filters.schoolId)
+    .filter((formula) => !filters.year || formula.admissionYear === filters.year)
+    .filter((formula) => !filters.status || formula.status === filters.status)
+    .map((formula) => {
+      const school = getPublishedSchoolById(formula.schoolId);
+      const guide = admissionGuides().find((candidate) => candidate.id === formula.admissionGuideId) ?? null;
+
+      return {
+        formula,
+        school,
+        guide,
+        sampleResults: formulaSampleResults(formula)
+      };
+    })
+    .filter((item) => item.school && item.guide)
+    .sort((left, right) => {
+      if (left.formula.status !== right.formula.status) {
+        return left.formula.status.localeCompare(right.formula.status, "en");
+      }
+
+      if (right.formula.admissionYear !== left.formula.admissionYear) {
+        return right.formula.admissionYear - left.formula.admissionYear;
+      }
+
+      const schoolDifference = compareSchoolNames(left.school, right.school);
+
+      if (schoolDifference !== 0) {
+        return schoolDifference;
+      }
+
+      return right.formula.version - left.formula.version;
+    });
+}
+
+/**
+ * Reads one formula record for admin management.
+ *
+ * @param {{formulaId: string}} filters
+ * @returns {object | null}
+ */
+export function getAdminFormulaDetail(filters) {
+  return listAdminFormulas().find((item) => item.formula.id === filters.formulaId) ?? null;
+}
+
+/**
+ * Creates or updates a formula draft. Formula drafts stay hidden from public
+ * calculator helpers until the publish transition succeeds.
+ *
+ * @param {{body: object, operator: object, now?: () => Date | string | number}} input
+ * @returns {{created: boolean, formula: object, school: object, guide: object, sampleResults: object[]}}
+ */
+export function upsertAdminFormulaDraft(input) {
+  requireAdminOperator(input.operator, AdminFormulaReviewError, "missing_formula_operator");
+
+  const formulaId = input.body?.id ? normalizeFormulaText(input.body.id, "Formula id") : "";
+  const existing = formulaId
+    ? scoreFormulas().find((formula) => formula.id === formulaId) ?? null
+    : null;
+
+  if (existing?.status === publishedStatus) {
+    throw new AdminFormulaReviewError(
+      "published_formula_update",
+      "Published formulas must be replaced with a new draft version."
+    );
+  }
+
+  const formula = normalizedFormulaDraft(input.body, existing, input.operator, input.now);
+
+  if (existing) {
+    scoreFormulaRecords = scoreFormulaRecords.map((candidate) => {
+      return candidate.id === formula.id ? cloneScoreFormula(formula) : candidate;
+    });
+  } else {
+    scoreFormulaRecords = [...scoreFormulaRecords, cloneScoreFormula(formula)];
+  }
+
+  return {
+    created: !existing,
+    ...getAdminFormulaDetail({ formulaId: formula.id })
+  };
+}
+
+/**
+ * Publishes a formula draft after at least one configured sample calculation
+ * passes against the formula configuration.
+ *
+ * @param {{formulaId: string, operator: object, now?: () => Date | string | number, note?: string}} input
+ * @returns {{formula: object, school: object, guide: object, sampleResults: object[]}}
+ */
+export function publishAdminFormula(input) {
+  requireAdminOperator(input.operator, AdminFormulaReviewError, "missing_formula_operator");
+
+  const index = scoreFormulaRecords.findIndex((formula) => formula.id === input.formulaId);
+
+  if (index === -1) {
+    throw new AdminFormulaReviewError("formula_not_found", "No formula draft was found.", 404);
+  }
+
+  const formula = scoreFormulaRecords[index];
+  const sampleResults = assertFormulaHasPassingSample(formula);
+  const operatedAt = currentIsoDate(input.now);
+  const nextFormula = appendFormulaAudit({
+    ...formula,
+    status: "published",
+    publishedAt: operatedAt,
+    updatedAt: operatedAt
+  }, "publish_formula", input.operator, operatedAt, input.note);
+
+  scoreFormulaRecords = scoreFormulaRecords.map((candidate, candidateIndex) => {
+    if (candidateIndex === index) {
+      return cloneScoreFormula(nextFormula);
+    }
+
+    return candidate;
+  });
+
+  return {
+    ...getAdminFormulaDetail({ formulaId: nextFormula.id }),
+    sampleResults
+  };
+}
+
+/**
  * Creates the next immutable guide version for dependency-free tests and local
  * draft workflows. The input guide is never modified; older records in the same
  * school/year/scope series are returned with `isCurrent: false`.
@@ -1252,7 +2098,7 @@ export function listTimelineEvents(filters = {}) {
   const guideIds = visibleGuideIds();
   const guidesById = new Map(visibleGuides().map((guide) => [guide.id, guide]));
 
-  return seedData.timelineEvents
+  return timelineEvents()
     .filter((event) => isPublished(event))
     .filter((event) => guideIds.has(event.admissionGuideId))
     .filter((event) => !filters.admissionGuideId || event.admissionGuideId === filters.admissionGuideId)
@@ -1349,9 +2195,11 @@ export function listTimelineNodes(filters = {}) {
             schoolId: guide.schoolId,
             eventKey: definition.eventKey,
             title: explicitEvent?.title ?? definition.title,
+            description: explicitEvent?.description ?? "",
             startsAt: dates.startsAt,
             endsAt: dates.endsAt,
             officialDataStatus: explicitEvent?.status ?? guide.status,
+            reviewAudit: explicitEvent?.reviewAudit ?? [],
             isDateKnown: Boolean(dates.startsAt ?? dates.endsAt),
             school,
             guide
@@ -1418,12 +2266,22 @@ export function getTimelineEventById(timelineEventId) {
 export function listScoreFormulas(filters = {}) {
   const guideIds = visibleGuideIds();
 
-  return seedData.scoreFormulas
+  return scoreFormulas()
     .filter((formula) => isPublished(formula))
     .filter((formula) => guideIds.has(formula.admissionGuideId))
     .filter((formula) => !filters.schoolId || formula.schoolId === filters.schoolId)
     .filter((formula) => !filters.year || formula.admissionYear === filters.year)
-    .sort((left, right) => right.admissionYear - left.admissionYear);
+    .sort((left, right) => {
+      if (right.admissionYear !== left.admissionYear) {
+        return right.admissionYear - left.admissionYear;
+      }
+
+      if (right.version !== left.version) {
+        return right.version - left.version;
+      }
+
+      return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+    });
 }
 
 /**
@@ -1494,23 +2352,7 @@ export function calculateScore(input = {}) {
     );
   }
 
-  const outputMaxScore = assertWeightedFormulaConfig(formula);
-  const breakdown = formula.formulaConfig.inputs.map((configuredInput) => {
-    const score = configuredScoreValue(scores, configuredInput);
-    const normalizedScore = (score / configuredInput.maxScore) * outputMaxScore;
-    const contribution = normalizedScore * configuredInput.weight;
-
-    return {
-      key: configuredInput.key,
-      label: configuredInput.label,
-      score,
-      maxScore: configuredInput.maxScore,
-      normalizedScore: roundScore(normalizedScore),
-      weight: configuredInput.weight,
-      contribution: roundScore(contribution)
-    };
-  });
-  const totalScore = roundScore(breakdown.reduce((total, item) => total + item.contribution, 0));
+  const calculation = calculateFormulaRecordScore(formula, scores);
 
   return {
     schoolId: formula.schoolId,
@@ -1518,9 +2360,9 @@ export function calculateScore(input = {}) {
     formulaId: formula.id,
     formulaName: formula.formulaName,
     formulaType: formula.formulaType,
-    totalScore,
-    outputMaxScore,
-    breakdown,
+    totalScore: calculation.totalScore,
+    outputMaxScore: calculation.outputMaxScore,
+    breakdown: calculation.breakdown,
     explanation: formula.explanation,
     officialSourceUrl: formula.officialSourceUrl,
     disclaimer: "This calculation follows published formula fields for reference only and is not an admission probability or ranking prediction."

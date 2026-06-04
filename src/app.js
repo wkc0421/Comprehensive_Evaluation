@@ -9,20 +9,26 @@ import {
   buildSiteTimelineReminders,
   calculateScore,
   createAdminGuideDraft,
+  getAdminFormulaDetail,
   getExperienceById,
   getAdminGuideReviewDetail,
   getGuideDetail,
   getSchoolById,
   getSchoolDetail,
+  listAdminFormulas,
   listAdminGuideReviews,
+  listAdminTimelineNodes,
   listGuides,
   listExperiences,
   listSchoolGuideCards,
   listTimelineNodes,
   markAdminGuidePendingSupplement,
+  overrideAdminTimelineNode,
+  publishAdminFormula,
   publishAdminGuide,
   returnAdminGuide,
-  submitAdminGuideReview
+  submitAdminGuideReview,
+  upsertAdminFormulaDraft
 } from "./db/data-access.js";
 import {
   experienceSubmissionStore as defaultExperienceSubmissionStore
@@ -30,7 +36,9 @@ import {
 import { interactionStore as defaultInteractionStore } from "./interactions.js";
 import {
   renderAdminPage,
+  renderAdminFormulaManagementPage,
   renderAdminGuideReviewPage,
+  renderAdminTimelineManagementPage,
   renderExperienceListPage,
   renderExperienceSubmissionPage,
   renderNotFound,
@@ -184,7 +192,7 @@ async function readStructuredBody(request) {
 
   throw new RequestError(
     "unsupported_media_type",
-    "Experience submissions must use JSON or URL-encoded form data.",
+    "Request body must use JSON or URL-encoded form data.",
     415
   );
 }
@@ -266,6 +274,28 @@ function parseAdminGuideFilters(url) {
   }
 
   return { status };
+}
+
+function parseAdminTimelineFilters(url) {
+  return {
+    year: optionalYearParam(url),
+    schoolId: optionalStringParam(url, "schoolId"),
+    eventKey: optionalStringParam(url, "eventKey")
+  };
+}
+
+function parseAdminFormulaFilters(url) {
+  const status = optionalStringParam(url, "status");
+
+  if (status && !guideStatuses.has(status)) {
+    throw new RequestError("invalid_status", "Formula status is not supported.");
+  }
+
+  return {
+    year: optionalYearParam(url),
+    schoolId: optionalStringParam(url, "schoolId"),
+    status
+  };
 }
 
 function optionalBooleanParam(url, name) {
@@ -691,6 +721,78 @@ function adminGuideJson(detailOrGuide) {
   };
 }
 
+function adminTimelineNodeJson(node) {
+  return {
+    id: node.id,
+    admissionGuideId: node.admissionGuideId,
+    schoolId: node.schoolId,
+    eventKey: node.eventKey,
+    title: node.title,
+    description: node.description,
+    startsAt: node.startsAt,
+    endsAt: node.endsAt,
+    dateLabel: formatTimelineDateLabel(node),
+    status: node.status,
+    statusLabel: timelineStatusLabel(node.status),
+    officialDataStatus: node.officialDataStatus,
+    source: node.source,
+    generated: node.generated,
+    override: node.override,
+    school: {
+      id: node.school.id,
+      name: node.school.name,
+      city: node.school.city,
+      schoolType: node.school.schoolType
+    },
+    guide: {
+      id: node.guide.id,
+      year: node.guide.admissionYear,
+      title: node.guide.guideTitle,
+      applicationStatus: node.guide.applicationStatus,
+      officialSourceUrl: node.guide.officialSourceUrl
+    }
+  };
+}
+
+function adminFormulaJson(detail) {
+  const formula = detail.formula;
+
+  return {
+    school: {
+      id: detail.school.id,
+      name: detail.school.name,
+      city: detail.school.city,
+      schoolType: detail.school.schoolType
+    },
+    guide: {
+      id: detail.guide.id,
+      year: detail.guide.admissionYear,
+      title: detail.guide.guideTitle,
+      status: detail.guide.status,
+      officialSourceUrl: detail.guide.officialSourceUrl
+    },
+    formula: {
+      id: formula.id,
+      admissionGuideId: formula.admissionGuideId,
+      schoolId: formula.schoolId,
+      year: formula.admissionYear,
+      provinceScope: formula.provinceScope,
+      status: formula.status,
+      version: formula.version,
+      formulaName: formula.formulaName,
+      formulaType: formula.formulaType,
+      formulaConfig: formula.formulaConfig,
+      explanation: formula.explanation,
+      officialSourceUrl: formula.officialSourceUrl,
+      sampleTests: formula.sampleTests ?? [],
+      publishedAt: formula.publishedAt ?? null,
+      updatedAt: formula.updatedAt ?? null
+    },
+    sampleResults: detail.sampleResults ?? [],
+    reviewAudit: formula.reviewAudit ?? []
+  };
+}
+
 function formatTimelineDateLabel(node) {
   if (!node.startsAt && !node.endsAt) {
     return "To be announced";
@@ -736,6 +838,7 @@ function timelineNodeJson(node) {
     schoolId: node.schoolId,
     eventKey: node.eventKey,
     title: node.title,
+    description: node.description ?? "",
     startsAt: node.startsAt,
     endsAt: node.endsAt,
     dateLabel: formatTimelineDateLabel(node),
@@ -1020,6 +1123,26 @@ function sendAdminGuideReviewListJson(response, filters = {}) {
   });
 }
 
+function sendAdminTimelineListJson(response, filters = {}) {
+  const timelineNodes = listAdminTimelineNodes(filters).map(adminTimelineNodeJson);
+
+  sendJson(response, 200, {
+    filters,
+    count: timelineNodes.length,
+    timelineNodes
+  });
+}
+
+function sendAdminFormulaListJson(response, filters = {}) {
+  const formulas = listAdminFormulas(filters).map(adminFormulaJson);
+
+  sendJson(response, 200, {
+    filters,
+    count: formulas.length,
+    formulas
+  });
+}
+
 function sendTimelineJson(response, timeline) {
   sendJson(response, 200, {
     mine: timeline.mine,
@@ -1085,6 +1208,23 @@ function parseAdminGuideActionPath(pathname) {
     };
   } catch {
     throw new RequestError("invalid_guide_id", "Guide id must be URL encoded correctly.");
+  }
+}
+
+function parseAdminFormulaActionPath(pathname) {
+  const match = pathname.match(/^\/(?:api\/)?admin\/formulas\/(?<formulaId>[^/]+)(?:\/(?<action>publish))?$/);
+
+  if (!match?.groups?.formulaId) {
+    return null;
+  }
+
+  try {
+    return {
+      formulaId: decodeURIComponent(match.groups.formulaId),
+      action: match.groups.action ?? "detail"
+    };
+  } catch {
+    throw new RequestError("invalid_formula_id", "Formula id must be URL encoded correctly.");
   }
 }
 
@@ -1653,6 +1793,174 @@ export async function handleRequest(request, response, context = {}) {
       });
     } catch (error) {
       sendError(response, errorStatus(error), error.code ?? "admin_guide_error", error.message);
+    }
+
+    return;
+  }
+
+  if ((url.pathname === "/admin/timeline" || url.pathname === "/api/admin/timeline") && request.method === "GET") {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const filters = parseAdminTimelineFilters(url);
+
+      if (shouldSendAdminJson(request, url)) {
+        sendAdminTimelineListJson(response, filters);
+        return;
+      }
+
+      sendHtml(response, 200, renderAdminTimelineManagementPage({
+        filters,
+        timelineNodes: listAdminTimelineNodes(filters),
+        user
+      }));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_timeline_error", error.message);
+    }
+
+    return;
+  }
+
+  if (
+    (url.pathname === "/admin/timeline/overrides" || url.pathname === "/api/admin/timeline/overrides") &&
+    request.method === "POST"
+  ) {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const body = await readStructuredBody(request);
+      const node = overrideAdminTimelineNode({
+        body,
+        operator: user,
+        now: context.now
+      });
+
+      sendJson(response, 200, {
+        status: "overridden",
+        timelineNode: adminTimelineNodeJson(node)
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_timeline_error", error.message);
+    }
+
+    return;
+  }
+
+  if ((url.pathname === "/admin/formulas" || url.pathname === "/api/admin/formulas") && request.method === "GET") {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const filters = parseAdminFormulaFilters(url);
+
+      if (shouldSendAdminJson(request, url)) {
+        sendAdminFormulaListJson(response, filters);
+        return;
+      }
+
+      sendHtml(response, 200, renderAdminFormulaManagementPage({
+        filters,
+        formulas: listAdminFormulas(filters),
+        user
+      }));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_formula_error", error.message);
+    }
+
+    return;
+  }
+
+  if ((url.pathname === "/admin/formulas" || url.pathname === "/api/admin/formulas") && request.method === "POST") {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const body = await readStructuredBody(request);
+      const result = upsertAdminFormulaDraft({
+        body,
+        operator: user,
+        now: context.now
+      });
+
+      sendJson(response, result.created ? 201 : 200, {
+        status: result.created ? "draft_created" : "draft_updated",
+        formula: adminFormulaJson(result)
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_formula_error", error.message);
+    }
+
+    return;
+  }
+
+  let adminFormulaActionPath;
+
+  try {
+    adminFormulaActionPath = parseAdminFormulaActionPath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "admin_formula_error", error.message);
+    return;
+  }
+
+  if (adminFormulaActionPath && request.method === "GET") {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    const detail = getAdminFormulaDetail({ formulaId: adminFormulaActionPath.formulaId });
+
+    if (!detail) {
+      sendError(response, 404, "not_found", "No formula was found for admin management.");
+      return;
+    }
+
+    sendJson(response, 200, adminFormulaJson(detail));
+    return;
+  }
+
+  if (adminFormulaActionPath && request.method === "POST") {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    if (adminFormulaActionPath.action !== "publish") {
+      sendError(response, 405, "method_not_allowed", "Admin formula detail does not support POST without an action.");
+      return;
+    }
+
+    try {
+      const body = await readStructuredBody(request);
+      const result = publishAdminFormula({
+        formulaId: adminFormulaActionPath.formulaId,
+        operator: user,
+        now: context.now,
+        note: adminGuideNoteFromBody(body)
+      });
+
+      sendJson(response, 200, {
+        status: "published",
+        formula: adminFormulaJson(result)
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_formula_error", error.message);
     }
 
     return;

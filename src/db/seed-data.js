@@ -49,9 +49,13 @@
  * @property {string} schoolId
  * @property {string} eventKey
  * @property {string} title
+ * @property {string} [description]
  * @property {string | null} startsAt
  * @property {string | null} endsAt
  * @property {OfficialDataStatus} status
+ * @property {string | null} [overrideReason]
+ * @property {string | null} [updatedAt]
+ * @property {Array<object>} [reviewAudit]
  *
  * @typedef {object} ScoreFormulaSeed
  * @property {string} id
@@ -66,6 +70,10 @@
  * @property {{inputs: Array<{key: string, label: string, maxScore: number, weight: number}>, outputMaxScore: number}} formulaConfig
  * @property {string} explanation
  * @property {string} officialSourceUrl
+ * @property {Array<{name: string, scores: object, expectedTotalScore: number}>} [sampleTests]
+ * @property {string | null} [publishedAt]
+ * @property {string | null} [updatedAt]
+ * @property {Array<object>} [reviewAudit]
  *
  * @typedef {object} ExperienceSeed
  * @property {string} id

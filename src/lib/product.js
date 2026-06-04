@@ -15,5 +15,7 @@ export const studentNavigation = [
 export const adminNavigation = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/guides", label: "Guide review" },
+  { href: "/admin/timeline", label: "Timeline" },
+  { href: "/admin/formulas", label: "Formulas" },
   { href: "/admin/experiences", label: "Experience review" }
 ];

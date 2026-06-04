@@ -1583,4 +1583,256 @@ describe("web routes", () => {
     assert.equal(archiveBody.guide.guide.status, "archived");
     assert.equal(archiveBody.guide.reviewAudit.at(-1).operation, "archive");
   });
+
+  it("renders admin timeline and formula management pages for data reviewers", async () => {
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000035",
+      nickname: "Timeline formula reviewer",
+      role: "data_reviewer"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(reviewer.id)).split(";")[0];
+
+    const timelineResponse = await fetch(`${baseUrl}/admin/timeline?year=2026`, {
+      headers: {
+        accept: "text/html",
+        cookie
+      }
+    });
+    const timelineBody = await timelineResponse.text();
+
+    assert.equal(timelineResponse.status, 200);
+    assert.match(timelineBody, /Timeline overrides/);
+    assert.match(timelineBody, /Guide-generated event/);
+    assert.match(timelineBody, /Manual override/);
+    assert.match(timelineBody, /Override reason/);
+    assert.match(timelineBody, /Save override/);
+    assertNoPhoneFields(timelineBody);
+
+    const formulaResponse = await fetch(`${baseUrl}/admin/formulas`, {
+      headers: {
+        accept: "text/html",
+        cookie
+      }
+    });
+    const formulaBody = await formulaResponse.text();
+
+    assert.equal(formulaResponse.status, 200);
+    assert.match(formulaBody, /Score formula drafts/);
+    assert.match(formulaBody, /Inputs schema and weights/);
+    assert.match(formulaBody, /Sample calculation tests/);
+    assert.match(formulaBody, /Publish formula/);
+    assertNoPhoneFields(formulaBody);
+  });
+
+  it("requires override reasons and audits manual timeline overrides", async () => {
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000036",
+      nickname: "Timeline override reviewer",
+      role: "data_reviewer"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(reviewer.id)).split(";")[0];
+    const overridePayload = {
+      admissionGuideId: seedIds.guides.sysu2026,
+      eventKey: "application_deadline",
+      title: "SYSU audited application deadline",
+      startsAt: "2026-04-21T15:59:59.000Z",
+      endsAt: "2026-04-21T15:59:59.000Z",
+      description: "Deadline corrected after official reviewer checked the source notice."
+    };
+
+    const missingReasonResponse = await fetch(`${baseUrl}/api/admin/timeline/overrides`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(overridePayload)
+    });
+    const missingReasonBody = await missingReasonResponse.json();
+
+    assert.equal(missingReasonResponse.status, 400);
+    assert.equal(missingReasonBody.error, "missing_override_reason");
+
+    const overrideResponse = await fetch(`${baseUrl}/api/admin/timeline/overrides`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        ...overridePayload,
+        overrideReason: "Official application deadline notice updated on the source site."
+      })
+    });
+    const overrideBody = await overrideResponse.json();
+
+    assert.equal(overrideResponse.status, 200);
+    assert.equal(overrideBody.status, "overridden");
+    assert.equal(overrideBody.timelineNode.title, overridePayload.title);
+    assert.equal(overrideBody.timelineNode.description, overridePayload.description);
+    assert.equal(overrideBody.timelineNode.startsAt, overridePayload.startsAt);
+    assert.equal(overrideBody.timelineNode.source, "manual_override");
+    assert.equal(overrideBody.timelineNode.override.reason, "Official application deadline notice updated on the source site.");
+    assert.equal(overrideBody.timelineNode.override.reviewAudit.at(-1).operation, "override_timeline");
+    assert.equal(overrideBody.timelineNode.override.reviewAudit.at(-1).operatorId, reviewer.id);
+    assert.equal(overrideBody.timelineNode.override.reviewAudit.at(-1).operatedAt, "2026-04-18T00:00:00.000Z");
+
+    const publicTimelineResponse = await fetch(
+      `${baseUrl}/api/timeline?year=2026&schoolIds=${encodeURIComponent(seedIds.schools.sysu)}`
+    );
+    const publicTimelineBody = await publicTimelineResponse.json();
+
+    assert.equal(publicTimelineResponse.status, 200);
+    assert.ok(publicTimelineBody.events.some((event) => {
+      return event.eventKey === "application_deadline" &&
+        event.title === overridePayload.title &&
+        event.description === overridePayload.description &&
+        event.startsAt === overridePayload.startsAt;
+    }));
+  });
+
+  it("requires passing formula samples before publication and exposes published formulas to the calculator", async () => {
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000037",
+      nickname: "Formula reviewer",
+      role: "data_reviewer"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(reviewer.id)).split(";")[0];
+    const formulaPayload = {
+      schoolId: seedIds.schools.scut,
+      year: 2025,
+      status: "draft",
+      formulaName: "SCUT 2025 audited 85/15 formula",
+      formulaType: "weighted_sum",
+      formulaConfig: {
+        inputs: [
+          { key: "gaokao", label: "Gaokao score", maxScore: 750, weight: 0.85 },
+          { key: "schoolAssessment", label: "School assessment", maxScore: 100, weight: 0.15 }
+        ],
+        outputMaxScore: 100
+      },
+      explanation: "Comprehensive score uses normalized gaokao and school assessment inputs from the official guide.",
+      officialSourceUrl: "https://example.edu/scut/2025-comprehensive-evaluation-guide",
+      sampleTests: [
+        {
+          name: "Intentionally failing full-score sample",
+          scores: { gaokao: 750, schoolAssessment: 100 },
+          expectedTotalScore: 99
+        }
+      ]
+    };
+
+    const hiddenResponse = await fetch(`${baseUrl}/api/score/calculate`, {
+      method: "POST",
+      ...jsonRequest({
+        schoolId: seedIds.schools.scut,
+        year: 2025,
+        scores: { gaokao: 750, schoolAssessment: 100 }
+      })
+    });
+    const hiddenBody = await hiddenResponse.json();
+
+    assert.equal(hiddenResponse.status, 404);
+    assert.equal(hiddenBody.error, "formula_not_available");
+
+    const createResponse = await fetch(`${baseUrl}/api/admin/formulas`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(formulaPayload)
+    });
+    const createBody = await createResponse.json();
+    const formulaId = createBody.formula.formula.id;
+
+    assert.equal(createResponse.status, 201);
+    assert.equal(createBody.status, "draft_created");
+    assert.equal(createBody.formula.formula.status, "draft");
+    assert.equal(createBody.formula.reviewAudit.at(-1).operation, "create_formula_draft");
+    assert.equal(createBody.formula.reviewAudit.at(-1).operatorId, reviewer.id);
+    assert.equal(createBody.formula.sampleResults[0].passed, false);
+
+    const failedPublishResponse = await fetch(`${baseUrl}/api/admin/formulas/${encodeURIComponent(formulaId)}/publish`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ note: "Trying to publish before sample passes." })
+    });
+    const failedPublishBody = await failedPublishResponse.json();
+
+    assert.equal(failedPublishResponse.status, 422);
+    assert.equal(failedPublishBody.error, "formula_sample_failed");
+
+    const updateResponse = await fetch(`${baseUrl}/api/admin/formulas`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        id: formulaId,
+        sampleTests: [
+          {
+            name: "Passing full-score sample",
+            scores: { gaokao: 750, schoolAssessment: 100 },
+            expectedTotalScore: 100
+          }
+        ],
+        note: "Corrected expected total after sample calculation review."
+      })
+    });
+    const updateBody = await updateResponse.json();
+
+    assert.equal(updateResponse.status, 200);
+    assert.equal(updateBody.status, "draft_updated");
+    assert.equal(updateBody.formula.sampleResults[0].passed, true);
+    assert.equal(updateBody.formula.reviewAudit.at(-1).operation, "update_formula_draft");
+
+    const publishResponse = await fetch(`${baseUrl}/api/admin/formulas/${encodeURIComponent(formulaId)}/publish`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ note: "Formula sample test passed and source was checked." })
+    });
+    const publishBody = await publishResponse.json();
+
+    assert.equal(publishResponse.status, 200);
+    assert.equal(publishBody.status, "published");
+    assert.equal(publishBody.formula.formula.status, "published");
+    assert.equal(publishBody.formula.sampleResults[0].passed, true);
+    assert.equal(publishBody.formula.reviewAudit.at(-1).operation, "publish_formula");
+    assert.equal(publishBody.formula.reviewAudit.at(-1).operatorId, reviewer.id);
+    assert.equal(publishBody.formula.reviewAudit.at(-1).operatedAt, "2026-04-18T00:00:00.000Z");
+
+    const scoreResponse = await fetch(`${baseUrl}/api/score/calculate`, {
+      method: "POST",
+      ...jsonRequest({
+        schoolId: seedIds.schools.scut,
+        year: 2025,
+        scores: { gaokao: 750, schoolAssessment: 100 }
+      })
+    });
+    const scoreBody = await scoreResponse.json();
+
+    assert.equal(scoreResponse.status, 200);
+    assert.equal(scoreBody.formulaId, formulaId);
+    assert.equal(scoreBody.formulaName, formulaPayload.formulaName);
+    assert.equal(scoreBody.totalScore, 100);
+
+    const calculatorResponse = await fetch(
+      `${baseUrl}/calculator?schoolId=${encodeURIComponent(seedIds.schools.scut)}&year=2025`,
+      { headers: { accept: "text/html" } }
+    );
+    const calculatorBody = await calculatorResponse.text();
+
+    assert.equal(calculatorResponse.status, 200);
+    assert.match(calculatorBody, /SCUT 2025 audited 85\/15 formula/);
+    assert.match(calculatorBody, /id="score-input-form"/);
+    assert.doesNotMatch(calculatorBody, /No clear published formula/);
+  });
 });
