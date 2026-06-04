@@ -23,6 +23,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Structured experience submissions should use `src/experience-submissions.js` for required-field normalization, pending_review defaults, private verification metadata storage, and sanitized public or anonymous output; `handleRequest` accepts an injectable `experienceSubmissionStore` for route tests.
 - Student interaction state should use `src/interactions.js`; `handleRequest` accepts an injectable `interactionStore` for route tests covering school/experience favorites, useful-once experience votes, and pending reports without exposing phone fields or private reporter data.
 - Personal center routes should build user-owned aggregates in `src/app.js` from the public user shape, `interactionStore`, `experienceSubmissionStore`, and site-only timeline reminders; `/me`, `/api/me`, `/me/favorites`, and `/me/experiences` outputs must stay phone-free and omit private verification material details.
+- Admin moderation queues should use `experienceSubmissionStore` review helpers for pending experiences and verification materials, `interactionStore` report resolution for audit state, `registerPublishedExperience()` for approved submission visibility, and `moderatePublishedExperience()` plus `authService.updateUserAccountStatus()` for report side effects.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -561,4 +562,37 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Use `overrideAdminTimelineNode()` for official timeline corrections so generated nodes, override reasons, operator identity, operation time, and public timeline visibility stay aligned.
   - Use `upsertAdminFormulaDraft()` and `publishAdminFormula()` for score formula admin work; drafts remain hidden from `calculateScore()` until publication succeeds with at least one passing sample calculation.
   - Browser verification for protected admin pages can run through a temporary test-style server that injects `authService`, creates a `data_reviewer`, and reuses the normal `handleRequest()` route handler.
+---
+
+## Thu Jun  4 04:18:42 PM CST 2026 - Ralph runner
+- Iteration: 9
+- Story: US-017
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-9
+---
+
+## Thu Jun  4 04:36:46 PM CST 2026 - US-018
+- What was implemented
+  - Added protected admin moderation queues and APIs for pending experiences, verification material review, and report resolution.
+  - Added prohibited-content scanning and privacy warning summaries before approval, with approval blocking for rewrite-required content.
+  - Added audited experience review transitions for approve, return, hide, and ban; approved submissions become visible through the shared public experience helper.
+  - Added verification review transitions without exposing raw storage keys to student-facing routes, and report resolution actions for keep, hide, delete, and account limiting.
+- Files changed
+  - `AGENTS.md`
+  - `src/app.js`, `src/app.test.js`, `src/auth.js`, `src/db/data-access.js`, `src/experience-submissions.js`, `src/interactions.js`, `src/lib/product.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `node --test src/app.test.js` passed
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for logged-in `/admin/experiences`, `/admin/verifications`, and `/admin/reports` at 390px and 1280px; required queue headings/actions were visible and no horizontal overflow was present.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-141724/iteration-10/admin-experience-moderation-390.png`, `admin-experience-moderation-1280.png`, `admin-verification-review-390.png`, `admin-verification-review-1280.png`, `admin-report-resolution-390.png`, and `admin-report-resolution-1280.png`.
+- **Learnings for future iterations:**
+  - Use `experienceSubmissionStore.reviewExperience()` and `reviewVerification()` for admin content review so moderation warnings, audit entries, and public publish updates stay together.
+  - Public experience browsing can include approved user submissions through `registerPublishedExperience()` while remaining on the existing `listExperiences()` API/page path.
+  - Report resolution side effects are intentionally applied in `src/app.js`: experience hide/delete uses `moderatePublishedExperience()`, while limiting a user account uses `authService.updateUserAccountStatus()`.
 ---

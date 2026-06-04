@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { getSchoolById } from "./db/data-access.js";
+import {
+  getSchoolById,
+  moderatePublishedExperience,
+  registerPublishedExperience
+} from "./db/data-access.js";
 
 export class ExperienceSubmissionError extends Error {
   constructor(code, message, statusCode = 400) {
@@ -10,6 +14,53 @@ export class ExperienceSubmissionError extends Error {
     this.statusCode = statusCode;
   }
 }
+
+const experienceReviewActions = new Set(["approve", "return", "hide", "ban"]);
+const verificationReviewActions = new Set(["approve", "reject", "return"]);
+const moderationRules = Object.freeze([
+  {
+    code: "ongoing_exam_content",
+    label: "Ongoing exam content",
+    pattern: /\b(ongoing exam|exam in progress|assessment still running|still in the exam|current live exam)\b/i,
+    message: "Content from an ongoing exam must not be published."
+  },
+  {
+    code: "undisclosed_original_question",
+    label: "Undisclosed original question",
+    pattern: /\b(exact original question|undisclosed original question|leaked prompt|verbatim question|original exam question)\b/i,
+    message: "Undisclosed specific original questions require rewrite before approval."
+  },
+  {
+    code: "true_question_sales",
+    label: "True-question sales",
+    pattern: /\b(true[- ]?question sales?|sell(?:ing)? real questions?|paid real question|buy real questions?)\b/i,
+    message: "True-question sales or paid real-question traffic must be blocked."
+  },
+  {
+    code: "material_ghostwriting",
+    label: "Material ghostwriting",
+    pattern: /\b(ghostwrite|ghostwriting|write your materials?|personal statement writing service|application material writing)\b/i,
+    message: "Material ghostwriting offers require rewrite or removal."
+  },
+  {
+    code: "guaranteed_admission_claim",
+    label: "Guaranteed admission claim",
+    pattern: /\b(guaranteed admission|100% admission|sure admit|admission guaranteed|guarantee offer)\b/i,
+    message: "Guaranteed admission claims are prohibited."
+  },
+  {
+    code: "external_traffic_scam",
+    label: "External traffic scam",
+    pattern: /\b(add my wechat|wechat group|qq group|telegram group|scan qr|paid consulting|private traffic|dm me)\b/i,
+    message: "External traffic or paid consulting scam signals must be blocked."
+  },
+  {
+    code: "personal_sensitive_information",
+    label: "Personal sensitive information",
+    pattern: /(?:\b(?:\+?86)?1[3-9]\d{9}\b|\b\d{17}[\dXx]\b|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|id card|身份证|real name)/i,
+    message: "Personal sensitive information must be removed before approval."
+  }
+]);
 
 function currentDate(now) {
   if (typeof now !== "function") {
@@ -200,6 +251,106 @@ function normalizeMetadata(metadata) {
       .map(([key, value]) => [key, normalizeText(value)])
       .filter(([, value]) => value.length > 0)
   );
+}
+
+function currentIsoDate(now) {
+  return currentDate(now).toISOString();
+}
+
+function operatorAuditFields(operator) {
+  return {
+    operatorId: operator.id,
+    operatorNickname: operator.nickname,
+    operatorRole: operator.role
+  };
+}
+
+function assertOperator(operator) {
+  if (!operator?.id || !operator?.nickname || !operator?.role) {
+    throw new ExperienceSubmissionError(
+      "operator_required",
+      "Operator identity is required for moderation.",
+      403
+    );
+  }
+}
+
+function moderationAuditEntry({ operation, operator, operatedAt, note }) {
+  return {
+    operation,
+    ...operatorAuditFields(operator),
+    operatedAt,
+    note: note ?? null
+  };
+}
+
+function normalizeModerationNote(note) {
+  const text = normalizeText(note);
+
+  if (text.length > 1000) {
+    throw new ExperienceSubmissionError(
+      "moderation_note_too_long",
+      "Moderation note must be 1000 characters or fewer."
+    );
+  }
+
+  return text || null;
+}
+
+function publicModerationText(experience) {
+  return [
+    experience.summary,
+    experience.processSummary,
+    experience.preparationSummary,
+    experience.advice,
+    experience.location,
+    ...(experience.assessmentTypes ?? []),
+    ...(experience.questionTypes ?? [])
+  ].join(" ");
+}
+
+function verificationMetadataText(experience) {
+  return (experience.verificationMaterials ?? [])
+    .flatMap((material) => [
+      material.materialType,
+      ...Object.entries(material.metadata ?? {}).map(([key, value]) => `${key}: ${value}`)
+    ])
+    .join(" ");
+}
+
+function scanModerationWarnings(experience) {
+  const publicText = publicModerationText(experience);
+  const privateText = verificationMetadataText(experience);
+  const warnings = moderationRules
+    .filter((rule) => rule.pattern.test(publicText))
+    .map((rule) => ({
+      code: rule.code,
+      label: rule.label,
+      severity: "block",
+      action: "rewrite_required",
+      message: rule.message
+    }));
+
+  if (/(sourceAccount|source account|realName|real name|id card|身份证|\b(?:\+?86)?1[3-9]\d{9}\b)/i.test(privateText)) {
+    warnings.push({
+      code: "verification_privacy_warning",
+      label: "Verification privacy warning",
+      severity: "warning",
+      action: "review_private_material",
+      message: "Verification metadata contains private identity or source-account signals and must remain reviewer-only."
+    });
+  }
+
+  return warnings;
+}
+
+function moderationSummary(experience) {
+  const warnings = scanModerationWarnings(experience);
+
+  return {
+    approvalBlocked: warnings.some((warning) => warning.severity === "block"),
+    warnings
+  };
 }
 
 function normalizeVerificationMaterial(material) {
@@ -394,8 +545,141 @@ export function publicExperienceSubmission(experience) {
   };
 }
 
+function adminVerificationMaterial(material, experience) {
+  return {
+    id: material.id,
+    experienceId: experience.id,
+    materialType: material.materialType,
+    metadata: { ...material.metadata },
+    status: material.status,
+    storageKeyPresent: Boolean(material.objectStorageKey),
+    reviewAudit: (material.reviewAudit ?? []).map((entry) => ({ ...entry }))
+  };
+}
+
+function adminExperienceSubmission(experience) {
+  return {
+    id: experience.id,
+    userId: experience.userId,
+    authorNickname: experience.authorNickname,
+    schoolId: experience.schoolId,
+    year: experience.admissionYear,
+    provinceScope: experience.provinceScope,
+    status: experience.status,
+    majorGroup: experience.majorGroup,
+    candidateTrack: experience.candidateTrack,
+    stage: experience.stage,
+    shortlistedStatus: experience.shortlistedStatus,
+    admittedStatus: experience.admittedStatus,
+    assessmentTypes: [...experience.assessmentTypes],
+    location: experience.location,
+    summary: experience.summary,
+    processSummary: experience.processSummary,
+    questionTypes: [...experience.questionTypes],
+    preparationSummary: experience.preparationSummary,
+    difficultyScore: experience.difficultyScore,
+    pressureScore: experience.pressureScore,
+    differentiationScore: experience.differentiationScore,
+    advice: experience.advice,
+    isAnonymous: experience.isAnonymous,
+    verificationStatus: experience.verificationStatus,
+    verificationMaterials: experience.verificationMaterials.map((material) => adminVerificationMaterial(material, experience)),
+    usefulCount: experience.usefulCount,
+    moderation: moderationSummary(experience),
+    reviewAudit: (experience.reviewAudit ?? []).map((entry) => ({ ...entry })),
+    createdAt: experience.createdAt,
+    updatedAt: experience.updatedAt
+  };
+}
+
+function publicPublishedExperience(experience) {
+  return {
+    id: experience.id,
+    schoolId: experience.schoolId,
+    admissionYear: experience.admissionYear,
+    provinceScope: experience.provinceScope,
+    status: "published",
+    majorGroup: experience.majorGroup,
+    candidateTrack: experience.candidateTrack,
+    stage: experience.stage,
+    assessmentTypes: [...experience.assessmentTypes],
+    location: experience.location,
+    summary: experience.summary,
+    processSummary: experience.processSummary,
+    questionTypes: [...experience.questionTypes],
+    preparationSummary: experience.preparationSummary,
+    difficultyScore: experience.difficultyScore,
+    pressureScore: experience.pressureScore,
+    differentiationScore: experience.differentiationScore,
+    advice: experience.advice,
+    isAnonymous: experience.isAnonymous,
+    verificationStatus: experience.verificationStatus,
+    usefulCount: experience.usefulCount,
+    createdAt: experience.createdAt,
+    updatedAt: experience.updatedAt
+  };
+}
+
 export function createExperienceSubmissionStore(options = {}) {
   const submissionsById = new Map();
+
+  function submissionById(experienceId) {
+    const experience = submissionsById.get(experienceId);
+
+    if (!experience) {
+      throw new ExperienceSubmissionError("experience_not_found", "No submitted experience was found.", 404);
+    }
+
+    return experience;
+  }
+
+  function findMaterial(verificationId) {
+    for (const experience of submissionsById.values()) {
+      const material = experience.verificationMaterials.find((candidate) => candidate.id === verificationId);
+
+      if (material) {
+        return { experience, material };
+      }
+    }
+
+    throw new ExperienceSubmissionError(
+      "verification_not_found",
+      "No verification material was found.",
+      404
+    );
+  }
+
+  function appendExperienceAudit(experience, operation, operator, operatedAt, note) {
+    experience.reviewAudit = [
+      ...(experience.reviewAudit ?? []),
+      moderationAuditEntry({ operation, operator, operatedAt, note })
+    ];
+    experience.updatedAt = operatedAt;
+  }
+
+  function appendMaterialAudit(material, operation, operator, operatedAt, note) {
+    material.reviewAudit = [
+      ...(material.reviewAudit ?? []),
+      moderationAuditEntry({ operation, operator, operatedAt, note })
+    ];
+  }
+
+  function updateParentVerificationStatus(experience) {
+    if (experience.verificationMaterials.some((material) => material.status === "verified")) {
+      experience.verificationStatus = "verified";
+      return;
+    }
+
+    if (
+      experience.verificationMaterials.length > 0 &&
+      experience.verificationMaterials.every((material) => material.status === "rejected")
+    ) {
+      experience.verificationStatus = "rejected";
+      return;
+    }
+
+    experience.verificationStatus = "pending_review";
+  }
 
   return {
     submitExperience({ user, body }) {
@@ -407,6 +691,122 @@ export function createExperienceSubmissionStore(options = {}) {
 
       submissionsById.set(experience.id, experience);
       return publicExperienceSubmission(experience);
+    },
+
+    listModerationExperiences({ status } = {}) {
+      const selectedStatus = status ?? "pending_review";
+
+      return [...submissionsById.values()]
+        .filter((experience) => !selectedStatus || experience.status === selectedStatus)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .map(adminExperienceSubmission);
+    },
+
+    getModerationExperience({ experienceId }) {
+      return adminExperienceSubmission(submissionById(experienceId));
+    },
+
+    reviewExperience({ experienceId, action, operator, note }) {
+      assertOperator(operator);
+
+      if (!experienceReviewActions.has(action)) {
+        throw new ExperienceSubmissionError(
+          "invalid_review_action",
+          "Experience review action is not supported."
+        );
+      }
+
+      const experience = submissionById(experienceId);
+      const operatedAt = currentIsoDate(options.now);
+      const reviewNote = normalizeModerationNote(note);
+      const moderation = moderationSummary(experience);
+
+      if (action === "approve" && moderation.approvalBlocked) {
+        const error = new ExperienceSubmissionError(
+          "moderation_blocked",
+          "This experience must be rewritten before approval.",
+          422
+        );
+        error.moderation = moderation;
+        throw error;
+      }
+
+      if (action === "approve") {
+        experience.status = "published";
+        appendExperienceAudit(experience, "approve_experience", operator, operatedAt, reviewNote);
+        registerPublishedExperience(publicPublishedExperience(experience));
+        return adminExperienceSubmission(experience);
+      }
+
+      if (action === "return") {
+        experience.status = "returned";
+        appendExperienceAudit(experience, "return_experience", operator, operatedAt, reviewNote);
+        return adminExperienceSubmission(experience);
+      }
+
+      if (action === "hide") {
+        experience.status = "hidden";
+        appendExperienceAudit(experience, "hide_experience", operator, operatedAt, reviewNote);
+        moderatePublishedExperience({ experienceId: experience.id, action: "hidden" });
+        return adminExperienceSubmission(experience);
+      }
+
+      experience.status = "banned";
+      appendExperienceAudit(experience, "ban_experience", operator, operatedAt, reviewNote);
+      moderatePublishedExperience({ experienceId: experience.id, action: "hidden" });
+      return adminExperienceSubmission(experience);
+    },
+
+    listVerificationReviews({ status } = {}) {
+      const selectedStatus = status ?? "pending_review";
+
+      return [...submissionsById.values()]
+        .flatMap((experience) => experience.verificationMaterials.map((material) => ({
+          experience: adminExperienceSubmission(experience),
+          material: adminVerificationMaterial(material, experience),
+          moderation: moderationSummary(experience)
+        })))
+        .filter((item) => !selectedStatus || item.material.status === selectedStatus)
+        .sort((left, right) => right.experience.createdAt.localeCompare(left.experience.createdAt));
+    },
+
+    reviewVerification({ verificationId, action, operator, note }) {
+      assertOperator(operator);
+
+      if (!verificationReviewActions.has(action)) {
+        throw new ExperienceSubmissionError(
+          "invalid_verification_action",
+          "Verification review action is not supported."
+        );
+      }
+
+      const { experience, material } = findMaterial(verificationId);
+      const operatedAt = currentIsoDate(options.now);
+      const reviewNote = normalizeModerationNote(note);
+
+      if (action === "approve") {
+        material.status = "verified";
+        appendMaterialAudit(material, "approve_verification", operator, operatedAt, reviewNote);
+      } else if (action === "reject") {
+        material.status = "rejected";
+        appendMaterialAudit(material, "reject_verification", operator, operatedAt, reviewNote);
+      } else {
+        material.status = "returned";
+        appendMaterialAudit(material, "return_verification", operator, operatedAt, reviewNote);
+      }
+
+      updateParentVerificationStatus(experience);
+      appendExperienceAudit(experience, `${action}_verification`, operator, operatedAt, reviewNote);
+
+      if (experience.status === "published") {
+        registerPublishedExperience(publicPublishedExperience(experience));
+      }
+
+      return {
+        experience: adminExperienceSubmission(experience),
+        material: adminVerificationMaterial(material, experience),
+        moderation: moderationSummary(experience)
+      };
     },
 
     listSubmissions({ userId } = {}) {

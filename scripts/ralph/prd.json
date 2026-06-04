@@ -291,8 +291,8 @@
         "Tests cover moderation status transitions, prohibited-content handling, verification visibility restrictions, and report resolution."
       ],
       "priority": 18,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented protected admin moderation queues and APIs for experiences, verification materials, and reports with content/privacy warnings, approval blocking, audited status transitions, student-safe verification visibility, public publish/hide/delete effects, account limiting, route tests, and browser verification."
     },
     {
       "id": "US-019",

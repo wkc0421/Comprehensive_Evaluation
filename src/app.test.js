@@ -4,6 +4,7 @@ import { after, before, describe, it } from "node:test";
 
 import { createAuthService } from "./auth.js";
 import { handleRequest } from "./app.js";
+import { getExperienceById } from "./db/data-access.js";
 import { seedIds } from "./db/seed-data.js";
 import { createExperienceSubmissionStore } from "./experience-submissions.js";
 import { createInteractionStore } from "./interactions.js";
@@ -1253,6 +1254,15 @@ describe("web routes", () => {
       { method: "GET", path: "/api/admin/guides" },
       { method: "POST", path: "/api/admin/guides", body: { schoolId: seedIds.schools.sysu } },
       { method: "POST", path: `/api/admin/guides/${seedIds.guides.scut2026Pending}/publish`, body: {} },
+      { method: "GET", path: "/admin/experiences" },
+      { method: "GET", path: "/api/admin/experiences" },
+      { method: "POST", path: "/api/admin/experiences/missing-experience/review", body: { action: "approve" } },
+      { method: "GET", path: "/admin/verifications" },
+      { method: "GET", path: "/api/admin/verifications" },
+      { method: "POST", path: "/api/admin/verifications/missing-verification/review", body: { action: "approve" } },
+      { method: "GET", path: "/admin/reports" },
+      { method: "GET", path: "/api/admin/reports" },
+      { method: "POST", path: "/api/admin/reports/missing-report/resolve", body: { action: "keep", resolutionNote: "Checked." } },
       { method: "GET", path: "/api/admin/health" }
     ];
 
@@ -1344,6 +1354,14 @@ describe("web routes", () => {
     assert.equal(userGuideResponse.status, 403);
     assert.equal(userGuideBody.error, "forbidden");
 
+    const userModerationResponse = await fetch(`${baseUrl}/api/admin/experiences`, {
+      headers: { cookie: authService.serializeSessionCookie(userSession).split(";")[0] }
+    });
+    const userModerationBody = await userModerationResponse.json();
+
+    assert.equal(userModerationResponse.status, 403);
+    assert.equal(userModerationBody.error, "forbidden");
+
     const contentGuideResponse = await fetch(`${baseUrl}/api/admin/guides`, {
       headers: { cookie: authService.serializeSessionCookie(contentReviewerSession).split(";")[0] }
     });
@@ -1351,6 +1369,14 @@ describe("web routes", () => {
 
     assert.equal(contentGuideResponse.status, 403);
     assert.equal(contentGuideBody.error, "forbidden");
+
+    const contentModerationResponse = await fetch(`${baseUrl}/api/admin/experiences`, {
+      headers: { cookie: authService.serializeSessionCookie(contentReviewerSession).split(";")[0] }
+    });
+    const contentModerationBody = await contentModerationResponse.json();
+
+    assert.equal(contentModerationResponse.status, 200);
+    assert.equal(typeof contentModerationBody.count, "number");
 
     const dataGuideResponse = await fetch(`${baseUrl}/api/admin/guides`, {
       headers: { cookie: authService.serializeSessionCookie(dataReviewerSession).split(";")[0] }
@@ -1834,5 +1860,420 @@ describe("web routes", () => {
     assert.match(calculatorBody, /SCUT 2025 audited 85\/15 formula/);
     assert.match(calculatorBody, /id="score-input-form"/);
     assert.doesNotMatch(calculatorBody, /No clear published formula/);
+  });
+
+  it("moderates pending experiences, publishes approved submissions, and keeps verification materials private", async () => {
+    const student = authService.createUserForTesting({
+      phoneNumber: "+8613000000038",
+      nickname: "Moderation submitter"
+    });
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000039",
+      nickname: "Content reviewer",
+      role: "content_reviewer"
+    });
+    const studentCookie = authService.serializeSessionCookie(authService.createSessionForUser(student.id)).split(";")[0];
+    const reviewerCookie = authService.serializeSessionCookie(authService.createSessionForUser(reviewer.id)).split(";")[0];
+
+    const submitResponse = await fetch(`${baseUrl}/api/experiences`, {
+      method: "POST",
+      headers: {
+        cookie: studentCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(validExperienceSubmissionPayload({
+        processSummary: "Structured interview had a panel discussion and a short experiment design prompt.",
+        advice: "Prepare concise coursework examples and remove private identity details from public text.",
+        verificationMaterials: [
+          {
+            materialType: "admission_result",
+            objectStorageKey: "private/moderation/admission-result.png",
+            metadata: {
+              sourceAccount: "moderation-source-account",
+              realName: "Moderation Student"
+            }
+          }
+        ]
+      }))
+    });
+    const submitBody = await submitResponse.json();
+    const experienceId = submitBody.experience.id;
+
+    assert.equal(submitResponse.status, 201);
+
+    const queueResponse = await fetch(`${baseUrl}/api/admin/experiences`, {
+      headers: { cookie: reviewerCookie }
+    });
+    const queueBody = await queueResponse.json();
+    const queuedExperience = queueBody.experiences.find((experience) => experience.id === experienceId);
+
+    assert.equal(queueResponse.status, 200);
+    assert.equal(queuedExperience.status, "pending_review");
+    assert.equal(queuedExperience.moderation.approvalBlocked, false);
+    assert.ok(queuedExperience.moderation.warnings.some((warning) => {
+      return warning.code === "verification_privacy_warning";
+    }));
+    assertNoPhoneFields(queueBody);
+
+    const htmlResponse = await fetch(`${baseUrl}/admin/experiences`, {
+      headers: {
+        accept: "text/html",
+        cookie: reviewerCookie
+      }
+    });
+    const htmlBody = await htmlResponse.text();
+
+    assert.equal(htmlResponse.status, 200);
+    assert.match(htmlBody, /Experience moderation queue/);
+    assert.match(htmlBody, /Sensitive content and privacy warnings/);
+    assert.match(htmlBody, /Verification privacy warning/);
+    assertNoPhoneFields(htmlBody);
+
+    const approveResponse = await fetch(`${baseUrl}/api/admin/experiences/${encodeURIComponent(experienceId)}/review`, {
+      method: "POST",
+      headers: {
+        cookie: reviewerCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "approve",
+        note: "Public text is clean and verification privacy metadata remains reviewer-only."
+      })
+    });
+    const approveBody = await approveResponse.json();
+
+    assert.equal(approveResponse.status, 200);
+    assert.equal(approveBody.status, "published");
+    assert.equal(approveBody.experience.reviewAudit.at(-1).operation, "approve_experience");
+    assert.equal(approveBody.experience.reviewAudit.at(-1).operatorId, reviewer.id);
+
+    const verificationQueueResponse = await fetch(`${baseUrl}/api/admin/verifications`, {
+      headers: { cookie: reviewerCookie }
+    });
+    const verificationQueueBody = await verificationQueueResponse.json();
+    const verificationReview = verificationQueueBody.verifications.find((item) => {
+      return item.experience.id === experienceId;
+    });
+
+    assert.equal(verificationQueueResponse.status, 200);
+    assert.equal(verificationReview.material.storageKeyPresent, true);
+    assert.equal(verificationReview.material.metadata.sourceAccount, "moderation-source-account");
+    assert.doesNotMatch(JSON.stringify(verificationQueueBody), /private\/moderation\/admission-result/);
+
+    const verifyResponse = await fetch(
+      `${baseUrl}/api/admin/verifications/${encodeURIComponent(verificationReview.material.id)}/review`,
+      {
+        method: "POST",
+        headers: {
+          cookie: reviewerCookie,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "approve",
+          note: "Verification material checked by reviewer."
+        })
+      }
+    );
+    const verifyBody = await verifyResponse.json();
+
+    assert.equal(verifyResponse.status, 200);
+    assert.equal(verifyBody.status, "verified");
+    assert.equal(verifyBody.verification.material.reviewAudit.at(-1).operation, "approve_verification");
+
+    const publicResponse = await fetch(`${baseUrl}/api/experiences?schoolId=${seedIds.schools.sysu}&year=2026`);
+    const publicBody = await publicResponse.json();
+    const publicExperience = publicBody.experiences.find((experience) => experience.id === experienceId);
+    const publicSerialized = JSON.stringify(publicBody);
+
+    assert.equal(publicResponse.status, 200);
+    assert.equal(publicExperience.verificationStatus, "verified");
+    assert.doesNotMatch(publicSerialized, /verificationMaterials|objectStorageKey|sourceAccount|realName|private\/moderation/i);
+  });
+
+  it("blocks approval for prohibited experience content and allows return for rewrite", async () => {
+    const student = authService.createUserForTesting({
+      phoneNumber: "+8613000000040",
+      nickname: "Risk submitter"
+    });
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000041",
+      nickname: "Risk reviewer",
+      role: "content_reviewer"
+    });
+    const studentCookie = authService.serializeSessionCookie(authService.createSessionForUser(student.id)).split(";")[0];
+    const reviewerCookie = authService.serializeSessionCookie(authService.createSessionForUser(reviewer.id)).split(";")[0];
+
+    const submitResponse = await fetch(`${baseUrl}/api/experiences`, {
+      method: "POST",
+      headers: {
+        cookie: studentCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(validExperienceSubmissionPayload({
+        processSummary: "The assessment is a current live exam and I saved the exact original question from the room.",
+        advice: "Add my WeChat for true-question sales, ghostwriting, and guaranteed admission help."
+      }))
+    });
+    const submitBody = await submitResponse.json();
+    const experienceId = submitBody.experience.id;
+
+    assert.equal(submitResponse.status, 201);
+
+    const approvalResponse = await fetch(`${baseUrl}/api/admin/experiences/${encodeURIComponent(experienceId)}/review`, {
+      method: "POST",
+      headers: {
+        cookie: reviewerCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "approve",
+        note: "Attempting approval should fail."
+      })
+    });
+    const approvalBody = await approvalResponse.json();
+    const warningCodes = new Set(approvalBody.moderation.warnings.map((warning) => warning.code));
+
+    assert.equal(approvalResponse.status, 422);
+    assert.equal(approvalBody.error, "moderation_blocked");
+    assert.equal(approvalBody.moderation.approvalBlocked, true);
+    assert.ok(warningCodes.has("ongoing_exam_content"));
+    assert.ok(warningCodes.has("undisclosed_original_question"));
+    assert.ok(warningCodes.has("true_question_sales"));
+    assert.ok(warningCodes.has("material_ghostwriting"));
+    assert.ok(warningCodes.has("guaranteed_admission_claim"));
+    assert.ok(warningCodes.has("external_traffic_scam"));
+
+    const returnResponse = await fetch(`${baseUrl}/api/admin/experiences/${encodeURIComponent(experienceId)}/review`, {
+      method: "POST",
+      headers: {
+        cookie: reviewerCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "return",
+        note: "Rewrite required for prohibited content."
+      })
+    });
+    const returnBody = await returnResponse.json();
+
+    assert.equal(returnResponse.status, 200);
+    assert.equal(returnBody.status, "returned");
+    assert.equal(returnBody.experience.reviewAudit.at(-1).operation, "return_experience");
+
+    const publicResponse = await fetch(`${baseUrl}/api/experiences?schoolId=${seedIds.schools.sysu}&year=2026`);
+    const publicBody = await publicResponse.json();
+
+    assert.equal(publicResponse.status, 200);
+    assert.equal(publicBody.experiences.some((experience) => experience.id === experienceId), false);
+  });
+
+  it("resolves reports by keeping, hiding, deleting, and limiting targets", async () => {
+    const submitter = authService.createUserForTesting({
+      phoneNumber: "+8613000000042",
+      nickname: "Reported submitter"
+    });
+    const reporter = authService.createUserForTesting({
+      phoneNumber: "+8613000000043",
+      nickname: "Report author"
+    });
+    const targetUser = authService.createUserForTesting({
+      phoneNumber: "+8613000000044",
+      nickname: "Reported account"
+    });
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000045",
+      nickname: "Report reviewer",
+      role: "content_reviewer"
+    });
+    const submitterCookie = authService.serializeSessionCookie(authService.createSessionForUser(submitter.id)).split(";")[0];
+    const reporterCookie = authService.serializeSessionCookie(authService.createSessionForUser(reporter.id)).split(";")[0];
+    const reviewerCookie = authService.serializeSessionCookie(authService.createSessionForUser(reviewer.id)).split(";")[0];
+
+    const submitResponse = await fetch(`${baseUrl}/api/experiences`, {
+      method: "POST",
+      headers: {
+        cookie: submitterCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(validExperienceSubmissionPayload({
+        processSummary: "Panel interview and group discussion with no prohibited content.",
+        advice: "Use public school information and concise personal examples."
+      }))
+    });
+    const submitBody = await submitResponse.json();
+    const dynamicExperienceId = submitBody.experience.id;
+
+    assert.equal(submitResponse.status, 201);
+
+    const approveResponse = await fetch(`${baseUrl}/api/admin/experiences/${encodeURIComponent(dynamicExperienceId)}/review`, {
+      method: "POST",
+      headers: {
+        cookie: reviewerCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "approve",
+        note: "Clean report-resolution fixture."
+      })
+    });
+
+    assert.equal(approveResponse.status, 200);
+
+    const keepReportResponse = await fetch(`${baseUrl}/api/reports`, {
+      method: "POST",
+      headers: {
+        cookie: reporterCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        targetType: "experience",
+        targetId: seedIds.experiences.sysu2026,
+        reason: "Needs reviewer check",
+        description: "The report should be resolved by keeping the target."
+      })
+    });
+    const hideReportResponse = await fetch(`${baseUrl}/api/reports`, {
+      method: "POST",
+      headers: {
+        cookie: reporterCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        targetType: "experience",
+        targetId: dynamicExperienceId,
+        reason: "Hide target",
+        description: "The target should be hidden from student pages."
+      })
+    });
+    const deleteReportResponse = await fetch(`${baseUrl}/api/reports`, {
+      method: "POST",
+      headers: {
+        cookie: reporterCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        targetType: "experience",
+        targetId: dynamicExperienceId,
+        reason: "Delete target",
+        description: "The target should be deleted from student pages."
+      })
+    });
+    const userReportResponse = await fetch(`${baseUrl}/api/reports`, {
+      method: "POST",
+      headers: {
+        cookie: reporterCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        targetType: "user",
+        targetId: targetUser.id,
+        reason: "Account risk",
+        description: "The target account should be limited."
+      })
+    });
+    const keepReport = await keepReportResponse.json();
+    const hideReport = await hideReportResponse.json();
+    const deleteReport = await deleteReportResponse.json();
+    const userReport = await userReportResponse.json();
+
+    assert.equal(keepReportResponse.status, 201);
+    assert.equal(hideReportResponse.status, 201);
+    assert.equal(deleteReportResponse.status, 201);
+    assert.equal(userReportResponse.status, 201);
+
+    const reportsPageResponse = await fetch(`${baseUrl}/admin/reports`, {
+      headers: {
+        accept: "text/html",
+        cookie: reviewerCookie
+      }
+    });
+    const reportsPageBody = await reportsPageResponse.text();
+
+    assert.equal(reportsPageResponse.status, 200);
+    assert.match(reportsPageBody, /Report resolution queue/);
+    assert.match(reportsPageBody, /Keep target/);
+    assert.match(reportsPageBody, /Limit account/);
+    assertNoPhoneFields(reportsPageBody);
+
+    const keepResolveResponse = await fetch(
+      `${baseUrl}/api/admin/reports/${encodeURIComponent(keepReport.report.id)}/resolve`,
+      {
+        method: "POST",
+        headers: {
+          cookie: reviewerCookie,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "keep",
+          resolutionNote: "Target is acceptable after review."
+        })
+      }
+    );
+    const keepResolveBody = await keepResolveResponse.json();
+
+    assert.equal(keepResolveResponse.status, 200);
+    assert.equal(keepResolveBody.status, "resolved");
+    assert.equal(keepResolveBody.report.resolution.action, "keep");
+    assert.equal(getExperienceById(seedIds.experiences.sysu2026)?.id, seedIds.experiences.sysu2026);
+
+    const hideResolveResponse = await fetch(
+      `${baseUrl}/api/admin/reports/${encodeURIComponent(hideReport.report.id)}/resolve`,
+      {
+        method: "POST",
+        headers: {
+          cookie: reviewerCookie,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "hide",
+          resolutionNote: "Target hidden after report review."
+        })
+      }
+    );
+    const hideResolveBody = await hideResolveResponse.json();
+
+    assert.equal(hideResolveResponse.status, 200);
+    assert.equal(hideResolveBody.sideEffect.action, "hidden");
+    assert.equal(getExperienceById(dynamicExperienceId), null);
+
+    const deleteResolveResponse = await fetch(
+      `${baseUrl}/api/admin/reports/${encodeURIComponent(deleteReport.report.id)}/resolve`,
+      {
+        method: "POST",
+        headers: {
+          cookie: reviewerCookie,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "delete",
+          resolutionNote: "Target deleted after duplicate report."
+        })
+      }
+    );
+    const deleteResolveBody = await deleteResolveResponse.json();
+
+    assert.equal(deleteResolveResponse.status, 200);
+    assert.equal(deleteResolveBody.sideEffect.action, "deleted");
+
+    const limitResolveResponse = await fetch(
+      `${baseUrl}/api/admin/reports/${encodeURIComponent(userReport.report.id)}/resolve`,
+      {
+        method: "POST",
+        headers: {
+          cookie: reviewerCookie,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "limit_account",
+          resolutionNote: "Account limited after report review."
+        })
+      }
+    );
+    const limitResolveBody = await limitResolveResponse.json();
+
+    assert.equal(limitResolveResponse.status, 200);
+    assert.equal(limitResolveBody.sideEffect.accountStatus, "limited");
+    assert.equal(authService.getUserById(targetUser.id).accountStatus, "limited");
+    assertNoPhoneFields(limitResolveBody);
   });
 });

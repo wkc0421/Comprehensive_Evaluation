@@ -19,6 +19,8 @@ const sampleScoreTolerance = 0.01;
 let admissionGuideRecords = seedData.admissionGuides.map(cloneAdmissionGuide);
 let timelineEventRecords = seedData.timelineEvents.map(cloneTimelineEvent);
 let scoreFormulaRecords = seedData.scoreFormulas.map(cloneScoreFormula);
+let publishedExperienceRecords = [];
+const moderatedExperienceActions = new Map();
 
 export const timelineEventDefinitions = Object.freeze([
   { eventKey: "guide_publication", title: "Guide published", dateField: "publishedAt" },
@@ -382,6 +384,16 @@ function cloneScoreFormula(formula) {
   };
 }
 
+function cloneExperience(experience) {
+  return {
+    ...experience,
+    assessmentTypes: [...(experience.assessmentTypes ?? [])],
+    questionTypes: [...(experience.questionTypes ?? [])],
+    createdAt: experience.createdAt,
+    updatedAt: experience.updatedAt ?? experience.createdAt
+  };
+}
+
 function admissionGuides() {
   return admissionGuideRecords;
 }
@@ -392,6 +404,13 @@ function timelineEvents() {
 
 function scoreFormulas() {
   return scoreFormulaRecords;
+}
+
+function publishedExperiences() {
+  return [
+    ...seedData.experiences.map(cloneExperience),
+    ...publishedExperienceRecords.map(cloneExperience)
+  ];
 }
 
 function currentIsoDate(now) {
@@ -2377,8 +2396,9 @@ export function calculateScore(input = {}) {
  */
 export function listExperiences(filters = {}) {
   const sort = filters.sort ?? "newest";
-  const experiences = seedData.experiences
+  const experiences = publishedExperiences()
     .filter((experience) => experience.status === publishedStatus)
+    .filter((experience) => !moderatedExperienceActions.has(experience.id))
     .filter((experience) => getPublishedSchoolById(experience.schoolId))
     .filter((experience) => !filters.schoolId || experience.schoolId === filters.schoolId)
     .filter((experience) => !filters.year || experience.admissionYear === filters.year)
@@ -2412,4 +2432,44 @@ export function listExperiences(filters = {}) {
  */
 export function getExperienceById(experienceId) {
   return listExperiences().find((experience) => experience.id === experienceId) ?? null;
+}
+
+export function registerPublishedExperience(experience) {
+  const publishedExperience = cloneExperience({
+    ...experience,
+    admissionYear: experience.admissionYear ?? experience.year,
+    provinceScope: "guangdong",
+    status: publishedStatus,
+    verificationStatus: experience.verificationStatus ?? experience.verification?.status ?? "pending_review",
+    usefulCount: experience.usefulCount ?? 0,
+    createdAt: experience.createdAt ?? new Date().toISOString(),
+    updatedAt: experience.updatedAt ?? experience.createdAt ?? new Date().toISOString()
+  });
+
+  publishedExperienceRecords = [
+    ...publishedExperienceRecords.filter((record) => record.id !== publishedExperience.id),
+    publishedExperience
+  ];
+  moderatedExperienceActions.delete(publishedExperience.id);
+  return cloneExperience(publishedExperience);
+}
+
+export function moderatePublishedExperience({ experienceId, action }) {
+  const normalizedAction = action === "delete" ? "deleted" : action === "hide" ? "hidden" : action;
+
+  if (!["hidden", "deleted"].includes(normalizedAction)) {
+    return null;
+  }
+
+  const existing = publishedExperiences().find((experience) => experience.id === experienceId) ?? null;
+
+  if (!existing) {
+    return null;
+  }
+
+  moderatedExperienceActions.set(experienceId, normalizedAction);
+  return {
+    id: experienceId,
+    action: normalizedAction
+  };
 }

@@ -17,5 +17,7 @@ export const adminNavigation = [
   { href: "/admin/guides", label: "Guide review" },
   { href: "/admin/timeline", label: "Timeline" },
   { href: "/admin/formulas", label: "Formulas" },
-  { href: "/admin/experiences", label: "Experience review" }
+  { href: "/admin/experiences", label: "Experience review" },
+  { href: "/admin/verifications", label: "Verifications" },
+  { href: "/admin/reports", label: "Reports" }
 ];

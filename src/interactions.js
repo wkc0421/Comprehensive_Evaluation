@@ -42,9 +42,24 @@ function publicReport(report) {
     reason: report.reason,
     description: report.description,
     status: report.status,
+    resolution: report.resolution ? { ...report.resolution } : null,
     createdAt: report.createdAt,
     updatedAt: report.updatedAt
   };
+}
+
+function normalizeResolutionNote(note) {
+  const text = typeof note === "string" ? note.trim().replace(/\s+/g, " ") : "";
+
+  if (text.length === 0) {
+    throw new Error("Resolution note is required.");
+  }
+
+  if (text.length > 1000) {
+    throw new Error("Resolution note must be 1000 characters or fewer.");
+  }
+
+  return text;
 }
 
 export function createInteractionStore(options = {}) {
@@ -189,11 +204,39 @@ export function createInteractionStore(options = {}) {
         reason,
         description,
         status: "pending",
+        resolution: null,
         createdAt,
         updatedAt: createdAt
       };
 
       reportsById.set(report.id, report);
+      return publicReport(report);
+    },
+
+    getReport(reportId) {
+      const report = reportsById.get(reportId);
+      return report ? publicReport(report) : null;
+    },
+
+    resolveReport({ reportId, action, resolutionNote, operator }) {
+      const report = reportsById.get(reportId);
+
+      if (!report) {
+        return null;
+      }
+
+      const resolvedAt = currentDate(options.now).toISOString();
+      report.status = "resolved";
+      report.resolution = {
+        action,
+        note: normalizeResolutionNote(resolutionNote),
+        operatorId: operator.id,
+        operatorNickname: operator.nickname,
+        operatorRole: operator.role,
+        resolvedAt
+      };
+      report.updatedAt = resolvedAt;
+
       return publicReport(report);
     },
 

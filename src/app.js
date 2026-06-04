@@ -23,6 +23,7 @@ import {
   listSchoolGuideCards,
   listTimelineNodes,
   markAdminGuidePendingSupplement,
+  moderatePublishedExperience,
   overrideAdminTimelineNode,
   publishAdminFormula,
   publishAdminGuide,
@@ -36,9 +37,12 @@ import {
 import { interactionStore as defaultInteractionStore } from "./interactions.js";
 import {
   renderAdminPage,
+  renderAdminExperienceModerationPage,
   renderAdminFormulaManagementPage,
   renderAdminGuideReviewPage,
+  renderAdminReportReviewPage,
   renderAdminTimelineManagementPage,
+  renderAdminVerificationReviewPage,
   renderExperienceListPage,
   renderExperienceSubmissionPage,
   renderNotFound,
@@ -72,12 +76,32 @@ const experienceSortAliases = new Map([
 const favoriteTargetTypes = new Set(["school", "experience"]);
 const reportTargetTypes = new Set(["experience", "user"]);
 const officialGuideReviewerRoles = ["data_reviewer", "admin"];
+const contentModeratorRoles = ["content_reviewer", "data_reviewer", "admin"];
+const moderationStatuses = new Set([
+  "pending_review",
+  "published",
+  "returned",
+  "hidden",
+  "banned"
+]);
+const verificationStatuses = new Set([
+  "pending_review",
+  "verified",
+  "rejected",
+  "returned"
+]);
+const reportStatuses = new Set(["pending", "resolved"]);
+const moderationReviewActions = new Set(["approve", "return", "hide", "ban"]);
+const verificationReviewActions = new Set(["approve", "reject", "return"]);
+const reportResolutionActions = new Set(["keep", "hide", "delete", "limit_account"]);
 const submissionStatusLabels = Object.freeze({
   draft: "Draft",
   pending_review: "Pending Review",
   published: "Published",
   rejected: "Rejected",
-  hidden: "Hidden"
+  returned: "Returned",
+  hidden: "Hidden",
+  banned: "Banned"
 });
 
 function sendHtml(response, statusCode, html) {
@@ -296,6 +320,41 @@ function parseAdminFormulaFilters(url) {
     schoolId: optionalStringParam(url, "schoolId"),
     status
   };
+}
+
+function parseAdminExperienceFilters(url) {
+  const status = optionalStringParam(url, "status");
+
+  if (status && !moderationStatuses.has(status)) {
+    throw new RequestError("invalid_status", "Experience moderation status is not supported.");
+  }
+
+  return { status };
+}
+
+function parseAdminVerificationFilters(url) {
+  const status = optionalStringParam(url, "status");
+
+  if (status && !verificationStatuses.has(status)) {
+    throw new RequestError("invalid_status", "Verification status is not supported.");
+  }
+
+  return { status };
+}
+
+function parseAdminReportFilters(url) {
+  const status = optionalStringParam(url, "status");
+  const targetType = optionalStringParam(url, "targetType");
+
+  if (status && !reportStatuses.has(status)) {
+    throw new RequestError("invalid_status", "Report status is not supported.");
+  }
+
+  if (targetType && !reportTargetTypes.has(targetType)) {
+    throw new RequestError("invalid_report_target", "Report target type is not supported.");
+  }
+
+  return { status: status ?? "pending", targetType };
 }
 
 function optionalBooleanParam(url, name) {
@@ -793,6 +852,104 @@ function adminFormulaJson(detail) {
   };
 }
 
+function adminModerationSchoolJson(schoolId) {
+  const school = getSchoolById(schoolId);
+
+  return school
+    ? {
+        id: school.id,
+        name: school.name,
+        provinceScope: school.provinceScope,
+        city: school.city,
+        schoolType: school.schoolType
+      }
+    : null;
+}
+
+function adminExperienceJson(experience) {
+  return {
+    id: experience.id,
+    userId: experience.userId,
+    authorNickname: experience.authorNickname,
+    schoolId: experience.schoolId,
+    school: adminModerationSchoolJson(experience.schoolId),
+    year: experience.year,
+    provinceScope: experience.provinceScope,
+    status: experience.status,
+    statusLabel: submissionStatusLabel(experience.status),
+    majorGroup: experience.majorGroup,
+    candidateTrack: experience.candidateTrack,
+    stage: experience.stage,
+    stageLabel: humanizeToken(experience.stage),
+    shortlistedStatus: experience.shortlistedStatus,
+    admittedStatus: experience.admittedStatus,
+    assessmentTypes: experience.assessmentTypes,
+    assessmentFormat: experience.assessmentTypes.map(humanizeToken).join(", "),
+    location: experience.location,
+    summary: experience.summary,
+    processSummary: experience.processSummary,
+    questionTypes: experience.questionTypes,
+    preparationSummary: experience.preparationSummary,
+    difficultyScore: experience.difficultyScore,
+    pressureScore: experience.pressureScore,
+    differentiationScore: experience.differentiationScore,
+    advice: experience.advice,
+    isAnonymous: experience.isAnonymous,
+    verificationStatus: experience.verificationStatus,
+    verificationMaterials: experience.verificationMaterials,
+    usefulCount: experience.usefulCount,
+    moderation: experience.moderation,
+    reviewAudit: experience.reviewAudit,
+    createdAt: experience.createdAt,
+    updatedAt: experience.updatedAt
+  };
+}
+
+function adminVerificationJson(review) {
+  return {
+    material: review.material,
+    experience: adminExperienceJson(review.experience),
+    moderation: review.moderation
+  };
+}
+
+function reportTargetJson(report, authService) {
+  if (report.targetType === "experience") {
+    const experience = getExperienceById(report.targetId);
+
+    return {
+      type: "experience",
+      visible: Boolean(experience),
+      experience: experience ? experienceListItemJson(experience) : null
+    };
+  }
+
+  const user = typeof authService.getUserById === "function"
+    ? authService.getUserById(report.targetId)
+    : null;
+
+  return {
+    type: "user",
+    visible: Boolean(user),
+    user
+  };
+}
+
+function adminReportJson(report, authService) {
+  return {
+    id: report.id,
+    targetType: report.targetType,
+    targetId: report.targetId,
+    target: reportTargetJson(report, authService),
+    reason: report.reason,
+    description: report.description,
+    status: report.status,
+    resolution: report.resolution,
+    createdAt: report.createdAt,
+    updatedAt: report.updatedAt
+  };
+}
+
 function formatTimelineDateLabel(node) {
   if (!node.startsAt && !node.endsAt) {
     return "To be announced";
@@ -1143,6 +1300,42 @@ function sendAdminFormulaListJson(response, filters = {}) {
   });
 }
 
+function sendAdminExperienceModerationListJson(response, experienceSubmissionStore, filters = {}) {
+  const experiences = experienceSubmissionStore
+    .listModerationExperiences(filters)
+    .map(adminExperienceJson);
+
+  sendJson(response, 200, {
+    filters,
+    count: experiences.length,
+    experiences
+  });
+}
+
+function sendAdminVerificationListJson(response, experienceSubmissionStore, filters = {}) {
+  const verifications = experienceSubmissionStore
+    .listVerificationReviews(filters)
+    .map(adminVerificationJson);
+
+  sendJson(response, 200, {
+    filters,
+    count: verifications.length,
+    verifications
+  });
+}
+
+function sendAdminReportListJson(response, interactionStore, authService, filters = {}) {
+  const reports = interactionStore
+    .listReports(filters)
+    .map((report) => adminReportJson(report, authService));
+
+  sendJson(response, 200, {
+    filters,
+    count: reports.length,
+    reports
+  });
+}
+
 function sendTimelineJson(response, timeline) {
   sendJson(response, 200, {
     mine: timeline.mine,
@@ -1225,6 +1418,48 @@ function parseAdminFormulaActionPath(pathname) {
     };
   } catch {
     throw new RequestError("invalid_formula_id", "Formula id must be URL encoded correctly.");
+  }
+}
+
+function parseAdminExperienceActionPath(pathname) {
+  const match = pathname.match(/^\/(?:api\/)?admin\/experiences\/(?<experienceId>[^/]+)\/review$/);
+
+  if (!match?.groups?.experienceId) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match.groups.experienceId);
+  } catch {
+    throw new RequestError("invalid_experience_id", "Experience id must be URL encoded correctly.");
+  }
+}
+
+function parseAdminVerificationActionPath(pathname) {
+  const match = pathname.match(/^\/(?:api\/)?admin\/verifications\/(?<verificationId>[^/]+)\/review$/);
+
+  if (!match?.groups?.verificationId) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match.groups.verificationId);
+  } catch {
+    throw new RequestError("invalid_verification_id", "Verification id must be URL encoded correctly.");
+  }
+}
+
+function parseAdminReportActionPath(pathname) {
+  const match = pathname.match(/^\/(?:api\/)?admin\/reports\/(?<reportId>[^/]+)\/resolve$/);
+
+  if (!match?.groups?.reportId) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match.groups.reportId);
+  } catch {
+    throw new RequestError("invalid_report_id", "Report id must be URL encoded correctly.");
   }
 }
 
@@ -1319,6 +1554,50 @@ function requireOfficialGuideReviewer(request, response, authService) {
   return requireActiveUser(request, response, authService, {
     roles: officialGuideReviewerRoles
   });
+}
+
+function requireContentModerator(request, response, authService) {
+  return requireActiveUser(request, response, authService, {
+    roles: contentModeratorRoles
+  });
+}
+
+function normalizedActionBody(body, allowedActions, label) {
+  const action = typeof body.action === "string" ? body.action.trim() : "";
+
+  if (!allowedActions.has(action)) {
+    throw new RequestError("invalid_review_action", `${label} action is not supported.`);
+  }
+
+  return {
+    action,
+    note: adminGuideNoteFromBody(body)
+  };
+}
+
+function reportResolutionNoteFromBody(body) {
+  const note = typeof body.resolutionNote === "string" && body.resolutionNote.trim().length > 0
+    ? body.resolutionNote.trim()
+    : adminGuideNoteFromBody(body);
+
+  if (!note) {
+    throw new RequestError("missing_resolution_note", "Resolution note is required.");
+  }
+
+  return note;
+}
+
+function reportResolutionFromBody(body) {
+  const action = typeof body.action === "string" ? body.action.trim() : "";
+
+  if (!reportResolutionActions.has(action)) {
+    throw new RequestError("invalid_resolution_action", "Report resolution action is not supported.");
+  }
+
+  return {
+    action,
+    note: reportResolutionNoteFromBody(body)
+  };
 }
 
 function assertFavoriteTarget(body) {
@@ -1506,6 +1785,32 @@ function runAdminGuideAction({ action, guideId, body, user, now }) {
   }
 
   throw new RequestError("invalid_admin_guide_action", "Admin guide action is not supported.", 404);
+}
+
+function applyReportResolutionSideEffect({ report, action, authService }) {
+  if (action === "hide" && report.targetType === "experience") {
+    return moderatePublishedExperience({
+      experienceId: report.targetId,
+      action: "hidden"
+    });
+  }
+
+  if (action === "delete" && report.targetType === "experience") {
+    return moderatePublishedExperience({
+      experienceId: report.targetId,
+      action: "deleted"
+    });
+  }
+
+  if (
+    action === "limit_account" &&
+    report.targetType === "user" &&
+    typeof authService.updateUserAccountStatus === "function"
+  ) {
+    return authService.updateUserAccountStatus(report.targetId, "limited");
+  }
+
+  return null;
 }
 
 async function sendPublicAsset(requestPath, response) {
@@ -1961,6 +2266,213 @@ export async function handleRequest(request, response, context = {}) {
       });
     } catch (error) {
       sendError(response, errorStatus(error), error.code ?? "admin_formula_error", error.message);
+    }
+
+    return;
+  }
+
+  if ((url.pathname === "/admin/experiences" || url.pathname === "/api/admin/experiences") && request.method === "GET") {
+    const user = requireContentModerator(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const filters = parseAdminExperienceFilters(url);
+
+      if (shouldSendAdminJson(request, url)) {
+        sendAdminExperienceModerationListJson(response, experienceSubmissionStore, filters);
+        return;
+      }
+
+      sendHtml(response, 200, renderAdminExperienceModerationPage({
+        filters,
+        experiences: experienceSubmissionStore.listModerationExperiences(filters).map(adminExperienceJson),
+        user
+      }));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_experience_error", error.message);
+    }
+
+    return;
+  }
+
+  let adminExperienceReviewId;
+
+  try {
+    adminExperienceReviewId = parseAdminExperienceActionPath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "admin_experience_error", error.message);
+    return;
+  }
+
+  if (adminExperienceReviewId && request.method === "POST") {
+    const user = requireContentModerator(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const body = await readStructuredBody(request);
+      const review = normalizedActionBody(body, moderationReviewActions, "Experience review");
+      const experience = experienceSubmissionStore.reviewExperience({
+        experienceId: adminExperienceReviewId,
+        action: review.action,
+        operator: user,
+        note: review.note
+      });
+
+      sendJson(response, 200, {
+        status: experience.status,
+        experience: adminExperienceJson(experience)
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_experience_error", error.message, {
+        moderation: error.moderation
+      });
+    }
+
+    return;
+  }
+
+  if ((url.pathname === "/admin/verifications" || url.pathname === "/api/admin/verifications") && request.method === "GET") {
+    const user = requireContentModerator(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const filters = parseAdminVerificationFilters(url);
+
+      if (shouldSendAdminJson(request, url)) {
+        sendAdminVerificationListJson(response, experienceSubmissionStore, filters);
+        return;
+      }
+
+      sendHtml(response, 200, renderAdminVerificationReviewPage({
+        filters,
+        verifications: experienceSubmissionStore.listVerificationReviews(filters).map(adminVerificationJson),
+        user
+      }));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_verification_error", error.message);
+    }
+
+    return;
+  }
+
+  let adminVerificationReviewId;
+
+  try {
+    adminVerificationReviewId = parseAdminVerificationActionPath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "admin_verification_error", error.message);
+    return;
+  }
+
+  if (adminVerificationReviewId && request.method === "POST") {
+    const user = requireContentModerator(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const body = await readStructuredBody(request);
+      const review = normalizedActionBody(body, verificationReviewActions, "Verification review");
+      const result = experienceSubmissionStore.reviewVerification({
+        verificationId: adminVerificationReviewId,
+        action: review.action,
+        operator: user,
+        note: review.note
+      });
+
+      sendJson(response, 200, {
+        status: result.material.status,
+        verification: adminVerificationJson(result)
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_verification_error", error.message);
+    }
+
+    return;
+  }
+
+  if ((url.pathname === "/admin/reports" || url.pathname === "/api/admin/reports") && request.method === "GET") {
+    const user = requireContentModerator(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const filters = parseAdminReportFilters(url);
+
+      if (shouldSendAdminJson(request, url)) {
+        sendAdminReportListJson(response, interactionStore, authService, filters);
+        return;
+      }
+
+      sendHtml(response, 200, renderAdminReportReviewPage({
+        filters,
+        reports: interactionStore.listReports(filters).map((report) => adminReportJson(report, authService)),
+        user
+      }));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_report_error", error.message);
+    }
+
+    return;
+  }
+
+  let adminReportResolveId;
+
+  try {
+    adminReportResolveId = parseAdminReportActionPath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "admin_report_error", error.message);
+    return;
+  }
+
+  if (adminReportResolveId && request.method === "POST") {
+    const user = requireContentModerator(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const body = await readStructuredBody(request);
+      const resolution = reportResolutionFromBody(body);
+      const report = interactionStore.getReport(adminReportResolveId);
+
+      if (!report) {
+        sendError(response, 404, "report_not_found", "No report was found for review.");
+        return;
+      }
+
+      const sideEffect = applyReportResolutionSideEffect({
+        report,
+        action: resolution.action,
+        authService
+      });
+      const resolvedReport = interactionStore.resolveReport({
+        reportId: adminReportResolveId,
+        action: resolution.action,
+        resolutionNote: resolution.note,
+        operator: user
+      });
+
+      sendJson(response, 200, {
+        status: "resolved",
+        report: adminReportJson(resolvedReport, authService),
+        sideEffect
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_report_error", error.message);
     }
 
     return;

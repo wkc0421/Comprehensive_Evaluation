@@ -35,7 +35,9 @@ const workflowPlaceholders = [
   { title: "Official guide review", status: "Data review active" },
   { title: "Timeline management", status: "Override workflow active" },
   { title: "Formula management", status: "Draft and publish workflow active" },
-  { title: "Experience moderation", status: "Awaiting submissions" }
+  { title: "Experience moderation", status: "Content review active" },
+  { title: "Verification review", status: "Material metadata review active" },
+  { title: "Report handling", status: "Resolution workflow active" }
 ];
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
@@ -2036,6 +2038,381 @@ export function renderAdminFormulaManagementPage({ formulas, filters = {}, user 
           <p class="section-kicker">Drafts stay hidden until publication has a passing sample test</p>
         </div>
         <div class="admin-review-list">${renderAdminFormulaCards(formulas)}</div>
+      </section>
+    </main>`
+  });
+}
+
+function renderAdminModerationWarnings(moderation) {
+  const warnings = moderation?.warnings ?? [];
+
+  if (warnings.length === 0) {
+    return `<p class="inline-empty">No prohibited-content or privacy warnings detected.</p>`;
+  }
+
+  return `<ol class="admin-audit-list">${warnings
+    .map((warning) => `<li>
+      <strong>${escapeHtml(warning.label)}</strong>
+      <span>${escapeHtml(humanizeToken(warning.severity))}</span>
+      <em>${escapeHtml(humanizeToken(warning.action))}</em>
+      <p>${escapeHtml(warning.message)}</p>
+    </li>`)
+    .join("")}</ol>`;
+}
+
+function renderAdminExperienceFilters(filters = {}) {
+  const statusOptions = [
+    renderOption("", "Pending review", filters.status ?? ""),
+    renderOption("pending_review", "Pending review", filters.status),
+    renderOption("published", "Published", filters.status),
+    renderOption("returned", "Returned", filters.status),
+    renderOption("hidden", "Hidden", filters.status),
+    renderOption("banned", "Banned", filters.status)
+  ].join("");
+
+  return `<form class="filter-panel admin-filter-panel" method="get" action="/admin/experiences" aria-label="Experience moderation filters">
+    <label class="filter-field">
+      <span>Status</span>
+      <select name="status">${statusOptions}</select>
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/admin/experiences">Reset</a>
+    </div>
+  </form>`;
+}
+
+function renderAdminExperienceActions(experience) {
+  const encodedId = escapeHtml(encodeURIComponent(experience.id));
+  const actions = [
+    { action: "approve", label: "Approve", className: "primary-action" },
+    { action: "return", label: "Return for rewrite", className: "secondary-action" },
+    { action: "hide", label: "Hide", className: "secondary-action" },
+    { action: "ban", label: "Ban", className: "secondary-action" }
+  ];
+
+  return `<div class="admin-action-row" aria-label="Experience moderation actions">${actions
+    .map((item) => `<form method="post" action="/admin/experiences/${encodedId}/review">
+      <input type="hidden" name="action" value="${escapeHtml(item.action)}">
+      <input type="hidden" name="note" value="${escapeHtml(item.label)} from review queue">
+      <button class="${escapeHtml(item.className)}" type="submit">${escapeHtml(item.label)}</button>
+    </form>`)
+    .join("")}</div>`;
+}
+
+function renderAdminExperienceCards(experiences) {
+  if (experiences.length === 0) {
+    return `<p class="empty-state">No submitted experiences match this moderation queue.</p>`;
+  }
+
+  return experiences
+    .map((experience) => `<article class="admin-review-card">
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(experience.year)}</span>
+        <span class="soft-badge">${escapeHtml(experience.statusLabel)}</span>
+        <span class="muted-badge">${escapeHtml(experience.verificationStatus)}</span>
+      </div>
+      <div class="section-heading">
+        <div>
+          <h3>${escapeHtml(experience.school?.name ?? "Submitted experience")}</h3>
+          <p class="section-kicker">${escapeHtml(experience.authorNickname)} - ${escapeHtml(experience.assessmentFormat)}</p>
+        </div>
+        ${renderAdminExperienceActions(experience)}
+      </div>
+      <div class="admin-review-columns">
+        <section class="admin-review-section" aria-label="Submitted structured experience">
+          <h4>Submitted experience</h4>
+          ${renderDetailRows([
+            { label: "Summary", value: experience.summary },
+            { label: "Process", value: experience.processSummary },
+            { label: "Question types", value: experience.questionTypes.join(", ") },
+            { label: "Preparation", value: experience.preparationSummary },
+            { label: "Advice", value: experience.advice }
+          ])}
+        </section>
+        <section class="admin-review-section" aria-label="Moderation warnings">
+          <h4>Sensitive content and privacy warnings</h4>
+          ${renderAdminModerationWarnings(experience.moderation)}
+        </section>
+      </div>
+      <section class="admin-review-section" aria-label="Experience audit trail">
+        <h4>Moderation audit</h4>
+        ${renderAdminAuditTrail({ reviewAudit: experience.reviewAudit })}
+      </section>
+    </article>`)
+    .join("");
+}
+
+export function renderAdminExperienceModerationPage({ experiences, filters = {}, user }) {
+  return htmlPage({
+    title: `Experience Moderation | ${productName}`,
+    body: `    <main class="app-shell admin-main admin-review-main">
+      <header class="admin-header">
+        <a class="brand" href="/admin">
+          <span class="brand-mark">Admin</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <p class="eyebrow">Experience moderation</p>
+        <h1>Experience moderation queue</h1>
+        <p class="lead">Review pending structured experiences, prohibited-content signals, and privacy warnings before student publication.</p>
+        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
+        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
+      </header>
+
+      <section class="section" aria-label="Experience moderation filters">
+        ${renderAdminExperienceFilters(filters)}
+      </section>
+
+      <section class="section" aria-labelledby="admin-experience-results-title">
+        <div class="section-heading">
+          <h2 id="admin-experience-results-title">${escapeHtml(experiences.length)} ${escapeHtml(pluralize(experiences.length, "experience"))} in moderation</h2>
+          <p class="section-kicker">Approval is blocked when rewrite-required warnings are present</p>
+        </div>
+        <div class="admin-review-list">${renderAdminExperienceCards(experiences)}</div>
+      </section>
+    </main>`
+  });
+}
+
+function renderAdminVerificationFilters(filters = {}) {
+  const statusOptions = [
+    renderOption("", "Pending review", filters.status ?? ""),
+    renderOption("pending_review", "Pending review", filters.status),
+    renderOption("verified", "Verified", filters.status),
+    renderOption("rejected", "Rejected", filters.status),
+    renderOption("returned", "Returned", filters.status)
+  ].join("");
+
+  return `<form class="filter-panel admin-filter-panel" method="get" action="/admin/verifications" aria-label="Verification review filters">
+    <label class="filter-field">
+      <span>Status</span>
+      <select name="status">${statusOptions}</select>
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/admin/verifications">Reset</a>
+    </div>
+  </form>`;
+}
+
+function renderAdminVerificationActions(material) {
+  const encodedId = escapeHtml(encodeURIComponent(material.id));
+  const actions = [
+    { action: "approve", label: "Approve material", className: "primary-action" },
+    { action: "reject", label: "Reject material", className: "secondary-action" },
+    { action: "return", label: "Return material", className: "secondary-action" }
+  ];
+
+  return `<div class="admin-action-row" aria-label="Verification review actions">${actions
+    .map((item) => `<form method="post" action="/admin/verifications/${encodedId}/review">
+      <input type="hidden" name="action" value="${escapeHtml(item.action)}">
+      <input type="hidden" name="note" value="${escapeHtml(item.label)} from verification queue">
+      <button class="${escapeHtml(item.className)}" type="submit">${escapeHtml(item.label)}</button>
+    </form>`)
+    .join("")}</div>`;
+}
+
+function renderAdminVerificationCards(verifications) {
+  if (verifications.length === 0) {
+    return `<p class="empty-state">No verification materials match this review queue.</p>`;
+  }
+
+  return verifications
+    .map(({ material, experience, moderation }) => `<article class="admin-review-card">
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(experience.year)}</span>
+        <span class="soft-badge">${escapeHtml(material.status)}</span>
+        <span class="muted-badge">${material.storageKeyPresent ? "Private file stored" : "Metadata only"}</span>
+      </div>
+      <div class="section-heading">
+        <div>
+          <h3>${escapeHtml(material.materialType)}</h3>
+          <p class="section-kicker">${escapeHtml(experience.school?.name ?? "Submitted experience")} - ${escapeHtml(experience.authorNickname)}</p>
+        </div>
+        ${renderAdminVerificationActions(material)}
+      </div>
+      <div class="admin-review-columns">
+        <section class="admin-review-section" aria-label="Verification material metadata">
+          <h4>Verification material metadata</h4>
+          ${renderDetailRows([
+            { label: "Material id", value: material.id },
+            { label: "Experience id", value: material.experienceId },
+            { label: "Storage file", value: material.storageKeyPresent ? "Reviewer-only private storage reference present" : "No private storage reference" },
+            { label: "Metadata", value: Object.keys(material.metadata).length > 0 ? JSON.stringify(material.metadata) : missingOfficialText }
+          ])}
+        </section>
+        <section class="admin-review-section" aria-label="Verification privacy warnings">
+          <h4>Privacy warning results</h4>
+          ${renderAdminModerationWarnings(moderation)}
+        </section>
+      </div>
+      <section class="admin-review-section" aria-label="Verification audit trail">
+        <h4>Verification audit</h4>
+        ${renderAdminAuditTrail({ reviewAudit: material.reviewAudit })}
+      </section>
+    </article>`)
+    .join("");
+}
+
+export function renderAdminVerificationReviewPage({ verifications, filters = {}, user }) {
+  return htmlPage({
+    title: `Verification Review | ${productName}`,
+    body: `    <main class="app-shell admin-main admin-review-main">
+      <header class="admin-header">
+        <a class="brand" href="/admin">
+          <span class="brand-mark">Admin</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <p class="eyebrow">Verification review</p>
+        <h1>Verification material queue</h1>
+        <p class="lead">Review verification material metadata and privacy warnings without exposing raw material URLs to student pages.</p>
+        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
+        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
+      </header>
+
+      <section class="section" aria-label="Verification filters">
+        ${renderAdminVerificationFilters(filters)}
+      </section>
+
+      <section class="section" aria-labelledby="admin-verification-results-title">
+        <div class="section-heading">
+          <h2 id="admin-verification-results-title">${escapeHtml(verifications.length)} ${escapeHtml(pluralize(verifications.length, "material"))} in verification review</h2>
+          <p class="section-kicker">Student routes only receive material count and status</p>
+        </div>
+        <div class="admin-review-list">${renderAdminVerificationCards(verifications)}</div>
+      </section>
+    </main>`
+  });
+}
+
+function renderAdminReportFilters(filters = {}) {
+  const statusOptions = [
+    renderOption("pending", "Pending", filters.status ?? "pending"),
+    renderOption("resolved", "Resolved", filters.status)
+  ].join("");
+  const targetOptions = [
+    renderOption("", "Any target", filters.targetType ?? ""),
+    renderOption("experience", "Experience", filters.targetType),
+    renderOption("user", "User", filters.targetType)
+  ].join("");
+
+  return `<form class="filter-panel admin-filter-panel" method="get" action="/admin/reports" aria-label="Report review filters">
+    <label class="filter-field">
+      <span>Status</span>
+      <select name="status">${statusOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>Target type</span>
+      <select name="targetType">${targetOptions}</select>
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/admin/reports">Reset</a>
+    </div>
+  </form>`;
+}
+
+function renderAdminReportActions(report) {
+  const encodedId = escapeHtml(encodeURIComponent(report.id));
+  const actions = [
+    { action: "keep", label: "Keep target", className: "secondary-action" },
+    { action: "hide", label: "Hide target", className: "secondary-action" },
+    { action: "delete", label: "Delete target", className: "secondary-action" },
+    { action: "limit_account", label: "Limit account", className: "primary-action" }
+  ];
+
+  return `<div class="admin-action-row" aria-label="Report resolution actions">${actions
+    .map((item) => `<form method="post" action="/admin/reports/${encodedId}/resolve">
+      <input type="hidden" name="action" value="${escapeHtml(item.action)}">
+      <input type="hidden" name="resolutionNote" value="${escapeHtml(item.label)} after report review">
+      <button class="${escapeHtml(item.className)}" type="submit">${escapeHtml(item.label)}</button>
+    </form>`)
+    .join("")}</div>`;
+}
+
+function renderReportTargetSummary(report) {
+  if (report.targetType === "experience") {
+    const experience = report.target.experience;
+    return experience
+      ? `${experience.school?.name ?? "Published experience"} - ${experience.summary}`
+      : "Experience is no longer student-visible";
+  }
+
+  return report.target.user
+    ? `${report.target.user.nickname} (${report.target.user.accountStatus})`
+    : "User is no longer available";
+}
+
+function renderAdminReportCards(reports) {
+  if (reports.length === 0) {
+    return `<p class="empty-state">No reports match this queue.</p>`;
+  }
+
+  return reports
+    .map((report) => `<article class="admin-review-card">
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(humanizeToken(report.targetType))}</span>
+        <span class="soft-badge">${escapeHtml(humanizeToken(report.status))}</span>
+        <span class="muted-badge">${escapeHtml(formatDate(report.createdAt))}</span>
+      </div>
+      <div class="section-heading">
+        <div>
+          <h3>${escapeHtml(report.reason)}</h3>
+          <p class="section-kicker">${escapeHtml(renderReportTargetSummary(report))}</p>
+        </div>
+        ${renderAdminReportActions(report)}
+      </div>
+      <div class="admin-review-columns">
+        <section class="admin-review-section" aria-label="Report details">
+          <h4>Report details</h4>
+          ${renderDetailRows([
+            { label: "Report id", value: report.id },
+            { label: "Target id", value: report.targetId },
+            { label: "Description", value: displayValue(report.description) }
+          ])}
+        </section>
+        <section class="admin-review-section" aria-label="Resolution">
+          <h4>Resolution</h4>
+          ${report.resolution
+            ? renderDetailRows([
+                { label: "Action", value: humanizeToken(report.resolution.action) },
+                { label: "Note", value: report.resolution.note },
+                { label: "Operator", value: report.resolution.operatorNickname },
+                { label: "Resolved", value: formatDate(report.resolution.resolvedAt) }
+              ])
+            : `<p class="inline-empty">No resolution recorded.</p>`}
+        </section>
+      </div>
+    </article>`)
+    .join("");
+}
+
+export function renderAdminReportReviewPage({ reports, filters = {}, user }) {
+  return htmlPage({
+    title: `Report Review | ${productName}`,
+    body: `    <main class="app-shell admin-main admin-review-main">
+      <header class="admin-header">
+        <a class="brand" href="/admin">
+          <span class="brand-mark">Admin</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <p class="eyebrow">Report handling</p>
+        <h1>Report resolution queue</h1>
+        <p class="lead">Resolve reports by keeping, hiding, deleting, or limiting the target account with an audited note.</p>
+        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
+        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
+      </header>
+
+      <section class="section" aria-label="Report filters">
+        ${renderAdminReportFilters(filters)}
+      </section>
+
+      <section class="section" aria-labelledby="admin-report-results-title">
+        <div class="section-heading">
+          <h2 id="admin-report-results-title">${escapeHtml(reports.length)} ${escapeHtml(pluralize(reports.length, "report"))} awaiting handling</h2>
+          <p class="section-kicker">Resolution notes are required for every report action</p>
+        </div>
+        <div class="admin-review-list">${renderAdminReportCards(reports)}</div>
       </section>
     </main>`
   });

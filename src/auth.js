@@ -379,6 +379,19 @@ export function createAuthService(options = {}) {
       return toPublicUser(user);
     },
 
+    updateUserAccountStatus(userId, accountStatus) {
+      const user = usersById.get(userId);
+
+      if (!user) {
+        throw new AuthError("unknown_user", "User does not exist.", 404);
+      }
+
+      assertAccountStatus(accountStatus);
+      user.accountStatus = accountStatus;
+      user.updatedAt = currentDate(options.now).toISOString();
+      return toPublicUser(user);
+    },
+
     getUserById(userId) {
       const user = usersById.get(userId);
       return user ? toPublicUser(user) : null;
