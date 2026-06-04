@@ -27,6 +27,10 @@ function assertNoPhoneFields(payload) {
   assert.doesNotMatch(serialized, /phone(Hash|Ciphertext|Number)?/i);
 }
 
+function schoolNames(payload) {
+  return payload.schools.map((schoolCard) => schoolCard.school.name);
+}
+
 describe("web routes", () => {
   let authService;
   let baseUrl;
@@ -109,6 +113,95 @@ describe("web routes", () => {
     assert.equal(response.status, 200);
     assert.equal(body.ok, true);
     assert.equal(body.database, "postgresql");
+  });
+
+  it("returns the school list API with year, status, and keyword filters", async () => {
+    const response = await fetch(`${baseUrl}/schools?year=2025&status=published&keyword=Engineering`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.count, 1);
+    assert.equal(body.filters.year, 2025);
+    assert.equal(body.filters.status, "published");
+    assert.equal(body.filters.keyword, "Engineering");
+    assert.equal(body.schools[0].school.id, seedIds.schools.scut);
+    assert.equal(body.schools[0].guide.year, 2025);
+    assert.equal(body.schools[0].guide.status, "published");
+    assert.equal(body.schools[0].guide.applicationStatus, "closed");
+    assert.equal(body.schools[0].formula.available, false);
+    assert.equal(body.schools[0].experiences.exists, true);
+    assert.ok(body.schools[0].keyTimelineNodes.some((node) => node.eventKey === "application_deadline"));
+  });
+
+  it("keeps draft and pending review guides hidden from school list visitors", async () => {
+    const response = await fetch(`${baseUrl}/api/schools?year=2026&sort=name`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(schoolNames(body), ["Sun Yat-sen University"]);
+    assert.doesNotMatch(serialized, /Draft Review Guide/);
+    assert.doesNotMatch(serialized, /Working Draft/);
+
+    const pendingResponse = await fetch(`${baseUrl}/api/schools?status=pending_review`);
+    const pendingBody = await pendingResponse.json();
+
+    assert.equal(pendingResponse.status, 200);
+    assert.equal(pendingBody.count, 0);
+  });
+
+  it("filters the school list API by application status and school type", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/schools?year=2025&applicationStatus=closed&schoolType=research%20university`
+    );
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(schoolNames(body), ["Southern University of Science and Technology"]);
+    assert.equal(body.schools[0].guide.applicationStatus, "closed");
+    assert.equal(body.schools[0].school.schoolType, "research university");
+  });
+
+  it("sorts the school list API by deadline, update time, and school name", async () => {
+    const deadlineResponse = await fetch(`${baseUrl}/api/schools?year=2025&sort=deadline`);
+    const updatedResponse = await fetch(`${baseUrl}/api/schools?year=2025&sort=updated`);
+    const nameResponse = await fetch(`${baseUrl}/api/schools?year=2025&sort=name`);
+
+    assert.deepEqual(schoolNames(await deadlineResponse.json()), [
+      "Southern University of Science and Technology",
+      "Sun Yat-sen University",
+      "South China University of Technology"
+    ]);
+    assert.deepEqual(schoolNames(await updatedResponse.json()), [
+      "Sun Yat-sen University",
+      "South China University of Technology",
+      "Southern University of Science and Technology"
+    ]);
+    assert.deepEqual(schoolNames(await nameResponse.json()), [
+      "South China University of Technology",
+      "Southern University of Science and Technology",
+      "Sun Yat-sen University"
+    ]);
+  });
+
+  it("renders the school list page with filters and guide cards for browsers", async () => {
+    const response = await fetch(`${baseUrl}/schools?year=2025&sort=name`, {
+      headers: { accept: "text/html" }
+    });
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /School list/);
+    assert.match(body, /School keyword/);
+    assert.match(body, /Guide status/);
+    assert.match(body, /Application status/);
+    assert.match(body, /School type/);
+    assert.match(body, /Application deadline/);
+    assert.match(body, /Key timeline nodes/);
+    assert.match(body, /Formula not available/);
+    assert.match(body, /published experience/);
+    assert.doesNotMatch(body, /Draft Review Guide/);
+    assert.doesNotMatch(body, /Working Draft/);
   });
 
   it("logs in with a phone OTP session without returning phone data", async () => {

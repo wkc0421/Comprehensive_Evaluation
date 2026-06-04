@@ -2,6 +2,7 @@ import {
   getSchoolById,
   listExperiences,
   listGuides,
+  listSchoolGuideCards,
   listTimelineEvents
 } from "./db/data-access.js";
 import {
@@ -79,6 +80,12 @@ function eventTimestamp(event) {
 
 function pluralize(count, singular, plural = `${singular}s`) {
   return count === 1 ? singular : plural;
+}
+
+function humanizeToken(value) {
+  return String(value)
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function schoolNameFor(record) {
@@ -267,6 +274,187 @@ function renderExperienceCards(experiences) {
       </dl>
     </article>`)
     .join("");
+}
+
+function selectedAttribute(currentValue, optionValue) {
+  return String(currentValue ?? "") === String(optionValue) ? " selected" : "";
+}
+
+function uniqueSorted(values) {
+  return [...new Set(values.filter(Boolean))]
+    .sort((left, right) => String(left).localeCompare(String(right), "en"));
+}
+
+function renderOption(value, label, currentValue) {
+  return `<option value="${escapeHtml(value)}"${selectedAttribute(currentValue, value)}>${escapeHtml(label)}</option>`;
+}
+
+function renderSchoolFilters(filters, allCards) {
+  const years = uniqueSorted(allCards.map((card) => card.guide.admissionYear)).sort((left, right) => right - left);
+  const applicationStatuses = uniqueSorted(allCards.map((card) => card.guide.applicationStatus));
+  const schoolTypes = uniqueSorted(allCards.map((card) => card.school.schoolType));
+
+  const yearOptions = [
+    renderOption("", "All years", filters.year ?? ""),
+    ...years.map((year) => renderOption(year, year, filters.year))
+  ].join("");
+  const statusOptions = [
+    renderOption("", "Any visible status", filters.status ?? ""),
+    renderOption("published", "Published", filters.status),
+    renderOption("pending_review", "Pending review", filters.status),
+    renderOption("draft", "Draft", filters.status),
+    renderOption("archived", "Archived", filters.status)
+  ].join("");
+  const applicationStatusOptions = [
+    renderOption("", "All application statuses", filters.applicationStatus ?? ""),
+    ...applicationStatuses.map((status) => renderOption(status, humanizeToken(status), filters.applicationStatus))
+  ].join("");
+  const schoolTypeOptions = [
+    renderOption("", "All school types", filters.schoolType ?? ""),
+    ...schoolTypes.map((schoolType) => renderOption(schoolType, humanizeToken(schoolType), filters.schoolType))
+  ].join("");
+  const sortOptions = [
+    renderOption("deadline", "Application deadline", filters.sort ?? "deadline"),
+    renderOption("updated", "Update time", filters.sort),
+    renderOption("name", "School name", filters.sort)
+  ].join("");
+
+  return `<form class="filter-panel" method="get" action="/schools" aria-label="School filters">
+    <label class="filter-field">
+      <span>Year</span>
+      <select name="year">${yearOptions}</select>
+    </label>
+    <label class="filter-field wide-field">
+      <span>School keyword</span>
+      <input name="keyword" value="${escapeHtml(filters.keyword ?? "")}" autocomplete="off">
+    </label>
+    <label class="filter-field">
+      <span>Guide status</span>
+      <select name="status">${statusOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>Application status</span>
+      <select name="applicationStatus">${applicationStatusOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>School type</span>
+      <select name="schoolType">${schoolTypeOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>Sort</span>
+      <select name="sort">${sortOptions}</select>
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/schools">Reset</a>
+    </div>
+  </form>`;
+}
+
+function renderSchoolTimelineNodes(nodes) {
+  if (nodes.length === 0) {
+    return `<p class="inline-empty">Timeline pending supplement</p>`;
+  }
+
+  return `<ul class="school-timeline">${nodes
+    .map((node) => `<li>
+      <span>${escapeHtml(node.title)}</span>
+      <strong>${escapeHtml(formatDate(node.endsAt ?? node.startsAt))}</strong>
+    </li>`)
+    .join("")}</ul>`;
+}
+
+function renderFormulaLabel(formula) {
+  if (!formula.available) {
+    return "Formula not available";
+  }
+
+  return `${humanizeToken(formula.formulaType)} - ${formula.formulaName}`;
+}
+
+function renderExperienceAvailability(experiences) {
+  if (!experiences.exists) {
+    return "No published experiences yet";
+  }
+
+  return `${experiences.count} published ${pluralize(experiences.count, "experience")}`;
+}
+
+function renderSchoolCards(cards) {
+  if (cards.length === 0) {
+    return `<p class="empty-state">No published guide cards match these filters.</p>`;
+  }
+
+  return cards
+    .map((card) => `<article class="school-card">
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(card.guide.admissionYear)}</span>
+        <span class="soft-badge">${escapeHtml(humanizeToken(card.guide.applicationStatus))}</span>
+        <span class="muted-badge">${escapeHtml(humanizeToken(card.school.schoolType))}</span>
+      </div>
+      <h3>${escapeHtml(card.school.name)}</h3>
+      <p>${escapeHtml(card.guide.summary)}</p>
+      <dl class="detail-list split-details">
+        <div>
+          <dt>Application status</dt>
+          <dd>${escapeHtml(humanizeToken(card.guide.applicationStatus))}</dd>
+        </div>
+        <div>
+          <dt>Application deadline</dt>
+          <dd>${escapeHtml(formatDate(card.guide.applicationDeadlineAt))}</dd>
+        </div>
+        <div>
+          <dt>Formula</dt>
+          <dd>${escapeHtml(renderFormulaLabel(card.formula))}</dd>
+        </div>
+        <div>
+          <dt>Experiences</dt>
+          <dd>${escapeHtml(renderExperienceAvailability(card.experiences))}</dd>
+        </div>
+      </dl>
+      <div class="timeline-block">
+        <h4>Key timeline nodes</h4>
+        ${renderSchoolTimelineNodes(card.keyTimelineNodes)}
+      </div>
+    </article>`)
+    .join("");
+}
+
+export function renderSchoolListPage(filters = {}) {
+  const allCards = listSchoolGuideCards({ sort: "name" });
+  const cards = listSchoolGuideCards(filters);
+
+  return htmlPage({
+    title: `Schools | ${productName}`,
+    body: `    <main class="app-shell">
+      <header class="top-bar">
+        <a class="brand" href="/">
+          <span class="brand-mark">Guangdong MVP</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
+        <a class="admin-link" href="/admin">Admin</a>
+      </header>
+
+      <section class="page-heading" aria-labelledby="school-list-title">
+        <p class="eyebrow">Published school guides</p>
+        <h1 id="school-list-title">School list</h1>
+        <p class="lead">Browse Guangdong comprehensive evaluation schools with current guide cards, timeline nodes, formula availability, and published experience signals.</p>
+      </section>
+
+      <section class="section" aria-label="School list filters">
+        ${renderSchoolFilters(filters, allCards)}
+      </section>
+
+      <section class="section" aria-labelledby="school-results-title">
+        <div class="section-heading">
+          <h2 id="school-results-title">${escapeHtml(cards.length)} published ${escapeHtml(pluralize(cards.length, "guide card"))}</h2>
+          <p class="section-kicker">Draft and review-only guide data is hidden from visitors</p>
+        </div>
+        <div class="school-list">${renderSchoolCards(cards)}</div>
+      </section>
+    </main>`
+  });
 }
 
 export function renderStudentHome() {

@@ -11,6 +11,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Seed fixtures and student-facing published-only data access helpers live in `src/db` as plain JavaScript modules; use them before introducing database tooling.
 - Authentication/session helpers live in `src/auth.js`; `handleRequest` accepts an optional `{ authService }` test context, and public auth responses must use the public user shape so phone fields do not leak.
 - Student-facing pages should consume published-only helpers from `src/db/data-access.js` instead of importing `seed-data.js` directly.
+- Public school browsing should use `listSchoolGuideCards()` from `src/db/data-access.js`; it keeps `/schools`, `/api/schools`, and the HTML school list aligned on published-only guides, filters, sort order, key timeline nodes, formula availability, and experience signals.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -164,4 +165,35 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - `renderStudentHome()` can safely combine `listGuides()`, `listTimelineEvents()`, and `listExperiences()` because those helpers already enforce published-only visibility.
   - Keep negative assertions for the student home page around disallowed feature labels so future copy changes do not accidentally advertise excluded MVP behaviors.
   - Python Playwright is available at `/home/wkc/codex_project/linux_codex_gui/.venv/bin/python` for browser checks in this environment.
+---
+
+## Thu Jun  4 11:34:05 AM CST 2026 - Ralph runner
+- Iteration: 5
+- Story: US-005
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-104510/iteration-5
+---
+
+## Thu Jun  4 11:43:36 AM CST 2026 - US-006
+- What was implemented
+  - Added a published-only school guide card helper with filters for year, guide status, keyword, application status, and school type, plus sorting by application deadline, update time, and school name.
+  - Implemented JSON school list responses on `/schools` for API clients and `/api/schools`, with browser HTML rendering on `/schools`.
+  - Built the mobile-first school list page with filter controls and cards showing school name, year, application status, key timeline nodes, formula availability, and published experience signals.
+- Files changed
+  - `AGENTS.md`, `public/styles.css`
+  - `src/app.js`, `src/app.test.js`, `src/pages.js`
+  - `src/db/data-access.js`, `src/db/data-access.test.js`, `src/db/seed-data.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for `/schools?year=2025&sort=name` at 375px, 390px, 430px, and 1280px; required filters and card content were visible and `scrollWidth` equaled `clientWidth` at every viewport.
+- **Learnings for future iterations:**
+  - `/schools` uses content negotiation: browser requests with `Accept: text/html` receive the server-rendered page, while API-style requests and `/api/schools` receive JSON.
+  - Hidden guide statuses can be accepted as public filters, but only published guide records are considered, so `pending_review`, `draft`, and `archived` return no visitor-visible guide cards.
+  - For meaningful filter tests, seed guide `applicationStatus` values now distinguish current `open` guides from historical `closed` guides.
 ---

@@ -4,8 +4,8 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AuthError, authService as defaultAuthService } from "./auth.js";
-import { listTimelineEvents } from "./db/data-access.js";
-import { renderAdminPage, renderNotFound, renderStudentHome } from "./pages.js";
+import { listSchoolGuideCards, listTimelineEvents } from "./db/data-access.js";
+import { renderAdminPage, renderNotFound, renderSchoolListPage, renderStudentHome } from "./pages.js";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const publicDir = join(rootDir, "public");
@@ -17,6 +17,8 @@ const contentTypes = new Map([
   [".svg", "image/svg+xml"],
   [".ico", "image/x-icon"]
 ]);
+const guideStatuses = new Set(["draft", "pending_review", "published", "archived"]);
+const schoolSorts = new Set(["deadline", "updated", "name"]);
 
 function sendHtml(response, statusCode, html) {
   response.writeHead(statusCode, {
@@ -86,6 +88,112 @@ async function readJsonBody(request) {
 function headerValue(headers, name) {
   const value = headers[name.toLowerCase()];
   return Array.isArray(value) ? value[0] : value;
+}
+
+function optionalStringParam(url, name) {
+  const value = url.searchParams.get(name);
+
+  if (value === null) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function optionalYearParam(url) {
+  const value = optionalStringParam(url, "year");
+
+  if (!value) {
+    return undefined;
+  }
+
+  const year = Number(value);
+
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    throw new RequestError("invalid_year", "Year must be a four-digit admission year.");
+  }
+
+  return year;
+}
+
+function parseSchoolListFilters(url) {
+  const status = optionalStringParam(url, "status");
+  const sort = optionalStringParam(url, "sort") ?? "deadline";
+
+  if (status && !guideStatuses.has(status)) {
+    throw new RequestError("invalid_status", "Guide status is not supported.");
+  }
+
+  if (!schoolSorts.has(sort)) {
+    throw new RequestError("invalid_sort", "School list sort is not supported.");
+  }
+
+  return {
+    year: optionalYearParam(url),
+    status,
+    keyword: optionalStringParam(url, "keyword"),
+    applicationStatus: optionalStringParam(url, "applicationStatus"),
+    schoolType: optionalStringParam(url, "schoolType"),
+    sort
+  };
+}
+
+function shouldSendSchoolListJson(request, url) {
+  if (url.pathname === "/api/schools" || url.searchParams.get("format") === "json") {
+    return true;
+  }
+
+  const accept = headerValue(request.headers, "accept") ?? "";
+
+  if (accept.includes("text/html")) {
+    return false;
+  }
+
+  return accept.length === 0 || accept.includes("*/*") || accept.includes("application/json");
+}
+
+function schoolCardJson(card) {
+  return {
+    school: {
+      id: card.school.id,
+      name: card.school.name,
+      city: card.school.city,
+      schoolType: card.school.schoolType,
+      officialWebsiteUrl: card.school.officialWebsiteUrl,
+      updatedAt: card.school.updatedAt
+    },
+    guide: {
+      id: card.guide.id,
+      year: card.guide.admissionYear,
+      status: card.guide.status,
+      applicationStatus: card.guide.applicationStatus,
+      applicationStartAt: card.guide.applicationStartAt,
+      applicationDeadlineAt: card.guide.applicationDeadlineAt,
+      updatedAt: card.guide.updatedAt,
+      summary: card.guide.summary,
+      officialSourceUrl: card.guide.officialSourceUrl
+    },
+    keyTimelineNodes: card.keyTimelineNodes.map((node) => ({
+      id: node.id,
+      eventKey: node.eventKey,
+      title: node.title,
+      startsAt: node.startsAt,
+      endsAt: node.endsAt
+    })),
+    formula: card.formula,
+    experiences: card.experiences
+  };
+}
+
+function sendSchoolListJson(response, filters) {
+  const schools = listSchoolGuideCards(filters).map(schoolCardJson);
+
+  sendJson(response, 200, {
+    filters,
+    count: schools.length,
+    schools
+  });
 }
 
 function sessionTokenFromRequest(request, authService) {
@@ -271,6 +379,23 @@ export async function handleRequest(request, response, context = {}) {
     }
 
     sendJson(response, 200, { mine: false, events: listTimelineEvents() });
+    return;
+  }
+
+  if ((url.pathname === "/schools" || url.pathname === "/api/schools") && request.method === "GET") {
+    try {
+      const filters = parseSchoolListFilters(url);
+
+      if (shouldSendSchoolListJson(request, url)) {
+        sendSchoolListJson(response, filters);
+        return;
+      }
+
+      sendHtml(response, 200, renderSchoolListPage(filters));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "school_list_error", error.message);
+    }
+
     return;
   }
 

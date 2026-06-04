@@ -10,6 +10,15 @@ const publishedStatus = "published";
  * @typedef {object} GuideFilters
  * @property {string} [schoolId]
  * @property {number} [year]
+ * @property {string} [status]
+ *
+ * @typedef {object} SchoolGuideCardFilters
+ * @property {number} [year]
+ * @property {string} [status]
+ * @property {string} [keyword]
+ * @property {string} [applicationStatus]
+ * @property {string} [schoolType]
+ * @property {"deadline" | "updated" | "name"} [sort]
  *
  * @typedef {object} TimelineFilters
  * @property {string} [admissionGuideId]
@@ -63,8 +72,50 @@ function compareExperienceRecency(left, right) {
   return right.usefulCount - left.usefulCount;
 }
 
+function compareSchoolCardNames(left, right) {
+  const schoolDifference = compareSchoolNames(left.school, right.school);
+
+  if (schoolDifference !== 0) {
+    return schoolDifference;
+  }
+
+  return right.guide.admissionYear - left.guide.admissionYear;
+}
+
+function timestampFor(value, fallback) {
+  const timestamp = Date.parse(value ?? "");
+  return Number.isNaN(timestamp) ? fallback : timestamp;
+}
+
+function compareSchoolCardsByDeadline(left, right) {
+  const deadlineDifference =
+    timestampFor(left.guide.applicationDeadlineAt, Number.MAX_SAFE_INTEGER) -
+    timestampFor(right.guide.applicationDeadlineAt, Number.MAX_SAFE_INTEGER);
+
+  if (deadlineDifference !== 0) {
+    return deadlineDifference;
+  }
+
+  return compareSchoolCardNames(left, right);
+}
+
+function compareSchoolCardsByUpdateTime(left, right) {
+  const updateDifference =
+    timestampFor(right.guide.updatedAt, 0) - timestampFor(left.guide.updatedAt, 0);
+
+  if (updateDifference !== 0) {
+    return updateDifference;
+  }
+
+  return compareSchoolCardNames(left, right);
+}
+
 function normalizeKeyword(keyword) {
   return typeof keyword === "string" ? keyword.trim().toLowerCase() : "";
+}
+
+function normalizeFilterValue(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
 function getPublishedSchoolById(schoolId) {
@@ -77,6 +128,67 @@ function visibleGuides() {
 
 function visibleGuideIds() {
   return new Set(visibleGuides().map((guide) => guide.id));
+}
+
+function schoolGuideKeywordMatches(card, keyword) {
+  if (!keyword) {
+    return true;
+  }
+
+  return [
+    card.school.name,
+    card.school.normalizedName,
+    card.school.city,
+    card.school.schoolType,
+    card.guide.guideTitle,
+    card.guide.summary
+  ].some((value) => value.toLowerCase().includes(keyword));
+}
+
+function keyTimelineNodesFor(guide) {
+  const keyTimelineEventKeys = new Set([
+    "application_start",
+    "application_deadline",
+    "school_assessment",
+    "admission_publication"
+  ]);
+
+  return listTimelineEvents({ admissionGuideId: guide.id })
+    .filter((event) => keyTimelineEventKeys.has(event.eventKey))
+    .slice(0, 4);
+}
+
+function schoolGuideCardFor(guide) {
+  const school = getPublishedSchoolById(guide.schoolId);
+  const formula = getScoreFormula({
+    schoolId: guide.schoolId,
+    year: guide.admissionYear
+  });
+  const experiences = listExperiences({
+    schoolId: guide.schoolId,
+    year: guide.admissionYear
+  });
+
+  return {
+    school,
+    guide,
+    keyTimelineNodes: keyTimelineNodesFor(guide),
+    formula: formula
+      ? {
+          available: true,
+          formulaType: formula.formulaType,
+          formulaName: formula.formulaName
+        }
+      : {
+          available: false,
+          formulaType: null,
+          formulaName: null
+        },
+    experiences: {
+      exists: experiences.length > 0,
+      count: experiences.length
+    }
+  };
 }
 
 /**
@@ -126,7 +238,44 @@ export function listGuides(filters = {}) {
   return visibleGuides()
     .filter((guide) => !filters.schoolId || guide.schoolId === filters.schoolId)
     .filter((guide) => !filters.year || guide.admissionYear === filters.year)
+    .filter((guide) => !filters.status || guide.status === filters.status)
     .sort(compareGuideRecency);
+}
+
+/**
+ * Lists published guide cards for the public school browsing experience.
+ *
+ * @param {SchoolGuideCardFilters} [filters]
+ * @returns {ReadonlyArray<{
+ *   school: import("./seed-data.js").SchoolSeed,
+ *   guide: import("./seed-data.js").AdmissionGuideSeed,
+ *   keyTimelineNodes: ReadonlyArray<import("./seed-data.js").TimelineEventSeed>,
+ *   formula: {available: boolean, formulaType: string | null, formulaName: string | null},
+ *   experiences: {exists: boolean, count: number}
+ * }>}
+ */
+export function listSchoolGuideCards(filters = {}) {
+  const keyword = normalizeKeyword(filters.keyword);
+  const applicationStatus = normalizeFilterValue(filters.applicationStatus);
+  const schoolType = normalizeFilterValue(filters.schoolType);
+  const sort = filters.sort ?? "deadline";
+  const cards = visibleGuides()
+    .filter((guide) => !filters.year || guide.admissionYear === filters.year)
+    .filter((guide) => !filters.status || guide.status === filters.status)
+    .map(schoolGuideCardFor)
+    .filter((card) => schoolGuideKeywordMatches(card, keyword))
+    .filter((card) => !applicationStatus || normalizeFilterValue(card.guide.applicationStatus) === applicationStatus)
+    .filter((card) => !schoolType || normalizeFilterValue(card.school.schoolType) === schoolType);
+
+  if (sort === "updated") {
+    return cards.sort(compareSchoolCardsByUpdateTime);
+  }
+
+  if (sort === "name") {
+    return cards.sort(compareSchoolCardNames);
+  }
+
+  return cards.sort(compareSchoolCardsByDeadline);
 }
 
 /**

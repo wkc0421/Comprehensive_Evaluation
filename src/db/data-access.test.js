@@ -7,6 +7,7 @@ import {
   getSchoolById,
   getScoreFormula,
   getScoreFormulaById,
+  listSchoolGuideCards,
   getTimelineEventById,
   listExperiences,
   listGuides,
@@ -57,6 +58,37 @@ describe("student-facing data access helpers", () => {
   it("filters schools by year and keyword using published guide data", () => {
     assert.deepEqual(ids(listSchools({ year: 2026 })), [seedIds.schools.sysu]);
     assert.deepEqual(ids(listSchools({ keyword: "shenzhen" })), [seedIds.schools.sustech]);
+  });
+
+  it("builds published school guide cards with filters and availability signals", () => {
+    const cards = listSchoolGuideCards({
+      year: 2025,
+      keyword: "Technology",
+      applicationStatus: "closed",
+      schoolType: "985 science and engineering university"
+    });
+
+    assert.equal(cards.length, 1);
+    assert.equal(cards[0].school.id, seedIds.schools.scut);
+    assert.equal(cards[0].guide.id, seedIds.guides.scut2025);
+    assert.equal(cards[0].formula.available, false);
+    assert.equal(cards[0].experiences.exists, true);
+    assert.ok(cards[0].keyTimelineNodes.some((node) => node.eventKey === "application_deadline"));
+  });
+
+  it("sorts school guide cards by deadline, update time, and school name", () => {
+    assert.deepEqual(
+      listSchoolGuideCards({ year: 2025, sort: "deadline" }).map((card) => card.school.id),
+      [seedIds.schools.sustech, seedIds.schools.sysu, seedIds.schools.scut]
+    );
+    assert.deepEqual(
+      listSchoolGuideCards({ year: 2025, sort: "updated" }).map((card) => card.school.id),
+      [seedIds.schools.sysu, seedIds.schools.scut, seedIds.schools.sustech]
+    );
+    assert.deepEqual(
+      listSchoolGuideCards({ year: 2025, sort: "name" }).map((card) => card.school.id),
+      [seedIds.schools.scut, seedIds.schools.sustech, seedIds.schools.sysu]
+    );
   });
 
   it("filters guides by school and year", () => {

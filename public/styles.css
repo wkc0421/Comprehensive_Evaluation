@@ -46,6 +46,7 @@ p,
 h1,
 h2,
 h3,
+h4,
 strong,
 span,
 a,
@@ -57,6 +58,7 @@ p,
 h1,
 h2,
 h3,
+h4,
 strong,
 span,
 a,
@@ -148,6 +150,7 @@ dd {
 h1,
 h2,
 h3,
+h4,
 p {
   margin: 0;
 }
@@ -260,6 +263,16 @@ h1 {
   font-size: 1.35rem;
 }
 
+.page-heading {
+  display: grid;
+  gap: 12px;
+  padding: 8px 0 0;
+}
+
+.page-heading h1 {
+  font-size: clamp(2rem, 9vw, 4.25rem);
+}
+
 .card-grid {
   display: grid;
   gap: 12px;
@@ -364,6 +377,15 @@ h1 {
   padding: 7px 9px;
 }
 
+.muted-badge {
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 750;
+  padding: 7px 9px;
+}
+
 .text-link {
   color: var(--accent-strong);
   font-size: 0.9rem;
@@ -431,6 +453,139 @@ h1 {
   font-weight: 700;
 }
 
+.filter-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px;
+}
+
+.filter-field {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-field span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.filter-field input,
+.filter-field select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 10px 12px;
+}
+
+.filter-field input:focus,
+.filter-field select:focus {
+  border-color: var(--focus);
+  outline: 3px solid rgba(37, 99, 235, 0.16);
+}
+
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.filter-actions .primary-action {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.filter-actions .secondary-action {
+  cursor: pointer;
+  font: inherit;
+}
+
+.school-list {
+  display: grid;
+  gap: 12px;
+}
+
+.school-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.school-card h3 {
+  font-size: 1.12rem;
+  line-height: 1.25;
+}
+
+.school-card p {
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.split-details {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.timeline-block {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.timeline-block h4 {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.school-timeline {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.school-timeline li {
+  display: grid;
+  gap: 3px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 10px;
+}
+
+.school-timeline span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.school-timeline strong,
+.inline-empty {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.inline-empty {
+  color: var(--muted);
+}
+
 @media (min-width: 720px) {
   .app-shell {
     padding: 24px 24px 56px;
@@ -466,5 +621,26 @@ h1 {
   .admin-main {
     grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
     align-items: start;
+  }
+
+  .filter-panel {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    align-items: end;
+  }
+
+  .wide-field {
+    grid-column: span 2;
+  }
+
+  .filter-actions {
+    grid-column: span 2;
+  }
+
+  .school-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .split-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

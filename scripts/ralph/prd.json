@@ -93,8 +93,8 @@
         "Add automated tests for API parameters, filters, sorting, and published-only behavior."
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented published-only school guide cards with /schools JSON content negotiation, /api/schools JSON alias, browser-rendered filters for year, keyword, guide status, application status, school type, and sorting by deadline, update time, or school name."
     },
     {
       "id": "US-007",
