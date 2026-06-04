@@ -46,8 +46,8 @@
         "Unit tests verify published-only filtering and year or school filtering."
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added immutable Guangdong seed data and dependency-free student-facing data access helpers with tests for published-only visibility and school/year filters."
     },
     {
       "id": "US-004",

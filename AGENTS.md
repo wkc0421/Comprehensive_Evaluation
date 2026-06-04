@@ -6,3 +6,4 @@
 - `npm run build` writes production files to `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`.
 - Quality scripts in `scripts/` are intentionally dependency-free and should ignore Ralph run logs and PRD source files.
 - PostgreSQL schema migrations live in `src/db/migrations`; keep migration validation dependency-free until a later story introduces database tooling.
+- Dependency-free seed fixtures and student-facing published-only data access helpers live in `src/db`; keep them in plain JavaScript until database tooling is introduced.

@@ -8,6 +8,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Quality scripts live in `scripts/` and intentionally avoid scanning Ralph run logs or source PRD docs.
 - `npm run build` creates `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`, and `dist/` is generated and ignored.
 - Core PostgreSQL schema migrations live in `src/db/migrations`; `src/db/schema.test.js` validates migration SQL statically without connecting to `DATABASE_URL`.
+- Seed fixtures and student-facing published-only data access helpers live in `src/db` as plain JavaScript modules; use them before introducing database tooling.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -72,4 +73,34 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Keep migrations under `src/db/migrations` so `npm run build` copies them into `dist/src`.
   - The schema validator intentionally inspects migration SQL instead of opening a PostgreSQL connection, so it can run without `DATABASE_URL` or production data.
   - Official curated data should use the shared `official_data_status` values: `draft`, `pending_review`, `published`, and `archived`.
+---
+
+## Thu Jun  4 11:06:52 AM CST 2026 - Ralph runner
+- Iteration: 2
+- Story: US-002
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-104510/iteration-2
+---
+
+## Thu Jun  4 11:13:38 AM CST 2026 - US-003
+- What was implemented
+  - Added immutable Guangdong seed data for three schools, 2024 through 2026 guides, all official guide statuses, timeline nodes, score formulas, and published interview experiences.
+  - Added dependency-free student-facing data access helpers for listing and reading schools, guides, timeline events, score formulas, and experiences.
+  - Ensured South China University of Technology 2025 has no published score formula so calculator unavailable behavior can be tested.
+  - Added unit tests for fixture coverage, published-only filtering, and year or school filtering.
+- Files changed
+  - `AGENTS.md`, `package.json`
+  - `src/db/seed-data.js`, `src/db/data-access.js`, `src/db/data-access.test.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+- Browser verification result, if this was a UI story
+  - Not applicable; this story only added seed data, access helpers, and unit tests.
+- **Learnings for future iterations:**
+  - The seed data uses stable string IDs in `seedIds` so later API and UI tests can target exact schools, guides, formulas, and experiences without duplicating literals.
+  - Public data access helpers intentionally enforce parent visibility: timeline events and formulas are hidden unless their guide and school are published.
+  - Missing formula behavior can be exercised with South China University of Technology 2025 via `getScoreFormula({ schoolId: seedIds.schools.scut, year: 2025 })`.
 ---
