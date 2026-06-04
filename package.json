@@ -10,7 +10,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "node scripts/typecheck.mjs",
     "lint": "node scripts/lint.mjs",
-    "test": "node --test src/app.test.js src/lib/product.test.js"
+    "test": "node --test src/app.test.js src/lib/product.test.js src/db/schema.test.js"
   },
   "engines": {
     "node": ">=18.19.0"

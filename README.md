@@ -52,3 +52,5 @@ Mobile-first Node.js web application for Guangdong comprehensive evaluation admi
 PostgreSQL is the MVP database target. The first implementation should use migrations against `DATABASE_URL` and keep official guide records auditable by school, year, Guangdong scope, status, and version.
 
 MVP search should use PostgreSQL full-text search with generated `tsvector` columns or expression indexes. This keeps keyword search in the primary database for the initial scope and avoids introducing a separate search service before the content model stabilizes.
+
+Core schema migrations live in `src/db/migrations`. The current data model migration defines the PostgreSQL tables for users, schools, official guides, timelines, formulas, experiences, interactions, reports, source documents, and ingestion runs. Schema validation runs through `npm test` and reads the migration files locally without connecting to `DATABASE_URL`.

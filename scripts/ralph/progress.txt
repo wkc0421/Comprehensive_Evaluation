@@ -7,6 +7,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Server-rendered HTML is composed in `src/pages.js`, shared product metadata is in `src/lib/product.js`, and global mobile-first CSS is in `public/styles.css`.
 - Quality scripts live in `scripts/` and intentionally avoid scanning Ralph run logs or source PRD docs.
 - `npm run build` creates `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`, and `dist/` is generated and ignored.
+- Core PostgreSQL schema migrations live in `src/db/migrations`; `src/db/schema.test.js` validates migration SQL statically without connecting to `DATABASE_URL`.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -41,4 +42,34 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Use `src/app.js` for route handling and keep `src/server.js` limited to process startup.
   - The scaffold intentionally has no third-party dependencies; introducing a framework or database client should be part of a later story and come with updated checks.
   - Linting is scoped to scaffold-owned files because existing PRD docs contain formatting that should not block app checks.
+---
+
+## Thu Jun  4 11:00:58 AM CST 2026 - Ralph runner
+- Iteration: 1
+- Story: US-001
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-104510/iteration-1
+---
+
+## Thu Jun  4 11:05:28 AM CST 2026 - US-002
+- What was implemented
+  - Added the PostgreSQL core data model migration for users, schools, admission guides, timeline events, score formulas, experiences, experience verifications, interactions, reports, source documents, and ingestion runs.
+  - Modeled admission guides by school, year, Guangdong scope, official data status, and version, with uniqueness for each school/year/scope/version and one current guide per school/year/scope.
+  - Added the interaction uniqueness constraint for one action per user, target type, target id, and action.
+  - Added dependency-free schema validation tests that read the migration locally without production data.
+- Files changed
+  - `AGENTS.md`, `README.md`, `package.json`
+  - `scripts/lint.mjs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+  - `src/db/schema.js`, `src/db/schema.test.js`, `src/db/migrations/001_core_data_model.sql`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+- Browser verification result, if this was a UI story
+  - Not applicable; this story only added schema and validation artifacts.
+- **Learnings for future iterations:**
+  - Keep migrations under `src/db/migrations` so `npm run build` copies them into `dist/src`.
+  - The schema validator intentionally inspects migration SQL instead of opening a PostgreSQL connection, so it can run without `DATABASE_URL` or production data.
+  - Official curated data should use the shared `official_data_status` values: `draft`, `pending_review`, `published`, and `archived`.
 ---

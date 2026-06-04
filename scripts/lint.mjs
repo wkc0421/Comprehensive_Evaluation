@@ -8,7 +8,7 @@ const textFiles = [
   "package-lock.json",
   "README.md",
   ".env.example",
-  ...(await collectFiles("src", [".js"])),
+  ...(await collectFiles("src", [".js", ".sql"])),
   ...(await collectFiles("public", [".css"])),
   ...(await collectFiles("scripts", [".mjs"]))
 ];

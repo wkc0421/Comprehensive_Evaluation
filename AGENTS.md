@@ -5,3 +5,4 @@
 - Server-rendered HTML belongs in `src/pages.js`, shared product metadata belongs in `src/lib/product.js`, and mobile-first styling belongs in `public/styles.css`.
 - `npm run build` writes production files to `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`.
 - Quality scripts in `scripts/` are intentionally dependency-free and should ignore Ralph run logs and PRD source files.
+- PostgreSQL schema migrations live in `src/db/migrations`; keep migration validation dependency-free until a later story introduces database tooling.

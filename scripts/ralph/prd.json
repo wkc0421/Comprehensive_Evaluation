@@ -31,8 +31,8 @@
         "Add schema tests or migration validation that can run without touching production data."
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added a PostgreSQL core data model migration and dependency-free static migration tests covering required tables, guide versioning and Guangdong scope, official data statuses, and interaction uniqueness."
     },
     {
       "id": "US-003",
