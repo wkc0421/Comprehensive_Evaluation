@@ -1,0 +1,335 @@
+{
+  "project": "Guangdong Comprehensive Evaluation MVP",
+  "branchName": "ralph/guangdong-comprehensive-evaluation-mvp",
+  "description": "Build a mobile-first web platform for Guangdong comprehensive evaluation admissions guides, timelines, score calculation, structured interview experiences, and audited admin workflows.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Scaffold the Node mobile web application",
+      "description": "Create the initial Node.js API and mobile-first web foundation for the student and admin experiences.",
+      "acceptanceCriteria": [
+        "Initialize a Node.js web project suitable for a mobile-first student web app, admin web app, and API routes.",
+        "Add package scripts for dev, build, typecheck, lint, and test, and document them in README.",
+        "Add an environment example with DATABASE_URL, object storage placeholders, and local authentication configuration.",
+        "Use PostgreSQL as the MVP database target and document PostgreSQL full-text search as the MVP search approach.",
+        "Render a working student home route and an admin route placeholder without runtime errors.",
+        "Run the available typecheck, lint, and test commands successfully."
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented a dependency-free Node.js mobile web/API scaffold with student home, admin placeholder, health API, required scripts, environment template, and PostgreSQL full-text search documentation."
+    },
+    {
+      "id": "US-002",
+      "title": "Create the core data model",
+      "description": "Define persistent models for users, schools, guides, timelines, formulas, experiences, interactions, reports, source documents, and ingestion runs.",
+      "acceptanceCriteria": [
+        "Add database schema or migrations for users, schools, admission_guides, timeline_events, score_formulas, experiences, experience_verifications, interactions, reports, source_documents, and ingestion_runs.",
+        "Model admission guides as school plus year plus Guangdong scope with status and version fields.",
+        "Add a unique constraint preventing duplicate interaction actions for the same user and target.",
+        "Represent official data statuses as draft, pending_review, published, and archived where required.",
+        "Add schema tests or migration validation that can run without touching production data."
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Add seed data and data access helpers",
+      "description": "Provide sample Guangdong comprehensive evaluation data and reusable server-side data access helpers.",
+      "acceptanceCriteria": [
+        "Add seed data covering at least three schools, years 2024 through 2026, guide statuses, timeline nodes, score formulas, and published interview experiences.",
+        "Ensure at least one school year has no explicit score formula so calculator hiding behavior can be tested.",
+        "Create typed data access helpers for listing and reading schools, guides, timelines, formulas, and experiences.",
+        "Student-facing helpers return only published official data and published experiences.",
+        "Unit tests verify published-only filtering and year or school filtering."
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Implement authentication and roles",
+      "description": "Implement MVP login, sessions, user profile defaults, and role-based access control.",
+      "acceptanceCriteria": [
+        "Support production phone verification login, with a documented local OTP stub allowed only for development and tests.",
+        "Store user nickname, grade, default anonymous preference, role, and account status.",
+        "Persist only user, content_reviewer, data_reviewer, and admin in users.role; treat visitors as unauthenticated users rather than a stored role.",
+        "Block limited or banned users from restricted actions according to account status.",
+        "Phone number is used only for login, security, and risk control and is never returned in public-facing responses.",
+        "Add tests proving unauthenticated users cannot submit experiences, favorite, mark useful, report, view mine timeline, or access admin APIs."
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Build the student home page",
+      "description": "Create a mobile-first home page for high school students to discover current admissions progress and important content.",
+      "acceptanceCriteria": [
+        "Home page includes grade-aware entry points for high school grade one, grade two, and grade three users.",
+        "Home page shows Guangdong comprehensive evaluation annual progress, nearest deadlines, latest published guides, and latest high-quality experiences.",
+        "No admission probability prediction, ranking prediction, paid consulting, open comments, or private messaging is shown.",
+        "Page has no horizontal scrolling at 375px, 390px, and 430px viewport widths.",
+        "Verify the page in browser automation and run the available UI or component tests."
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Implement the school list",
+      "description": "Allow students to browse and filter Guangdong comprehensive evaluation schools and guide cards.",
+      "acceptanceCriteria": [
+        "Implement GET /schools with year, status, and keyword parameters for the school list API.",
+        "Add a school list page with filters for year, school keyword, guide status, application status, and school type.",
+        "Support sorting by application deadline, update time, and school name.",
+        "Each card shows school name, year, application status, key timeline nodes, formula type or availability, and whether experiences exist.",
+        "Visitors only see published guide data and never see draft or pending_review guides.",
+        "Add automated tests for API parameters, filters, sorting, and published-only behavior."
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Implement the school detail page",
+      "description": "Create a detail page that aggregates official guide data, timeline, formula entry, majors, requirements, rules, fees, and experiences for one school.",
+      "acceptanceCriteria": [
+        "Implement GET /schools/:id with a year parameter returning school base information, current-year guide, timeline, formula, and featured experiences.",
+        "School detail page accepts a year parameter and defaults to the current or latest available year.",
+        "Display school base information, guide summary, official source link, application link, timeline, score formula entry, majors, subject requirements, academic test requirements, assessment method, admission rule, fees, and contact information.",
+        "Missing key fields render as official not specified or pending supplement rather than invented content.",
+        "Featured experiences prioritize the same school, recent two years, verified status, and useful count.",
+        "Verify the page in browser automation on mobile and desktop viewports."
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Implement admission guide details and versioning",
+      "description": "Expose official guide details with source attribution, structured fields, and version history summary.",
+      "acceptanceCriteria": [
+        "Add guide list and guide detail APIs matching the PRD parameters for year, schoolId, status, and keyword.",
+        "Guide detail shows official source URL, source type, source published or updated time, structured admission fields, and version summary.",
+        "Visitors can only retrieve published guide details.",
+        "Guide field updates create a new version number rather than silently overwriting the published version.",
+        "Tests cover guide detail access control, source attribution, and version increment behavior."
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Build timelines and school favorites",
+      "description": "Provide public and personalized timeline views generated from guide fields and user school favorites.",
+      "acceptanceCriteria": [
+        "Implement GET /timeline with year, schoolIds, and mine parameters; mine=true requires login and returns only favorited school events.",
+        "Generate timeline events for guide publication, application start, application deadline, preliminary review result, confirmation or payment, school assessment, shortlist publication, volunteer application, and admission publication.",
+        "Unauthenticated visitors can view the full Guangdong timeline.",
+        "Logged-in users can favorite and unfavorite schools and view a mine timeline containing only favorited school events.",
+        "Each timeline node shows status as not started, active, due soon, or ended based on configured dates.",
+        "Unknown dates display as to be announced and never use fabricated dates.",
+        "MVP reminders are site-only timeline or personal-center indicators and do not send SMS, WeChat, email, or external notifications.",
+        "Tests cover full timeline, mine timeline authentication, favorite persistence, status calculation, site-only reminders, and unknown date rendering."
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Implement the score formula engine",
+      "description": "Create configurable score calculation logic for different schools and years.",
+      "acceptanceCriteria": [
+        "Implement POST /score/calculate with schoolId, year, and scores input and with total score, contribution breakdown, formula explanation, and source link output.",
+        "Support weighted sum formulas such as 60/30/10 and 85/15.",
+        "Support inputs with different max scores and normalize or weight them according to formula configuration.",
+        "Reject missing required scores and scores lower than 0 or greater than the configured max.",
+        "Return total score, per-input contribution, formula name, explanation, official source link, and disclaimer.",
+        "Unit tests cover 60/30/10, 85/15, custom weights, missing inputs, out-of-range inputs, and no-formula cases."
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Build the score calculator page",
+      "description": "Let students choose school and year, enter scores, and view calculated comprehensive score results.",
+      "acceptanceCriteria": [
+        "Calculator page lets users complete calculation in three steps: choose school and year, enter scores, and view results.",
+        "Calculator page loads the matching published formula for the selected school and year.",
+        "When no clear formula exists for a school year, the calculation form is hidden and a clear unavailable state is shown.",
+        "Form validation prevents calculation when required scores are missing or outside allowed ranges.",
+        "Result displays comprehensive score, contribution breakdown, formula explanation, official source, and disclaimer that it is not admission probability.",
+        "Verify calculator flows with browser automation and run the formula unit tests."
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Implement the experience browsing experience",
+      "description": "Create the public structured interview experience list and cards.",
+      "acceptanceCriteria": [
+        "Implement GET /experiences with schoolId, year, stage, assessmentType, verified, and sort parameters.",
+        "Experience list supports filters for school, year, stage, assessment type, verified status, and sort order.",
+        "Sort options include newest, useful count, and verified first.",
+        "Cards show school, year, stage, assessment format, summary, verified label, useful count, and historical reference notice for experiences older than two years.",
+        "Only published experiences are visible to visitors.",
+        "Tests cover API parameters, filtering, sorting, published-only visibility, verified labels, and historical reference notices."
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Implement structured experience submission",
+      "description": "Allow logged-in users to submit structured interview experiences with optional anonymous display and verification materials.",
+      "acceptanceCriteria": [
+        "Implement POST /experiences for logged-in users to submit structured experiences.",
+        "Only logged-in users can open and submit the experience form.",
+        "Form captures year, school, major group, candidate track, stage, shortlisted status, optional admitted status, assessment types, optional location, process, question types, preparation, difficulty score, pressure score, differentiation score, advice, anonymous preference, and optional verification material metadata.",
+        "New submissions enter pending_review and are not visible on the student side until approved.",
+        "Anonymous display never exposes phone, real name, source account, or verification materials.",
+        "Tests cover required fields, pending_review default status, anonymous output, and unauthenticated blocking."
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Add user interactions for favorites, useful votes, and reports",
+      "description": "Support logged-in user interactions for schools and experiences.",
+      "acceptanceCriteria": [
+        "Implement POST /favorites for favoriting schools or experiences and DELETE /favorites/:id for removing favorites.",
+        "Implement POST /experiences/:id/useful so logged-in users can mark an experience useful only once.",
+        "Implement POST /reports so logged-in users can report an experience or user with reason and description.",
+        "Logged-in users can favorite schools and experiences and remove favorites.",
+        "Unauthenticated users receive a clear login-required response for all restricted interactions.",
+        "Tests verify duplicate useful votes are prevented, favorites are persisted, reports enter pending status, and restricted actions require login."
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Build the personal center",
+      "description": "Create the logged-in user center for favorites, submissions, review status, notifications, and profile preferences.",
+      "acceptanceCriteria": [
+        "Implement GET /me, GET /me/favorites, and GET /me/experiences for the logged-in personal center.",
+        "Personal center shows favorited schools, favorited experiences, submitted experiences, submission review status, site notifications, and account preferences.",
+        "Users can update nickname, grade, and default anonymous preference.",
+        "Submission status labels include draft, pending_review, published, rejected, and hidden where applicable.",
+        "Phone number is never displayed in public-facing content.",
+        "Browser tests verify personal center navigation and preference update behavior."
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Create admin access and official guide review",
+      "description": "Implement admin role protection and workflows for reviewing, publishing, returning, supplementing, and archiving official guide data.",
+      "acceptanceCriteria": [
+        "All admin routes and APIs require a data_reviewer or admin role where appropriate.",
+        "Implement POST /admin/guides, POST /admin/guides/:id/submit-review, POST /admin/guides/:id/publish, and POST /admin/guides/:id/archive.",
+        "Admin guide review page lists drafts and pending_review guides.",
+        "Review page shows extracted fields beside official source attribution for manual checking.",
+        "Admins can publish, return, mark pending supplement, and archive guide versions.",
+        "Publishing, returning, marking supplement, and archiving records operator identity and operation time.",
+        "Tests prove non-admin users cannot access admin guide APIs and published guides become visible to student APIs only after approval."
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Implement admin timeline and formula management",
+      "description": "Allow data reviewers to manage generated timeline events and score formulas with audit-friendly controls.",
+      "acceptanceCriteria": [
+        "Admin timeline page shows guide-generated events and allows manual override of date, title, and description.",
+        "Manual timeline overrides require operator identity and override reason.",
+        "Formula management supports inputs schema, max scores, weights or custom config, explanation, source URL, status, and publication.",
+        "Implement POST /admin/formulas and POST /admin/formulas/:id/publish for creating, updating, and publishing formula drafts.",
+        "Formula publication requires at least one passing sample calculation test.",
+        "Formula and timeline publish or override actions record operator identity and operation time.",
+        "Tests cover override reason requirements, formula sample validation, and published formula visibility in the calculator."
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Implement admin moderation workflows",
+      "description": "Provide review queues for experiences, verification materials, and reports.",
+      "acceptanceCriteria": [
+        "Implement GET /admin/experiences and POST /admin/experiences/:id/review for experience moderation.",
+        "Implement GET /admin/verifications and POST /admin/verifications/:id/review for verification material review.",
+        "Implement GET /admin/reports and POST /admin/reports/:id/resolve for report handling.",
+        "Content reviewers can list pending experiences and review them as approved, returned, hidden, or banned where applicable.",
+        "Sensitive content and privacy warning results are shown to reviewers before approval.",
+        "Moderation blocks or requires rewrite for content from ongoing exams, undisclosed specific original questions, true-question sales, material ghostwriting, guaranteed admission claims, external traffic scams, and personal sensitive information.",
+        "Verification material review is restricted to reviewers and admins and never exposes raw material URLs to the student side.",
+        "Report handling supports keeping, hiding, deleting, or limiting the target account with a resolution note.",
+        "Tests cover moderation status transitions, prohibited-content handling, verification visibility restrictions, and report resolution."
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Build AI ingestion draft workflow",
+      "description": "Implement the AI-assisted official source ingestion workflow as draft-only infrastructure.",
+      "acceptanceCriteria": [
+        "Implement POST /admin/ingestion-runs, GET /admin/ingestion-runs, and GET /admin/ingestion-runs/:id.",
+        "Admins can create ingestion runs with year, school, or keyword inputs.",
+        "System stores source document candidates with URL, title, source type, fetched time, content hash, raw text asset URL, and candidate, accepted, or rejected status.",
+        "System stores extracted guide fields, timeline candidates, formula candidates, confidence score, and review notes in the ingestion run.",
+        "Official source priority is Guangdong Education Examination Authority, then CHSI/Yangguang Gaokao, then university undergraduate admissions sites, then other official sources.",
+        "Third-party information sites can only be saved as discovery clues and cannot be final authoritative sources for published fields.",
+        "AI or extraction results can create drafts only and can never publish directly to the student side.",
+        "Tests cover source priority ordering, third-party source rejection for final authority, draft-only creation, and traceability from each extracted field to source document or manual note."
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Complete end-to-end quality gates",
+      "description": "Add cross-feature tests and UI verification for the MVP acceptance criteria.",
+      "acceptanceCriteria": [
+        "End-to-end tests cover a grade-three user favoriting a school and viewing application deadline nodes in my timeline.",
+        "End-to-end tests cover a grade-three user using a school detail calculator and viewing formula source attribution.",
+        "End-to-end tests cover a grade-two user viewing 2024 through 2026 guide changes and school experiences.",
+        "End-to-end tests cover a grade-one user entering Guangdong comprehensive evaluation basics and the school overview from the home page.",
+        "End-to-end tests cover a user submitting an experience, admin approval, and student-side display.",
+        "Data quality checks report 2024 through 2026 Guangdong guide coverage against the 95% target and verify published guides have official source link, school, year, title, and source published or updated time.",
+        "Data quality checks verify each calculable formula has a source link and explanation, and no draft or pending_review official data appears on the student side.",
+        "Mobile browser verification at 375px, 390px, and 430px shows no horizontal scrolling on core pages.",
+        "Run build, typecheck, lint, unit tests, and browser tests successfully before marking the MVP complete."
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

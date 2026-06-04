@@ -1,0 +1,18 @@
+{
+  "name": "guangdong-comprehensive-evaluation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile-first web platform for Guangdong comprehensive evaluation admissions guides, timelines, score calculation, and audited admin workflows.",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node dist/src/server.js",
+    "build": "node scripts/build.mjs",
+    "typecheck": "node scripts/typecheck.mjs",
+    "lint": "node scripts/lint.mjs",
+    "test": "node --test src/app.test.js src/lib/product.test.js"
+  },
+  "engines": {
+    "node": ">=18.19.0"
+  }
+}

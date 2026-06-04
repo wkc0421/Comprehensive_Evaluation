@@ -1,0 +1,44 @@
+# Ralph Progress Log
+Started: Thu Jun  4 12:37:07 AM CST 2026
+---
+
+## Codebase Patterns
+- The app scaffold is dependency-free Node.js ESM; keep routing in `src/app.js` and server startup in `src/server.js`.
+- Server-rendered HTML is composed in `src/pages.js`, shared product metadata is in `src/lib/product.js`, and global mobile-first CSS is in `public/styles.css`.
+- Quality scripts live in `scripts/` and intentionally avoid scanning Ralph run logs or source PRD docs.
+- `npm run build` creates `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`, and `dist/` is generated and ignored.
+---
+
+## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
+- Iteration: 1
+- Story: US-001
+- Status: transient
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-073219/iteration-1
+---
+
+## Thu Jun  4 10:57:57 AM CST 2026 - US-001
+- What was implemented
+  - Scaffolded a dependency-free Node.js mobile-first web application with a student home route, admin placeholder route, static CSS, and `/api/health`.
+  - Added package scripts for dev, build, typecheck, lint, and test, plus README and `.env.example` documentation.
+  - Documented PostgreSQL as the MVP database target and PostgreSQL full-text search as the MVP search approach.
+- Files changed
+  - `AGENTS.md`, `.env.example`, `.gitignore`, `README.md`, `package.json`, `package-lock.json`
+  - `public/styles.css`
+  - `src/app.js`, `src/server.js`, `src/pages.js`, `src/app.test.js`, `src/lib/product.js`, `src/lib/product.test.js`
+  - `scripts/build.mjs`, `scripts/file-utils.mjs`, `scripts/lint.mjs`, `scripts/typecheck.mjs`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm install --package-lock-only` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `npm test` passed
+  - Runtime HTTP smoke checks with `npm run dev` and `curl` passed for `/`, `/admin`, `/api/health`, and `/styles.css`
+  - Production HTTP smoke checks with `npm start` after build passed for `/`, `/admin`, `/api/health`, and `/styles.css`
+- Browser verification result, if this was a UI story
+  - Browser automation tools were unavailable in this Codex session, so browser verification was not performed.
+- **Learnings for future iterations:**
+  - Use `src/app.js` for route handling and keep `src/server.js` limited to process startup.
+  - The scaffold intentionally has no third-party dependencies; introducing a framework or database client should be part of a later story and come with updated checks.
+  - Linting is scoped to scaffold-owned files because existing PRD docs contain formatting that should not block app checks.
+---
