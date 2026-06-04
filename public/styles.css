@@ -630,6 +630,16 @@ h1 {
   padding: 11px;
 }
 
+.form-success {
+  border-radius: 8px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.45;
+  padding: 11px;
+}
+
 .school-list {
   display: grid;
   gap: 12px;
@@ -730,6 +740,53 @@ h1 {
 .site-badge {
   background: #eff6ff;
   color: var(--support-blue);
+}
+
+.personal-summary,
+.personal-grid,
+.personal-panel,
+.personal-list,
+.personal-card,
+.preference-form {
+  display: grid;
+  gap: 12px;
+}
+
+.personal-summary {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.personal-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.personal-panel,
+.personal-card,
+.preference-form {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.personal-panel {
+  align-content: start;
+}
+
+.personal-card h3 {
+  font-size: 1.02rem;
+  line-height: 1.35;
+}
+
+.personal-card p {
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.submitted-list {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .reference-notice {
@@ -1138,6 +1195,15 @@ h1 {
   }
 
   .experience-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .personal-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .personal-grid,
+  .submitted-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

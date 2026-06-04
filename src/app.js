@@ -25,6 +25,7 @@ import {
   renderExperienceListPage,
   renderExperienceSubmissionPage,
   renderNotFound,
+  renderPersonalCenterPage,
   renderSchoolDetailPage,
   renderSchoolListPage,
   renderScoreCalculatorPage,
@@ -53,6 +54,13 @@ const experienceSortAliases = new Map([
 ]);
 const favoriteTargetTypes = new Set(["school", "experience"]);
 const reportTargetTypes = new Set(["experience", "user"]);
+const submissionStatusLabels = Object.freeze({
+  draft: "Draft",
+  pending_review: "Pending Review",
+  published: "Published",
+  rejected: "Rejected",
+  hidden: "Hidden"
+});
 
 function sendHtml(response, statusCode, html) {
   response.writeHead(statusCode, {
@@ -373,6 +381,20 @@ function shouldSendExperienceSubmissionJson(request, url) {
   return accept.length === 0 || accept.includes("*/*") || accept.includes("application/json");
 }
 
+function shouldSendPersonalCenterJson(request, url) {
+  if (url.pathname.startsWith("/api/") || url.searchParams.get("format") === "json") {
+    return true;
+  }
+
+  const accept = headerValue(request.headers, "accept") ?? "";
+
+  if (accept.includes("text/html")) {
+    return false;
+  }
+
+  return accept.length === 0 || accept.includes("*/*") || accept.includes("application/json");
+}
+
 function guideSourceJson(guide) {
   return {
     officialSourceUrl: guide.officialSourceUrl,
@@ -677,6 +699,145 @@ function favoriteJson(favorite) {
   };
 }
 
+function schoolSummaryJson(school) {
+  if (!school) {
+    return null;
+  }
+
+  return {
+    id: school.id,
+    name: school.name,
+    provinceScope: school.provinceScope,
+    city: school.city,
+    schoolType: school.schoolType,
+    officialWebsiteUrl: school.officialWebsiteUrl
+  };
+}
+
+function guideSummaryJson(guide) {
+  if (!guide) {
+    return null;
+  }
+
+  return {
+    id: guide.id,
+    year: guide.admissionYear,
+    guideTitle: guide.guideTitle,
+    applicationStatus: guide.applicationStatus,
+    applicationDeadlineAt: guide.applicationDeadlineAt,
+    officialSourceUrl: guide.officialSourceUrl,
+    updatedAt: guide.updatedAt
+  };
+}
+
+function favoriteSchoolJson(favorite) {
+  const detail = getSchoolDetail({ schoolId: favorite.targetId });
+
+  return {
+    ...favoriteJson(favorite),
+    visibility: detail ? "published" : "unavailable",
+    school: schoolSummaryJson(detail?.school ?? getSchoolById(favorite.targetId)),
+    guide: guideSummaryJson(detail?.guide)
+  };
+}
+
+function favoriteExperienceJson(favorite) {
+  const experience = getExperienceById(favorite.targetId);
+
+  return {
+    ...favoriteJson(favorite),
+    visibility: experience ? "published" : "unavailable",
+    experience: experience ? experienceListItemJson(experience) : null
+  };
+}
+
+function buildFavoriteGroups(user, interactionStore) {
+  const favorites = interactionStore.listFavorites({ userId: user.id });
+  const schools = favorites
+    .filter((favorite) => favorite.targetType === "school")
+    .map(favoriteSchoolJson);
+  const experiences = favorites
+    .filter((favorite) => favorite.targetType === "experience")
+    .map(favoriteExperienceJson);
+
+  return {
+    count: favorites.length,
+    schools,
+    experiences,
+    all: [...schools, ...experiences]
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  };
+}
+
+function submissionStatusLabel(status) {
+  return submissionStatusLabels[status] ?? humanizeToken(status);
+}
+
+function submittedExperienceJson(experience) {
+  const school = getSchoolById(experience.schoolId);
+
+  return {
+    ...experience,
+    school: schoolSummaryJson(school),
+    statusLabel: submissionStatusLabel(experience.status),
+    verification: {
+      ...experience.verification,
+      statusLabel: submissionStatusLabel(experience.verification.status)
+    }
+  };
+}
+
+function listPersonalSubmissions(user, experienceSubmissionStore) {
+  return experienceSubmissionStore
+    .listSubmissions({ userId: user.id })
+    .map(submittedExperienceJson);
+}
+
+function siteNotificationJson(reminder) {
+  return {
+    ...reminder,
+    statusLabel: timelineStatusLabel(reminder.status),
+    school: schoolSummaryJson(getSchoolById(reminder.schoolId))
+  };
+}
+
+function buildPersonalNotifications(user, interactionStore, now) {
+  const favoriteSchoolIds = interactionStore.listFavoriteSchoolIds(user.id);
+
+  if (favoriteSchoolIds.length === 0) {
+    return [];
+  }
+
+  const events = listTimelineNodes({
+    year: latestPublishedAdmissionYear(),
+    schoolIds: favoriteSchoolIds,
+    referenceDate: currentReferenceDate(now)
+  });
+
+  return buildSiteTimelineReminders(events).map(siteNotificationJson);
+}
+
+function personalPreferencesJson(user) {
+  return {
+    nickname: user.nickname,
+    grade: user.grade,
+    defaultAnonymous: user.defaultAnonymous
+  };
+}
+
+function buildPersonalCenterResult({ user, interactionStore, experienceSubmissionStore, now }) {
+  const submittedExperiences = listPersonalSubmissions(user, experienceSubmissionStore);
+
+  return {
+    user,
+    preferences: personalPreferencesJson(user),
+    favorites: buildFavoriteGroups(user, interactionStore),
+    submittedExperiences,
+    notifications: buildPersonalNotifications(user, interactionStore, now),
+    statusLabels: submissionStatusLabels
+  };
+}
+
 function currentReferenceDate(now) {
   if (typeof now !== "function") {
     return new Date();
@@ -962,6 +1123,56 @@ function assertReportBody(body, authService) {
   };
 }
 
+function scalarBodyValue(value) {
+  if (Array.isArray(value)) {
+    return value.find((item) => String(item ?? "").trim().length > 0) ?? value[0];
+  }
+
+  return value;
+}
+
+function profileBoolean(value, label) {
+  const rawValue = scalarBodyValue(value);
+
+  if (typeof rawValue === "boolean") {
+    return rawValue;
+  }
+
+  const normalized = String(rawValue ?? "").trim().toLowerCase();
+
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  throw new RequestError("invalid_profile", `${label} must be true or false.`);
+}
+
+function profileUpdateFromBody(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new RequestError("invalid_profile", "Profile updates must be provided as an object.");
+  }
+
+  const profile = {};
+
+  if (Object.hasOwn(body, "nickname")) {
+    profile.nickname = scalarBodyValue(body.nickname);
+  }
+
+  if (Object.hasOwn(body, "grade")) {
+    profile.grade = scalarBodyValue(body.grade);
+  }
+
+  if (Object.hasOwn(body, "defaultAnonymous")) {
+    profile.defaultAnonymous = profileBoolean(body.defaultAnonymous, "Default anonymous preference");
+  }
+
+  return profile;
+}
+
 function calculateScoreFromBody(body) {
   return calculateScore({
     schoolId: body.schoolId,
@@ -1032,14 +1243,116 @@ export async function handleRequest(request, response, context = {}) {
     return;
   }
 
-  if (url.pathname === "/api/me" && request.method === "GET") {
+  if ((url.pathname === "/me" || url.pathname === "/api/me") && request.method === "GET") {
     const user = requireActiveUser(request, response, authService);
 
     if (!user) {
       return;
     }
 
-    sendJson(response, 200, { user });
+    const personalCenter = buildPersonalCenterResult({
+      user,
+      interactionStore,
+      experienceSubmissionStore,
+      now: context.now
+    });
+
+    if (shouldSendPersonalCenterJson(request, url)) {
+      sendJson(response, 200, personalCenter);
+      return;
+    }
+
+    sendHtml(response, 200, renderPersonalCenterPage({ personalCenter }));
+    return;
+  }
+
+  if ((url.pathname === "/me/favorites" || url.pathname === "/api/me/favorites") && request.method === "GET") {
+    const user = requireActiveUser(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    const favorites = buildFavoriteGroups(user, interactionStore);
+
+    sendJson(response, 200, {
+      count: favorites.count,
+      favorites
+    });
+    return;
+  }
+
+  if ((url.pathname === "/me/experiences" || url.pathname === "/api/me/experiences") && request.method === "GET") {
+    const user = requireActiveUser(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    const experiences = listPersonalSubmissions(user, experienceSubmissionStore);
+
+    sendJson(response, 200, {
+      count: experiences.length,
+      experiences,
+      statusLabels: submissionStatusLabels
+    });
+    return;
+  }
+
+  if (
+    (
+      url.pathname === "/me" ||
+      url.pathname === "/api/me" ||
+      url.pathname === "/me/preferences" ||
+      url.pathname === "/api/me/preferences"
+    ) &&
+    (request.method === "PATCH" || request.method === "POST")
+  ) {
+    let user = requireActiveUser(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const body = await readStructuredBody(request);
+      user = authService.updateUserProfile(user.id, profileUpdateFromBody(body));
+      const personalCenter = buildPersonalCenterResult({
+        user,
+        interactionStore,
+        experienceSubmissionStore,
+        now: context.now
+      });
+
+      if (shouldSendPersonalCenterJson(request, url)) {
+        sendJson(response, 200, personalCenter);
+        return;
+      }
+
+      sendHtml(response, 200, renderPersonalCenterPage({
+        personalCenter,
+        notice: "Preferences updated"
+      }));
+    } catch (error) {
+      if (!shouldSendPersonalCenterJson(request, url)) {
+        const personalCenter = buildPersonalCenterResult({
+          user,
+          interactionStore,
+          experienceSubmissionStore,
+          now: context.now
+        });
+
+        sendHtml(response, errorStatus(error), renderPersonalCenterPage({
+          personalCenter,
+          error: error.message
+        }));
+        return;
+      }
+
+      const statusCode = error instanceof AuthError || error instanceof RequestError ? errorStatus(error) : 500;
+      sendError(response, statusCode, error.code ?? "profile_error", error.message);
+    }
+
     return;
   }
 

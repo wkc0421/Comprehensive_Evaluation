@@ -238,8 +238,8 @@
         "Browser tests verify personal center navigation and preference update behavior."
       ],
       "priority": 15,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented logged-in personal center APIs and page with favorites, submitted experiences, status labels, site-only notifications, account preferences, profile updates, privacy tests, and browser verification."
     },
     {
       "id": "US-016",

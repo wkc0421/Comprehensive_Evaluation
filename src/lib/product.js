@@ -8,7 +8,8 @@ export const studentNavigation = [
   { href: "/schools", label: "Schools" },
   { href: "/timeline", label: "Timeline" },
   { href: "/calculator", label: "Calculator" },
-  { href: "/experiences", label: "Experiences" }
+  { href: "/experiences", label: "Experiences" },
+  { href: "/me", label: "Me" }
 ];
 
 export const adminNavigation = [

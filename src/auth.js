@@ -352,6 +352,33 @@ export function createAuthService(options = {}) {
 
     createSessionForUser,
 
+    updateUserProfile(userId, profile = {}) {
+      const user = usersById.get(userId);
+
+      if (!user) {
+        throw new AuthError("unknown_user", "User does not exist.", 404);
+      }
+
+      if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+        throw new AuthError("invalid_profile", "Profile updates must be provided as an object.");
+      }
+
+      if (Object.hasOwn(profile, "nickname")) {
+        user.nickname = normalizeNickname(profile.nickname);
+      }
+
+      if (Object.hasOwn(profile, "grade")) {
+        user.grade = normalizeGrade(profile.grade);
+      }
+
+      if (Object.hasOwn(profile, "defaultAnonymous")) {
+        user.defaultAnonymous = normalizeDefaultAnonymous(profile.defaultAnonymous);
+      }
+
+      user.updatedAt = currentDate(options.now).toISOString();
+      return toPublicUser(user);
+    },
+
     getUserById(userId) {
       const user = usersById.get(userId);
       return user ? toPublicUser(user) : null;

@@ -33,6 +33,40 @@ function schoolNames(payload) {
   return payload.schools.map((schoolCard) => schoolCard.school.name);
 }
 
+function validExperienceSubmissionPayload(overrides = {}) {
+  return {
+    schoolId: seedIds.schools.sysu,
+    year: 2026,
+    majorGroup: "Science pilot group",
+    candidateTrack: "physics",
+    stage: "school_assessment",
+    shortlistedStatus: true,
+    admittedStatus: null,
+    assessmentTypes: ["structured_interview", "group_discussion"],
+    location: "Guangzhou campus",
+    processSummary: "Panel interview followed a group discussion and individual experiment design prompts.",
+    questionTypes: ["motivation", "experiment_design"],
+    preparationSummary: "Prepared personal statement examples and concise experiment explanations.",
+    difficultyScore: 4,
+    pressureScore: 3,
+    differentiationScore: 4,
+    advice: "Use specific coursework examples and do not share personal sensitive details.",
+    isAnonymous: true,
+    verificationMaterials: [
+      {
+        materialType: "shortlist_notice",
+        objectStorageKey: "private/submissions/sysu-shortlist.png",
+        metadata: {
+          sourceAccount: "source-account-123",
+          realName: "Student Real Name",
+          notes: "Screenshot metadata only"
+        }
+      }
+    ],
+    ...overrides
+  };
+}
+
 describe("web routes", () => {
   let authService;
   let baseUrl;
@@ -739,6 +773,196 @@ describe("web routes", () => {
     assertNoPhoneFields(meBody);
   });
 
+  it("returns personal center data for favorites, submissions, notifications, and preferences", async () => {
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000021",
+      nickname: "Personal student",
+      grade: "high_school_g3",
+      defaultAnonymous: true
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(user.id)).split(";")[0];
+
+    await fetch(`${baseUrl}/api/favorites`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ targetType: "school", targetId: seedIds.schools.sysu })
+    });
+    await fetch(`${baseUrl}/api/favorites`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ targetType: "experience", targetId: seedIds.experiences.sysu2026 })
+    });
+
+    const submissionResponse = await fetch(`${baseUrl}/api/experiences`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(validExperienceSubmissionPayload({
+        verificationMaterials: [
+          {
+            materialType: "shortlist_notice",
+            objectStorageKey: "private/personal-center-proof.png",
+            metadata: {
+              sourceAccount: "source-account-private",
+              realName: "Private Real Name"
+            }
+          }
+        ]
+      }))
+    });
+    const submissionBody = await submissionResponse.json();
+
+    assert.equal(submissionResponse.status, 201);
+    assert.equal(submissionBody.experience.status, "pending_review");
+
+    const meResponse = await fetch(`${baseUrl}/api/me`, {
+      headers: { cookie }
+    });
+    const meBody = await meResponse.json();
+    const serialized = JSON.stringify(meBody);
+
+    assert.equal(meResponse.status, 200);
+    assert.equal(meBody.user.id, user.id);
+    assert.equal(meBody.preferences.nickname, "Personal student");
+    assert.equal(meBody.preferences.grade, "high_school_g3");
+    assert.equal(meBody.preferences.defaultAnonymous, true);
+    assert.equal(meBody.favorites.count, 2);
+    assert.equal(meBody.favorites.schools[0].school.name, "Sun Yat-sen University");
+    assert.equal(meBody.favorites.schools[0].guide.year, 2026);
+    assert.equal(meBody.favorites.experiences[0].experience.id, seedIds.experiences.sysu2026);
+    assert.equal(meBody.submittedExperiences.length, 1);
+    assert.equal(meBody.submittedExperiences[0].id, submissionBody.experience.id);
+    assert.equal(meBody.submittedExperiences[0].status, "pending_review");
+    assert.equal(meBody.submittedExperiences[0].statusLabel, "Pending Review");
+    assert.equal(meBody.submittedExperiences[0].verification.statusLabel, "Pending Review");
+    assert.equal(meBody.statusLabels.draft, "Draft");
+    assert.equal(meBody.statusLabels.published, "Published");
+    assert.equal(meBody.statusLabels.rejected, "Rejected");
+    assert.equal(meBody.statusLabels.hidden, "Hidden");
+    assert.ok(meBody.notifications.some((notification) => {
+      return notification.delivery === "site_only" &&
+        notification.channels.includes("personal_center") &&
+        notification.eventKey === "application_deadline";
+    }));
+    assert.doesNotMatch(serialized, /sms|wechat|email|external/i);
+    assert.doesNotMatch(serialized, /source-account-private/);
+    assert.doesNotMatch(serialized, /Private Real Name/);
+    assert.doesNotMatch(serialized, /private\/personal-center-proof/);
+    assert.doesNotMatch(serialized, /verificationMaterials|phone|realName|sourceAccount|userId/i);
+    assertNoPhoneFields(meBody);
+
+    const favoritesResponse = await fetch(`${baseUrl}/api/me/favorites`, {
+      headers: { cookie }
+    });
+    const favoritesBody = await favoritesResponse.json();
+
+    assert.equal(favoritesResponse.status, 200);
+    assert.equal(favoritesBody.count, 2);
+    assert.equal(favoritesBody.favorites.schools[0].school.id, seedIds.schools.sysu);
+    assert.equal(favoritesBody.favorites.experiences[0].experience.id, seedIds.experiences.sysu2026);
+
+    const experiencesResponse = await fetch(`${baseUrl}/api/me/experiences`, {
+      headers: { cookie }
+    });
+    const experiencesBody = await experiencesResponse.json();
+
+    assert.equal(experiencesResponse.status, 200);
+    assert.equal(experiencesBody.count, 1);
+    assert.equal(experiencesBody.experiences[0].statusLabel, "Pending Review");
+    assert.equal(experiencesBody.statusLabels.pending_review, "Pending Review");
+    assertNoPhoneFields(experiencesBody);
+  });
+
+  it("renders the personal center page and updates account preferences", async () => {
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000022",
+      nickname: "Profile student",
+      grade: "high_school_g2",
+      defaultAnonymous: true
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(user.id)).split(";")[0];
+
+    const pageResponse = await fetch(`${baseUrl}/me`, {
+      headers: {
+        accept: "text/html",
+        cookie
+      }
+    });
+    const pageBody = await pageResponse.text();
+
+    assert.equal(pageResponse.status, 200);
+    assert.match(pageBody, /Personal center/);
+    assert.match(pageBody, /Me/);
+    assert.match(pageBody, /Site notifications/);
+    assert.match(pageBody, /Favorited schools/);
+    assert.match(pageBody, /Favorited experiences/);
+    assert.match(pageBody, /Submitted experiences/);
+    assert.match(pageBody, /Account preferences/);
+    assert.match(pageBody, /name="nickname"/);
+    assert.match(pageBody, /name="grade"/);
+    assert.match(pageBody, /name="defaultAnonymous"/);
+    assert.doesNotMatch(pageBody, /phone/i);
+
+    const formBody = new URLSearchParams({
+      nickname: "Updated profile student",
+      grade: "high_school_g1",
+      defaultAnonymous: "false"
+    });
+    const updateResponse = await fetch(`${baseUrl}/me/preferences`, {
+      method: "POST",
+      headers: {
+        accept: "text/html",
+        cookie,
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      body: formBody.toString()
+    });
+    const updateBody = await updateResponse.text();
+
+    assert.equal(updateResponse.status, 200);
+    assert.match(updateBody, /Preferences updated/);
+    assert.match(updateBody, /value="Updated profile student"/);
+    assert.match(updateBody, /High school grade one/);
+    assert.doesNotMatch(updateBody, /phone/i);
+
+    const apiResponse = await fetch(`${baseUrl}/api/me`, {
+      headers: { cookie }
+    });
+    const apiBody = await apiResponse.json();
+
+    assert.equal(apiResponse.status, 200);
+    assert.equal(apiBody.preferences.nickname, "Updated profile student");
+    assert.equal(apiBody.preferences.grade, "high_school_g1");
+    assert.equal(apiBody.preferences.defaultAnonymous, false);
+    assertNoPhoneFields(apiBody);
+
+    const patchResponse = await fetch(`${baseUrl}/api/me`, {
+      method: "PATCH",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        nickname: "Patched profile student",
+        defaultAnonymous: true
+      })
+    });
+    const patchBody = await patchResponse.json();
+
+    assert.equal(patchResponse.status, 200);
+    assert.equal(patchBody.preferences.nickname, "Patched profile student");
+    assert.equal(patchBody.preferences.defaultAnonymous, true);
+    assertNoPhoneFields(patchBody);
+  });
+
   it("persists school favorites and returns a mine timeline for favorited schools only", async () => {
     const user = authService.createUserForTesting({
       phoneNumber: "+8613000000005",
@@ -1006,6 +1230,14 @@ describe("web routes", () => {
       { method: "POST", path: `/api/experiences/${seedIds.experiences.sysu2026}/useful`, body: {} },
       { method: "POST", path: "/reports", body: { targetType: "experience", targetId: seedIds.experiences.sysu2026 } },
       { method: "POST", path: "/api/reports", body: { targetType: "experience", targetId: seedIds.experiences.sysu2026 } },
+      { method: "GET", path: "/me" },
+      { method: "GET", path: "/api/me" },
+      { method: "GET", path: "/me/favorites" },
+      { method: "GET", path: "/api/me/favorites" },
+      { method: "GET", path: "/me/experiences" },
+      { method: "GET", path: "/api/me/experiences" },
+      { method: "POST", path: "/me/preferences", body: { nickname: "Blocked student" } },
+      { method: "PATCH", path: "/api/me", body: { defaultAnonymous: false } },
       { method: "GET", path: "/api/timeline?mine=true" },
       { method: "GET", path: "/api/admin/health" }
     ];

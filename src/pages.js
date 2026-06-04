@@ -1498,6 +1498,264 @@ export function renderScoreCalculatorPage(filters = {}) {
   });
 }
 
+const gradeLabels = Object.freeze({
+  high_school_g1: "High school grade one",
+  high_school_g2: "High school grade two",
+  high_school_g3: "High school grade three",
+  graduated: "Graduated"
+});
+
+function gradeLabel(grade) {
+  return gradeLabels[grade] ?? humanizeToken(grade);
+}
+
+function renderPersonalFeedback({ notice = "", error = "" } = {}) {
+  if (error) {
+    return `<p class="form-error" role="alert">${escapeHtml(error)}</p>`;
+  }
+
+  if (notice) {
+    return `<p class="form-success" role="status">${escapeHtml(notice)}</p>`;
+  }
+
+  return "";
+}
+
+function renderPersonalSummary(personalCenter) {
+  const items = [
+    {
+      label: "Nickname",
+      value: personalCenter.user.nickname,
+      detail: gradeLabel(personalCenter.user.grade)
+    },
+    {
+      label: "Favorites",
+      value: personalCenter.favorites.count,
+      detail: `${personalCenter.favorites.schools.length} schools, ${personalCenter.favorites.experiences.length} experiences`
+    },
+    {
+      label: "Submissions",
+      value: personalCenter.submittedExperiences.length,
+      detail: "Structured experience records"
+    },
+    {
+      label: "Site notifications",
+      value: personalCenter.notifications.length,
+      detail: "Timeline reminders in personal center"
+    }
+  ];
+
+  return `<div class="personal-summary">${items
+    .map((item) => `<div class="status-item">
+      <span class="status-label">${escapeHtml(item.label)}</span>
+      <strong class="status-value">${escapeHtml(item.value)}</strong>
+      <span class="status-note">${escapeHtml(item.detail)}</span>
+    </div>`)
+    .join("")}</div>`;
+}
+
+function renderFavoriteSchoolCards(favorites) {
+  if (favorites.length === 0) {
+    return `<p class="empty-state">No favorited schools yet.</p>`;
+  }
+
+  return favorites
+    .map((favorite) => {
+      const school = favorite.school;
+      const guide = favorite.guide;
+      const schoolHref = school
+        ? `/schools/${escapeHtml(encodeURIComponent(school.id))}${guide ? `?year=${escapeHtml(guide.year)}` : ""}`
+        : "/schools";
+
+      return `<article class="personal-card">
+        <div class="badge-row">
+          <span class="badge">${escapeHtml(guide?.year ?? "School")}</span>
+          <span class="soft-badge">${escapeHtml(humanizeToken(favorite.visibility))}</span>
+        </div>
+        <h3><a href="${schoolHref}">${escapeHtml(school?.name ?? "Unavailable school")}</a></h3>
+        ${renderDetailRows([
+          { label: "City", value: displayValue(school?.city) },
+          { label: "School type", value: school ? humanizeToken(school.schoolType) : missingOfficialText },
+          { label: "Application status", value: guide ? humanizeToken(guide.applicationStatus) : missingOfficialText },
+          { label: "Application deadline", value: guide ? formatDate(guide.applicationDeadlineAt) : missingOfficialText }
+        ])}
+      </article>`;
+    })
+    .join("");
+}
+
+function renderFavoriteExperienceCards(favorites) {
+  if (favorites.length === 0) {
+    return `<p class="empty-state">No favorited experiences yet.</p>`;
+  }
+
+  return favorites
+    .map((favorite) => {
+      const experience = favorite.experience;
+      const school = experience?.school;
+
+      return `<article class="personal-card">
+        <div class="badge-row">
+          <span class="badge">${escapeHtml(experience?.year ?? "Experience")}</span>
+          <span class="soft-badge">${escapeHtml(experience?.verifiedLabel ?? humanizeToken(favorite.visibility))}</span>
+        </div>
+        <h3>${escapeHtml(school?.name ?? "Unavailable experience")}</h3>
+        <p>${escapeHtml(experience?.summary ?? "This experience is no longer visible on the student side.")}</p>
+        ${renderDetailRows([
+          { label: "Stage", value: experience ? experience.stageLabel : missingOfficialText },
+          { label: "Assessment format", value: experience ? experience.assessmentFormat : missingOfficialText },
+          { label: "Useful count", value: experience ? experience.usefulCount : missingOfficialText }
+        ])}
+      </article>`;
+    })
+    .join("");
+}
+
+function renderNotificationCards(notifications) {
+  if (notifications.length === 0) {
+    return `<p class="empty-state">No site notifications for favorited schools right now.</p>`;
+  }
+
+  return notifications
+    .map((notification) => `<article class="personal-card">
+      <div class="badge-row">
+        <span class="site-badge">Site-only</span>
+        <span class="status-badge status-${escapeHtml(notification.status)}">${escapeHtml(notification.statusLabel)}</span>
+      </div>
+      <h3>${escapeHtml(notification.title)}</h3>
+      ${renderDetailRows([
+        { label: "School", value: notification.school?.name ?? "Published school" },
+        { label: "Timeline node", value: humanizeToken(notification.eventKey) },
+        { label: "Due", value: formatDate(notification.dueAt) }
+      ])}
+    </article>`)
+    .join("");
+}
+
+function renderSubmittedExperienceCards(experiences) {
+  if (experiences.length === 0) {
+    return `<p class="empty-state">No submitted experiences yet.</p>`;
+  }
+
+  return experiences
+    .map((experience) => `<article class="personal-card">
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(experience.year)}</span>
+        <span class="soft-badge">${escapeHtml(experience.statusLabel)}</span>
+        <span class="muted-badge">${escapeHtml(experience.verification.statusLabel)}</span>
+      </div>
+      <h3>${escapeHtml(experience.school?.name ?? "Published school")}</h3>
+      <p>${escapeHtml(experience.summary)}</p>
+      ${renderDetailRows([
+        { label: "Stage", value: humanizeToken(experience.stage) },
+        { label: "Assessment format", value: experience.assessmentTypes.map(humanizeToken).join(", ") },
+        { label: "Review status", value: experience.statusLabel },
+        { label: "Display", value: experience.author.displayName ?? experience.author.nickname }
+      ])}
+    </article>`)
+    .join("");
+}
+
+function renderPreferenceForm(personalCenter, feedback) {
+  const preferences = personalCenter.preferences;
+  const gradeOptions = Object.entries(gradeLabels)
+    .map(([value, label]) => renderOption(value, label, preferences.grade))
+    .join("");
+  const anonymousOptions = [
+    renderOption("true", "Anonymous by default", preferences.defaultAnonymous ? "true" : "false"),
+    renderOption("false", "Show nickname by default", preferences.defaultAnonymous ? "true" : "false")
+  ].join("");
+
+  return `<form class="preference-form" method="post" action="/me/preferences" aria-label="Account preferences">
+    ${renderPersonalFeedback(feedback)}
+    <label class="form-field">
+      <span>Nickname</span>
+      <input name="nickname" value="${escapeHtml(preferences.nickname)}" autocomplete="nickname" required>
+    </label>
+    <label class="form-field">
+      <span>Grade</span>
+      <select name="grade" required>${gradeOptions}</select>
+    </label>
+    <label class="form-field">
+      <span>Default anonymous preference</span>
+      <select name="defaultAnonymous" required>${anonymousOptions}</select>
+    </label>
+    <div class="form-actions">
+      <button class="primary-action" type="submit">Update preferences</button>
+    </div>
+  </form>`;
+}
+
+export function renderPersonalCenterPage({ personalCenter, notice = "", error = "" }) {
+  return htmlPage({
+    title: `Personal Center | ${productName}`,
+    body: `    <main class="app-shell">
+      <header class="top-bar">
+        <a class="brand" href="/">
+          <span class="brand-mark">Guangdong MVP</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
+        <a class="admin-link" href="/admin">Admin</a>
+      </header>
+
+      <section class="page-heading" aria-labelledby="personal-center-title">
+        <p class="eyebrow">Logged-in workspace</p>
+        <h1 id="personal-center-title">Personal center</h1>
+        <p class="lead">Review saved admissions content, submitted experiences, site reminders, and account preferences.</p>
+      </section>
+
+      <section class="section" aria-label="Personal summary">
+        ${renderPersonalSummary(personalCenter)}
+      </section>
+
+      <section class="section personal-grid" aria-label="Personal center content">
+        <div class="personal-panel">
+          <div class="section-heading">
+            <h2>Site notifications</h2>
+            <p class="section-kicker">${escapeHtml(personalCenter.notifications.length)} site-only ${escapeHtml(pluralize(personalCenter.notifications.length, "reminder"))}</p>
+          </div>
+          <div class="personal-list">${renderNotificationCards(personalCenter.notifications)}</div>
+        </div>
+
+        <div class="personal-panel">
+          <div class="section-heading">
+            <h2>Account preferences</h2>
+            <p class="section-kicker">${escapeHtml(gradeLabel(personalCenter.preferences.grade))}</p>
+          </div>
+          ${renderPreferenceForm(personalCenter, { notice, error })}
+        </div>
+      </section>
+
+      <section class="section personal-grid" aria-label="Favorites and submissions">
+        <div class="personal-panel">
+          <div class="section-heading">
+            <h2>Favorited schools</h2>
+            <p class="section-kicker">${escapeHtml(personalCenter.favorites.schools.length)} saved ${escapeHtml(pluralize(personalCenter.favorites.schools.length, "school"))}</p>
+          </div>
+          <div class="personal-list">${renderFavoriteSchoolCards(personalCenter.favorites.schools)}</div>
+        </div>
+
+        <div class="personal-panel">
+          <div class="section-heading">
+            <h2>Favorited experiences</h2>
+            <p class="section-kicker">${escapeHtml(personalCenter.favorites.experiences.length)} saved ${escapeHtml(pluralize(personalCenter.favorites.experiences.length, "experience"))}</p>
+          </div>
+          <div class="personal-list">${renderFavoriteExperienceCards(personalCenter.favorites.experiences)}</div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="submitted-experiences-title">
+        <div class="section-heading">
+          <h2 id="submitted-experiences-title">Submitted experiences</h2>
+          <p class="section-kicker">${escapeHtml(personalCenter.submittedExperiences.length)} user-owned ${escapeHtml(pluralize(personalCenter.submittedExperiences.length, "submission"))}</p>
+        </div>
+        <div class="personal-list submitted-list">${renderSubmittedExperienceCards(personalCenter.submittedExperiences)}</div>
+      </section>
+    </main>`
+  });
+}
+
 export function renderStudentHome() {
   const guides = listGuides();
   const timelineEvents = listTimelineEvents();

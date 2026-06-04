@@ -20,6 +20,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public experience browsing should use `listExperiences()` from `src/db/data-access.js`; it keeps `/experiences`, `/api/experiences`, filters, newest/useful/verified sorting, and published-only visibility aligned while pending submissions remain outside public browse results.
 - Structured experience submissions should use `src/experience-submissions.js` for required-field normalization, pending_review defaults, private verification metadata storage, and sanitized public or anonymous output; `handleRequest` accepts an injectable `experienceSubmissionStore` for route tests.
 - Student interaction state should use `src/interactions.js`; `handleRequest` accepts an injectable `interactionStore` for route tests covering school/experience favorites, useful-once experience votes, and pending reports without exposing phone fields or private reporter data.
+- Personal center routes should build user-owned aggregates in `src/app.js` from the public user shape, `interactionStore`, `experienceSubmissionStore`, and site-only timeline reminders; `/me`, `/api/me`, `/me/favorites`, and `/me/experiences` outputs must stay phone-free and omit private verification material details.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -465,4 +466,35 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - `createInteractionStore({ now })` keeps route tests deterministic and isolated for favorites, useful votes, and reports.
   - Use published-only data-access readers for interaction target validation: `getSchoolById()` for school favorites and `getExperienceById()` for experience favorites, useful votes, and experience reports.
   - Report responses should expose pending review status and report metadata but not reporter private data; user report targets can be validated through `authService.getUserById()`.
+---
+
+## Thu Jun  4 03:32:45 PM CST 2026 - Ralph runner
+- Iteration: 6
+- Story: US-014
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-6
+---
+
+## Thu Jun  4 03:44:46 PM CST 2026 - US-015
+- What was implemented
+  - Added logged-in personal center APIs and HTML on `/me`, `/api/me`, `/me/favorites`, `/api/me/favorites`, `/me/experiences`, and `/api/me/experiences`.
+  - Aggregated favorited schools, favorited experiences, submitted experiences with review status labels, site-only personal-center notifications, and account preferences without exposing phone fields or private verification material metadata.
+  - Added profile preference updates through `/me/preferences`, `/api/me/preferences`, and `PATCH /api/me` for nickname, grade, and default anonymous preference.
+- Files changed
+  - `public/styles.css`
+  - `src/app.js`, `src/app.test.js`, `src/auth.js`, `src/lib/product.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for logged-in `/me` at 390px and 1280px; personal center navigation, favorited school display, account preference update workflow, persisted `/api/me` preferences, and no horizontal overflow were verified.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-141724/iteration-7/personal-center-mobile-390.png` and `scripts/ralph/runs/20260604-141724/iteration-7/personal-center-desktop-1280.png`.
+- **Learnings for future iterations:**
+  - `authService.updateUserProfile()` validates nickname, grade, and default anonymous preference and returns the same public user shape used by session APIs.
+  - Personal center API responses include `statusLabels` for draft, pending_review, published, rejected, and hidden so future moderation statuses can render consistently without exposing reviewer-private fields.
+  - On mobile the student nav pills are hidden by design; browser checks that need the `/me` nav link should assert it at desktop width or use page content on mobile.
 ---
