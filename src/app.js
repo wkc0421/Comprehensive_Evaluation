@@ -5,18 +5,22 @@ import { fileURLToPath } from "node:url";
 
 import { AuthError, authService as defaultAuthService } from "./auth.js";
 import {
+  buildSiteTimelineReminders,
   getGuideDetail,
+  getSchoolById,
   getSchoolDetail,
   listGuides,
   listSchoolGuideCards,
-  listTimelineEvents
+  listTimelineNodes
 } from "./db/data-access.js";
+import { interactionStore as defaultInteractionStore } from "./interactions.js";
 import {
   renderAdminPage,
   renderNotFound,
   renderSchoolDetailPage,
   renderSchoolListPage,
-  renderStudentHome
+  renderStudentHome,
+  renderTimelinePage
 } from "./pages.js";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
@@ -31,6 +35,7 @@ const contentTypes = new Map([
 ]);
 const guideStatuses = new Set(["draft", "pending_review", "published", "archived"]);
 const schoolSorts = new Set(["deadline", "updated", "name"]);
+const favoriteTargetTypes = new Set(["school"]);
 
 function sendHtml(response, statusCode, html) {
   response.writeHead(statusCode, {
@@ -166,8 +171,56 @@ function parseGuideListFilters(url) {
   };
 }
 
+function optionalBooleanParam(url, name) {
+  const value = optionalStringParam(url, name);
+
+  if (!value) {
+    return false;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  throw new RequestError("invalid_boolean", `${name} must be true or false.`);
+}
+
+function parseSchoolIdsParam(url) {
+  return url.searchParams
+    .getAll("schoolIds")
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function parseTimelineFilters(url) {
+  return {
+    year: optionalYearParam(url),
+    schoolIds: parseSchoolIdsParam(url),
+    mine: optionalBooleanParam(url, "mine")
+  };
+}
+
 function shouldSendSchoolListJson(request, url) {
   if (url.pathname === "/api/schools" || url.searchParams.get("format") === "json") {
+    return true;
+  }
+
+  const accept = headerValue(request.headers, "accept") ?? "";
+
+  if (accept.includes("text/html")) {
+    return false;
+  }
+
+  return accept.length === 0 || accept.includes("*/*") || accept.includes("application/json");
+}
+
+function shouldSendTimelineJson(request, url) {
+  if (url.pathname === "/api/timeline" || url.searchParams.get("format") === "json") {
     return true;
   }
 
@@ -375,6 +428,111 @@ function guideDetailJson(detail) {
   };
 }
 
+function formatTimelineDateLabel(node) {
+  if (!node.startsAt && !node.endsAt) {
+    return "To be announced";
+  }
+
+  return node.endsAt ?? node.startsAt;
+}
+
+function timelineStatusLabel(status) {
+  return status
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function timelineNodeJson(node) {
+  return {
+    id: node.id,
+    admissionGuideId: node.admissionGuideId,
+    schoolId: node.schoolId,
+    eventKey: node.eventKey,
+    title: node.title,
+    startsAt: node.startsAt,
+    endsAt: node.endsAt,
+    dateLabel: formatTimelineDateLabel(node),
+    isDateKnown: node.isDateKnown,
+    status: node.status,
+    statusLabel: timelineStatusLabel(node.status),
+    officialDataStatus: node.officialDataStatus,
+    school: {
+      id: node.school.id,
+      name: node.school.name,
+      provinceScope: node.school.provinceScope,
+      city: node.school.city,
+      schoolType: node.school.schoolType
+    },
+    guide: {
+      id: node.guide.id,
+      year: node.guide.admissionYear,
+      title: node.guide.guideTitle,
+      applicationStatus: node.guide.applicationStatus,
+      officialSourceUrl: node.guide.officialSourceUrl
+    }
+  };
+}
+
+function favoriteJson(favorite) {
+  return {
+    id: favorite.id,
+    targetType: favorite.targetType,
+    targetId: favorite.targetId,
+    createdAt: favorite.createdAt
+  };
+}
+
+function currentReferenceDate(now) {
+  if (typeof now !== "function") {
+    return new Date();
+  }
+
+  const value = now();
+  return value instanceof Date ? value : new Date(value);
+}
+
+function timelineSchoolIdsFor(filters, user, interactionStore) {
+  if (!filters.mine) {
+    return filters.schoolIds;
+  }
+
+  const favoriteSchoolIds = interactionStore.listFavoriteSchoolIds(user.id);
+
+  if (filters.schoolIds.length === 0) {
+    return favoriteSchoolIds;
+  }
+
+  const requestedSchoolIds = new Set(filters.schoolIds);
+  return favoriteSchoolIds.filter((schoolId) => requestedSchoolIds.has(schoolId));
+}
+
+function buildTimelineResult({ filters, user, interactionStore, now }) {
+  const schoolIds = timelineSchoolIdsFor(filters, user, interactionStore);
+  const events = filters.mine && schoolIds.length === 0
+    ? []
+    : listTimelineNodes({
+        year: filters.year,
+        schoolIds,
+        referenceDate: currentReferenceDate(now)
+      });
+  const reminders = buildSiteTimelineReminders(events);
+
+  return {
+    mine: filters.mine,
+    filters: {
+      year: filters.year,
+      schoolIds: filters.schoolIds,
+      mine: filters.mine
+    },
+    favorites: filters.mine && user
+      ? interactionStore.listFavorites({ userId: user.id, targetType: "school" }).map(favoriteJson)
+      : [],
+    count: events.length,
+    events,
+    reminders
+  };
+}
+
 function sendSchoolListJson(response, filters) {
   const schools = listSchoolGuideCards(filters).map(schoolCardJson);
 
@@ -392,6 +550,17 @@ function sendGuideListJson(response, filters) {
     filters,
     count: guides.length,
     guides
+  });
+}
+
+function sendTimelineJson(response, timeline) {
+  sendJson(response, 200, {
+    mine: timeline.mine,
+    filters: timeline.filters,
+    favorites: timeline.favorites,
+    count: timeline.count,
+    events: timeline.events.map(timelineNodeJson),
+    reminders: timeline.reminders
   });
 }
 
@@ -420,6 +589,20 @@ function parseGuideDetailPath(pathname) {
     return decodeURIComponent(match.groups.guideId);
   } catch {
     throw new RequestError("invalid_guide_id", "Guide id must be URL encoded correctly.");
+  }
+}
+
+function parseFavoriteDetailPath(pathname) {
+  const match = pathname.match(/^\/api\/favorites\/(?<favoriteId>[^/]+)$/);
+
+  if (!match?.groups?.favoriteId) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match.groups.favoriteId);
+  } catch {
+    throw new RequestError("invalid_favorite_id", "Favorite id must be URL encoded correctly.");
   }
 }
 
@@ -482,8 +665,23 @@ function requireActiveUser(request, response, authService, options = {}) {
   return user;
 }
 
-function isMineTimeline(url) {
-  return url.searchParams.get("mine") === "true";
+function assertFavoriteTarget(body) {
+  const targetType = typeof body.targetType === "string" ? body.targetType.trim() : "";
+  const targetId = typeof body.targetId === "string" ? body.targetId.trim() : "";
+
+  if (!favoriteTargetTypes.has(targetType)) {
+    throw new RequestError("invalid_favorite_target", "Only school favorites are supported in this workflow.");
+  }
+
+  if (!targetId) {
+    throw new RequestError("invalid_favorite_target", "Favorite target id is required.");
+  }
+
+  if (!getSchoolById(targetId)) {
+    throw new RequestError("favorite_target_not_found", "No published school was found for this favorite.", 404);
+  }
+
+  return { targetType, targetId };
 }
 
 async function sendPublicAsset(requestPath, response) {
@@ -505,6 +703,7 @@ async function sendPublicAsset(requestPath, response) {
 
 export async function handleRequest(request, response, context = {}) {
   const authService = context.authService ?? defaultAuthService;
+  const interactionStore = context.interactionStore ?? defaultInteractionStore;
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
   if (url.pathname === "/api/auth/otp" && request.method === "POST") {
@@ -575,7 +774,53 @@ export async function handleRequest(request, response, context = {}) {
       return;
     }
 
-    sendJson(response, 202, { status: "accepted", userId: user.id });
+    try {
+      const body = await readJsonBody(request);
+      const target = assertFavoriteTarget(body);
+      const result = interactionStore.addFavorite({
+        userId: user.id,
+        targetType: target.targetType,
+        targetId: target.targetId
+      });
+
+      sendJson(response, result.created ? 201 : 200, {
+        status: result.created ? "favorited" : "already_favorited",
+        favorite: favoriteJson(result.favorite)
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "favorite_error", error.message);
+    }
+
+    return;
+  }
+
+  let favoriteId;
+
+  try {
+    favoriteId = parseFavoriteDetailPath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "favorite_error", error.message);
+    return;
+  }
+
+  if (favoriteId && request.method === "DELETE") {
+    const user = requireActiveUser(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    const favorite = interactionStore.removeFavorite({ userId: user.id, favoriteId });
+
+    if (!favorite) {
+      sendError(response, 404, "favorite_not_found", "No favorite was found for this user.");
+      return;
+    }
+
+    sendJson(response, 200, {
+      status: "unfavorited",
+      favorite: favoriteJson(favorite)
+    });
     return;
   }
 
@@ -607,19 +852,32 @@ export async function handleRequest(request, response, context = {}) {
     return;
   }
 
-  if (url.pathname === "/api/timeline" && request.method === "GET") {
-    if (isMineTimeline(url)) {
-      const user = requireActiveUser(request, response, authService);
+  if ((url.pathname === "/timeline" || url.pathname === "/api/timeline") && request.method === "GET") {
+    try {
+      const filters = parseTimelineFilters(url);
+      const user = filters.mine ? requireActiveUser(request, response, authService) : null;
 
-      if (!user) {
+      if (filters.mine && !user) {
         return;
       }
 
-      sendJson(response, 200, { mine: true, events: [], reminders: [] });
-      return;
+      const timeline = buildTimelineResult({
+        filters,
+        user,
+        interactionStore,
+        now: context.now
+      });
+
+      if (shouldSendTimelineJson(request, url)) {
+        sendTimelineJson(response, timeline);
+        return;
+      }
+
+      sendHtml(response, 200, renderTimelinePage(timeline));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "timeline_error", error.message);
     }
 
-    sendJson(response, 200, { mine: false, events: listTimelineEvents() });
     return;
   }
 

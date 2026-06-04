@@ -11,3 +11,4 @@
 - Public school browsing cards should use `listSchoolGuideCards` from `src/db/data-access.js` so API and page behavior share published-only visibility, filters, sort order, timeline nodes, formula availability, and experience signals.
 - Public school detail pages and APIs should use `getSchoolDetail` from `src/db/data-access.js` so year defaulting, published-only guide visibility, timeline/formula aggregation, and featured experience ranking stay consistent.
 - Public admission guide APIs should use `listGuides` and `getGuideDetail` from `src/db/data-access.js` so published-only current lists, keyword filters, source attribution, structured fields, and version summaries stay consistent.
+- Public timeline pages and APIs should use `listTimelineNodes` and `buildSiteTimelineReminders` from `src/db/data-access.js` so generated required nodes, status calculation, unknown-date handling, published-only visibility, and site-only reminder indicators stay consistent.

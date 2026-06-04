@@ -439,6 +439,92 @@ function renderSchoolCards(cards) {
     .join("");
 }
 
+function renderTimelineFilters(filters) {
+  const selectedSchoolId = filters.schoolIds?.[0] ?? "";
+  const years = uniqueSorted(listGuides().map((guide) => guide.admissionYear)).sort((left, right) => right - left);
+  const schoolsById = new Map(
+    listSchoolGuideCards({ sort: "name" }).map((card) => [card.school.id, card.school])
+  );
+  const yearOptions = [
+    renderOption("", "All years", filters.year ?? ""),
+    ...years.map((year) => renderOption(year, year, filters.year))
+  ].join("");
+  const schoolOptions = [
+    renderOption("", "All schools", selectedSchoolId),
+    ...[...schoolsById.values()].map((school) => renderOption(school.id, school.name, selectedSchoolId))
+  ].join("");
+
+  return `<form class="filter-panel timeline-filter-panel" method="get" action="/timeline" aria-label="Timeline filters">
+    <label class="filter-field">
+      <span>Year</span>
+      <select name="year">${yearOptions}</select>
+    </label>
+    <label class="filter-field wide-field">
+      <span>School</span>
+      <select name="schoolIds">${schoolOptions}</select>
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/timeline">Reset</a>
+    </div>
+  </form>`;
+}
+
+function formatTimelineWindow(node) {
+  if (!node.startsAt && !node.endsAt) {
+    return "To be announced";
+  }
+
+  if (node.startsAt && node.endsAt && node.startsAt !== node.endsAt) {
+    return `${formatDate(node.startsAt)} to ${formatDate(node.endsAt)}`;
+  }
+
+  return formatDate(node.endsAt ?? node.startsAt);
+}
+
+function renderTimelineNodeCards(nodes, reminders) {
+  if (nodes.length === 0) {
+    return `<p class="empty-state">No published timeline nodes match these filters.</p>`;
+  }
+
+  const reminderEventIds = new Set(reminders.map((reminder) => reminder.eventId));
+
+  return nodes
+    .map((node) => {
+      const reminderBadge = reminderEventIds.has(node.id)
+        ? `<span class="site-badge">Site reminder</span>`
+        : "";
+
+      return `<article class="timeline-card">
+        <div class="badge-row">
+          <span class="badge">${escapeHtml(node.guide.admissionYear)}</span>
+          <span class="status-badge status-${escapeHtml(node.status)}">${escapeHtml(humanizeToken(node.status))}</span>
+          ${reminderBadge}
+        </div>
+        <h3>${escapeHtml(node.title)}</h3>
+        <dl class="detail-list split-details">
+          <div>
+            <dt>School</dt>
+            <dd>${escapeHtml(node.school.name)}</dd>
+          </div>
+          <div>
+            <dt>Date</dt>
+            <dd>${escapeHtml(formatTimelineWindow(node))}</dd>
+          </div>
+          <div>
+            <dt>Timeline node</dt>
+            <dd>${escapeHtml(humanizeToken(node.eventKey))}</dd>
+          </div>
+          <div>
+            <dt>Guide</dt>
+            <dd>${escapeHtml(node.guide.guideTitle)}</dd>
+          </div>
+        </dl>
+      </article>`;
+    })
+    .join("");
+}
+
 function renderDetailLink(url, label) {
   if (!url) {
     return `<span class="inline-empty">${escapeHtml(missingOfficialText)}</span>`;
@@ -721,6 +807,40 @@ export function renderSchoolListPage(filters = {}) {
           <p class="section-kicker">Draft and review-only guide data is hidden from visitors</p>
         </div>
         <div class="school-list">${renderSchoolCards(cards)}</div>
+      </section>
+    </main>`
+  });
+}
+
+export function renderTimelinePage(timeline) {
+  return htmlPage({
+    title: `Timeline | ${productName}`,
+    body: `    <main class="app-shell">
+      <header class="top-bar">
+        <a class="brand" href="/">
+          <span class="brand-mark">Guangdong MVP</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
+        <a class="admin-link" href="/admin">Admin</a>
+      </header>
+
+      <section class="page-heading" aria-labelledby="timeline-title">
+        <p class="eyebrow">Published admissions dates</p>
+        <h1 id="timeline-title">${timeline.mine ? "My timeline" : "Guangdong timeline"}</h1>
+        <p class="lead">Track official comprehensive evaluation guide publication, application windows, review nodes, assessments, volunteer application, and admission result publication.</p>
+      </section>
+
+      <section class="section" aria-label="Timeline filters">
+        ${renderTimelineFilters(timeline.filters)}
+      </section>
+
+      <section class="section" aria-labelledby="timeline-results-title">
+        <div class="section-heading">
+          <h2 id="timeline-results-title">${escapeHtml(timeline.count)} ${escapeHtml(pluralize(timeline.count, "timeline node"))}</h2>
+          <p class="section-kicker">${escapeHtml(timeline.reminders.length)} site-only ${escapeHtml(pluralize(timeline.reminders.length, "reminder"))}</p>
+        </div>
+        <div class="timeline-list">${renderTimelineNodeCards(timeline.events, timeline.reminders)}</div>
       </section>
     </main>`
   });

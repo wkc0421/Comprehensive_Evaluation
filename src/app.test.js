@@ -5,6 +5,7 @@ import { after, before, describe, it } from "node:test";
 import { createAuthService } from "./auth.js";
 import { handleRequest } from "./app.js";
 import { seedIds } from "./db/seed-data.js";
+import { createInteractionStore } from "./interactions.js";
 
 function jsonRequest(body = {}) {
   return {
@@ -34,9 +35,11 @@ function schoolNames(payload) {
 describe("web routes", () => {
   let authService;
   let baseUrl;
+  let interactionStore;
   let server;
 
   before(async () => {
+    const timelineNow = () => new Date("2026-04-18T00:00:00.000Z");
     authService = createAuthService({
       env: {
         NODE_ENV: "test",
@@ -44,10 +47,12 @@ describe("web routes", () => {
         AUTH_SESSION_COOKIE_NAME: "test_session",
         LOCAL_OTP_ENABLED: "true",
         LOCAL_OTP_CODE: "246810"
-      }
+      },
+      now: timelineNow
     });
+    interactionStore = createInteractionStore({ now: timelineNow });
     server = createServer((request, response) => {
-      handleRequest(request, response, { authService }).catch((error) => {
+      handleRequest(request, response, { authService, interactionStore, now: timelineNow }).catch((error) => {
         response.writeHead(500, { "content-type": "application/json; charset=utf-8" });
         response.end(JSON.stringify({ error: error.message }));
       });
@@ -322,6 +327,49 @@ describe("web routes", () => {
     assert.doesNotMatch(body, /Working Draft/);
   });
 
+  it("returns the full Guangdong timeline with generated nodes, statuses, and site-only reminders", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/timeline?year=2026&schoolIds=${seedIds.schools.sysu},${seedIds.schools.scut}`
+    );
+    const body = await response.json();
+    const eventKeys = new Set(body.events.map((event) => event.eventKey));
+    const applicationDeadline = body.events.find((event) => event.eventKey === "application_deadline");
+    const preliminaryReview = body.events.find((event) => event.eventKey === "preliminary_review_result");
+
+    assert.equal(response.status, 200);
+    assert.equal(body.mine, false);
+    assert.equal(body.count, 9);
+    assert.ok(eventKeys.has("guide_publication"));
+    assert.ok(eventKeys.has("confirmation_or_payment"));
+    assert.ok(eventKeys.has("volunteer_application"));
+    assert.equal(body.events.some((event) => event.schoolId === seedIds.schools.scut), false);
+    assert.equal(applicationDeadline.status, "due_soon");
+    assert.equal(applicationDeadline.statusLabel, "Due Soon");
+    assert.equal(preliminaryReview.startsAt, null);
+    assert.equal(preliminaryReview.endsAt, null);
+    assert.equal(preliminaryReview.dateLabel, "To be announced");
+    assert.equal(preliminaryReview.status, "not_started");
+    assert.ok(body.reminders.some((reminder) => reminder.eventKey === "application_deadline"));
+    assert.ok(body.reminders.every((reminder) => reminder.delivery === "site_only"));
+    assert.doesNotMatch(JSON.stringify(body.reminders), /sms|wechat|email|external/i);
+  });
+
+  it("renders the timeline page with unknown dates and status labels", async () => {
+    const response = await fetch(`${baseUrl}/timeline?year=2026`, {
+      headers: { accept: "text/html" }
+    });
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /Guangdong timeline/);
+    assert.match(body, /Preliminary review result/);
+    assert.match(body, /To be announced/);
+    assert.match(body, /Due Soon/);
+    assert.match(body, /Site reminder/);
+    assert.doesNotMatch(body, /Application deadline under review/);
+    assert.doesNotMatch(body, /1970/);
+  });
+
   it("logs in with a phone OTP session without returning phone data", async () => {
     const otpResponse = await fetch(`${baseUrl}/api/auth/otp`, {
       method: "POST",
@@ -364,10 +412,93 @@ describe("web routes", () => {
     assertNoPhoneFields(meBody);
   });
 
+  it("persists school favorites and returns a mine timeline for favorited schools only", async () => {
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000005",
+      nickname: "Timeline student"
+    });
+    const session = authService.createSessionForUser(user.id);
+    const cookie = authService.serializeSessionCookie(session).split(";")[0];
+
+    const emptyMineResponse = await fetch(`${baseUrl}/api/timeline?mine=true&year=2026`, {
+      headers: { cookie }
+    });
+    const emptyMineBody = await emptyMineResponse.json();
+
+    assert.equal(emptyMineResponse.status, 200);
+    assert.equal(emptyMineBody.count, 0);
+    assert.deepEqual(emptyMineBody.events, []);
+
+    const favoriteResponse = await fetch(`${baseUrl}/api/favorites`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ targetType: "school", targetId: seedIds.schools.sysu })
+    });
+    const favoriteBody = await favoriteResponse.json();
+
+    assert.equal(favoriteResponse.status, 201);
+    assert.equal(favoriteBody.status, "favorited");
+    assert.equal(favoriteBody.favorite.targetType, "school");
+    assert.equal(favoriteBody.favorite.targetId, seedIds.schools.sysu);
+
+    const duplicateResponse = await fetch(`${baseUrl}/api/favorites`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ targetType: "school", targetId: seedIds.schools.sysu })
+    });
+    const duplicateBody = await duplicateResponse.json();
+
+    assert.equal(duplicateResponse.status, 200);
+    assert.equal(duplicateBody.status, "already_favorited");
+    assert.equal(duplicateBody.favorite.id, favoriteBody.favorite.id);
+
+    const mineResponse = await fetch(`${baseUrl}/api/timeline?mine=true&year=2026`, {
+      headers: { cookie }
+    });
+    const mineBody = await mineResponse.json();
+
+    assert.equal(mineResponse.status, 200);
+    assert.equal(mineBody.mine, true);
+    assert.equal(mineBody.count, 9);
+    assert.equal(mineBody.favorites.length, 1);
+    assert.ok(mineBody.events.every((event) => event.schoolId === seedIds.schools.sysu));
+    assert.ok(mineBody.events.some((event) => event.eventKey === "application_deadline"));
+    assert.ok(mineBody.reminders.every((reminder) => reminder.delivery === "site_only"));
+
+    const unfavoriteResponse = await fetch(
+      `${baseUrl}/api/favorites/${encodeURIComponent(favoriteBody.favorite.id)}`,
+      {
+        method: "DELETE",
+        headers: { cookie }
+      }
+    );
+    const unfavoriteBody = await unfavoriteResponse.json();
+
+    assert.equal(unfavoriteResponse.status, 200);
+    assert.equal(unfavoriteBody.status, "unfavorited");
+    assert.equal(unfavoriteBody.favorite.id, favoriteBody.favorite.id);
+
+    const removedMineResponse = await fetch(`${baseUrl}/api/timeline?mine=true&year=2026`, {
+      headers: { cookie }
+    });
+    const removedMineBody = await removedMineResponse.json();
+
+    assert.equal(removedMineResponse.status, 200);
+    assert.equal(removedMineBody.count, 0);
+    assert.deepEqual(removedMineBody.events, []);
+  });
+
   it("blocks unauthenticated users from restricted student and admin APIs", async () => {
     const cases = [
       { method: "POST", path: "/api/experiences", body: { schoolId: seedIds.schools.sysu } },
       { method: "POST", path: "/api/favorites", body: { targetType: "school", targetId: seedIds.schools.sysu } },
+      { method: "DELETE", path: "/api/favorites/missing-favorite" },
       { method: "POST", path: `/api/experiences/${seedIds.experiences.sysu2026}/useful`, body: {} },
       { method: "POST", path: "/api/reports", body: { targetType: "experience", targetId: seedIds.experiences.sysu2026 } },
       { method: "GET", path: "/api/timeline?mine=true" },

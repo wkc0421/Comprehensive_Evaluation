@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  buildSiteTimelineReminders,
+  calculateTimelineNodeStatus,
   createGuideVersion,
   getExperienceById,
   getGuideDetail,
@@ -16,7 +18,9 @@ import {
   listGuides,
   listSchools,
   listScoreFormulas,
-  listTimelineEvents
+  listTimelineEvents,
+  listTimelineNodes,
+  timelineEventDefinitions
 } from "./data-access.js";
 import { seedData, seedIds } from "./seed-data.js";
 
@@ -203,5 +207,75 @@ describe("student-facing data access helpers", () => {
       assessmentType: "structured_interview",
       verified: true
     })), [seedIds.experiences.scut2025]);
+  });
+
+  it("generates full public timeline nodes from published guides and keeps unknown dates empty", () => {
+    const nodes = listTimelineNodes({
+      year: 2026,
+      schoolIds: [seedIds.schools.sysu, seedIds.schools.scut],
+      referenceDate: "2026-04-18T00:00:00.000Z"
+    });
+    const sysuNodes = nodes.filter((node) => node.schoolId === seedIds.schools.sysu);
+    const sysuEventKeys = new Set(sysuNodes.map((node) => node.eventKey));
+
+    assert.deepEqual(sysuEventKeys, new Set(timelineEventDefinitions.map((definition) => definition.eventKey)));
+    assert.equal(nodes.some((node) => node.schoolId === seedIds.schools.scut), false);
+
+    const applicationDeadline = sysuNodes.find((node) => node.eventKey === "application_deadline");
+    const preliminaryReview = sysuNodes.find((node) => node.eventKey === "preliminary_review_result");
+
+    assert.equal(applicationDeadline?.startsAt, "2026-04-20T15:59:59.000Z");
+    assert.equal(applicationDeadline?.status, "due_soon");
+    assert.equal(preliminaryReview?.startsAt, null);
+    assert.equal(preliminaryReview?.endsAt, null);
+    assert.equal(preliminaryReview?.isDateKnown, false);
+    assert.equal(preliminaryReview?.status, "not_started");
+  });
+
+  it("calculates timeline node statuses from configured dates", () => {
+    assert.equal(
+      calculateTimelineNodeStatus(
+        { startsAt: "2026-06-14T01:00:00.000Z", endsAt: "2026-06-15T10:00:00.000Z" },
+        "2026-06-01T00:00:00.000Z"
+      ),
+      "not_started"
+    );
+    assert.equal(
+      calculateTimelineNodeStatus(
+        { startsAt: "2026-04-20T15:59:59.000Z", endsAt: "2026-04-20T15:59:59.000Z" },
+        "2026-04-18T00:00:00.000Z"
+      ),
+      "due_soon"
+    );
+    assert.equal(
+      calculateTimelineNodeStatus(
+        { startsAt: "2026-06-14T01:00:00.000Z", endsAt: "2026-06-15T10:00:00.000Z" },
+        "2026-06-14T02:00:00.000Z"
+      ),
+      "active"
+    );
+    assert.equal(
+      calculateTimelineNodeStatus(
+        { startsAt: "2026-03-15T02:00:00.000Z", endsAt: "2026-03-15T02:00:00.000Z" },
+        "2026-04-18T00:00:00.000Z"
+      ),
+      "ended"
+    );
+    assert.equal(calculateTimelineNodeStatus({ startsAt: null, endsAt: null }, "2026-04-18T00:00:00.000Z"), "not_started");
+  });
+
+  it("builds only site timeline and personal-center reminder indicators", () => {
+    const nodes = listTimelineNodes({
+      year: 2026,
+      schoolIds: [seedIds.schools.sysu],
+      referenceDate: "2026-04-18T00:00:00.000Z"
+    });
+    const reminders = buildSiteTimelineReminders(nodes);
+
+    assert.ok(reminders.some((reminder) => reminder.eventKey === "application_deadline"));
+    assert.ok(reminders.every((reminder) => reminder.delivery === "site_only"));
+    assert.ok(reminders.every((reminder) => reminder.channels.includes("timeline")));
+    assert.ok(reminders.every((reminder) => reminder.channels.includes("personal_center")));
+    assert.doesNotMatch(JSON.stringify(reminders), /sms|wechat|email|external/i);
   });
 });

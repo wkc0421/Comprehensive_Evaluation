@@ -14,6 +14,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public school browsing should use `listSchoolGuideCards()` from `src/db/data-access.js`; it keeps `/schools`, `/api/schools`, and the HTML school list aligned on published-only guides, filters, sort order, key timeline nodes, formula availability, and experience signals.
 - Public school detail pages and APIs should use `getSchoolDetail()` from `src/db/data-access.js`; it keeps `/schools/:id`, `/api/schools/:id`, year defaulting, published-only visibility, timeline/formula aggregation, and featured experience ranking aligned.
 - Public admission guide APIs should use `listGuides()` and `getGuideDetail()` from `src/db/data-access.js`; current guide lists stay published-only while detail responses can include source attribution, structured fields, and published version summaries.
+- Public timelines should use `listTimelineNodes()` and `buildSiteTimelineReminders()` from `src/db/data-access.js`; they keep `/timeline`, `/api/timeline`, status calculation, required generated event keys, unknown-date handling, published-only visibility, and site-only reminder indicators aligned.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -262,4 +263,43 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - `listGuides()` returns only current published guide versions for student-facing lists, preventing older published versions from duplicating guide cards or home content.
   - `getGuideDetail()` is the public detail aggregate for admission guide APIs; it includes only published guide records and summarizes published versions in the same school/year/Guangdong scope series.
   - `createGuideVersion()` is a pure helper for dependency-free tests and local workflows: pass field updates and it returns a new current version while preserving the previous guide record as non-current.
+---
+
+## Thu Jun  4 12:03:31 PM CST 2026 - Ralph runner
+- Iteration: 8
+- Story: US-008
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-104510/iteration-8
+---
+
+## Thu Jun  4 12:04:19 PM CST 2026 - Ralph runner
+- Iteration: 9
+- Story: US-009
+- Status: permission
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-104510/iteration-9
+---
+
+## Thu Jun  4 02:29:09 PM CST 2026 - US-009
+- What was implemented
+  - Added generated public timeline nodes for every required guide event key, deriving guide publication and application dates from published guide fields while leaving unknown official dates empty and rendering them as to be announced.
+  - Implemented `/timeline` and `/api/timeline` with year, schoolIds, and mine filters, including status calculation, site-only reminder indicators, and browser-rendered timeline filters/cards.
+  - Added dependency-free school favorite and unfavorite persistence through an injectable interaction store, and wired mine timelines to favorited schools only.
+- Files changed
+  - `AGENTS.md`, `public/styles.css`
+  - `src/app.js`, `src/app.test.js`, `src/interactions.js`, `src/pages.js`
+  - `src/db/data-access.js`, `src/db/data-access.test.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for `/timeline?year=2026` at 375px, 390px, 430px, and 1280px; generated unknown-date nodes, live-date status badges, site-only reminder summary text, and no horizontal overflow were verified.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-141724/iteration-1/timeline-375.png`, `timeline-390.png`, `timeline-430.png`, and `timeline-1280.png`.
+- **Learnings for future iterations:**
+  - Use `listTimelineNodes()` for public timeline API/page work because it generates all required student-facing event keys while preserving published-only guide visibility and null unknown dates.
+  - Use `buildSiteTimelineReminders()` for MVP reminder indicators; it returns timeline and personal-center site-only channels and does not represent external notification delivery.
+  - Route tests can inject `createInteractionStore()` through `handleRequest(request, response, { interactionStore })` to keep favorite state isolated and deterministic.
 ---

@@ -540,6 +540,58 @@ h1 {
   line-height: 1.55;
 }
 
+.timeline-list {
+  display: grid;
+  gap: 12px;
+}
+
+.timeline-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.timeline-card h3 {
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.status-badge,
+.site-badge {
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  padding: 7px 9px;
+}
+
+.status-not_started {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.status-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-due_soon {
+  background: #fff7ed;
+  color: var(--support-amber);
+}
+
+.status-ended {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.site-badge {
+  background: #eff6ff;
+  color: var(--support-blue);
+}
+
 .split-details {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -735,6 +787,10 @@ h1 {
   }
 
   .school-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .timeline-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

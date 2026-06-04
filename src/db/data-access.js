@@ -1,6 +1,22 @@
 import { seedData } from "./seed-data.js";
 
 const publishedStatus = "published";
+const dueSoonWindowMs = 7 * 24 * 60 * 60 * 1000;
+
+export const timelineEventDefinitions = Object.freeze([
+  { eventKey: "guide_publication", title: "Guide published", dateField: "publishedAt" },
+  { eventKey: "application_start", title: "Application opens", dateField: "applicationStartAt" },
+  { eventKey: "application_deadline", title: "Application deadline", dateField: "applicationDeadlineAt" },
+  { eventKey: "preliminary_review_result", title: "Preliminary review result", dateField: null },
+  { eventKey: "confirmation_or_payment", title: "Confirmation or payment", dateField: null },
+  { eventKey: "school_assessment", title: "School assessment", dateField: null },
+  { eventKey: "shortlist_publication", title: "Shortlist publication", dateField: null },
+  { eventKey: "volunteer_application", title: "Volunteer application", dateField: null },
+  { eventKey: "admission_publication", title: "Admission publication", dateField: null }
+]);
+const timelineEventDefinitionOrder = new Map(
+  timelineEventDefinitions.map((definition, index) => [definition.eventKey, index])
+);
 
 /**
  * @typedef {object} SchoolFilters
@@ -29,8 +45,12 @@ const publishedStatus = "published";
  * @typedef {object} TimelineFilters
  * @property {string} [admissionGuideId]
  * @property {string} [schoolId]
+ * @property {ReadonlyArray<string>} [schoolIds]
  * @property {number} [year]
  * @property {string} [eventKey]
+ * @property {Date | string | number} [referenceDate]
+ *
+ * @typedef {"not_started" | "active" | "due_soon" | "ended"} TimelineNodeStatus
  *
  * @typedef {object} ExperienceFilters
  * @property {string} [schoolId]
@@ -124,6 +144,77 @@ function compareSchoolCardNames(left, right) {
 function timestampFor(value, fallback) {
   const timestamp = Date.parse(value ?? "");
   return Number.isNaN(timestamp) ? fallback : timestamp;
+}
+
+function nullableTimestamp(value) {
+  const timestamp = Date.parse(value ?? "");
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function referenceTimestamp(referenceDate) {
+  if (referenceDate instanceof Date) {
+    return referenceDate.getTime();
+  }
+
+  if (typeof referenceDate === "number") {
+    return referenceDate;
+  }
+
+  if (typeof referenceDate === "string") {
+    const timestamp = Date.parse(referenceDate);
+    return Number.isNaN(timestamp) ? Date.now() : timestamp;
+  }
+
+  return Date.now();
+}
+
+function eventDefinitionIndex(eventKey) {
+  return timelineEventDefinitionOrder.get(eventKey) ?? Number.MAX_SAFE_INTEGER;
+}
+
+function compareTimelineNodes(left, right) {
+  const dateDifference =
+    timestampFor(left.endsAt ?? left.startsAt, Number.MAX_SAFE_INTEGER) -
+    timestampFor(right.endsAt ?? right.startsAt, Number.MAX_SAFE_INTEGER);
+
+  if (dateDifference !== 0) {
+    return dateDifference;
+  }
+
+  if (right.guide.admissionYear !== left.guide.admissionYear) {
+    return right.guide.admissionYear - left.guide.admissionYear;
+  }
+
+  const schoolDifference = compareSchoolNames(left.school, right.school);
+
+  if (schoolDifference !== 0) {
+    return schoolDifference;
+  }
+
+  return eventDefinitionIndex(left.eventKey) - eventDefinitionIndex(right.eventKey);
+}
+
+function timelineDatesFor(definition, guide, explicitEvent) {
+  if (explicitEvent) {
+    return {
+      startsAt: explicitEvent.startsAt,
+      endsAt: explicitEvent.endsAt
+    };
+  }
+
+  if (!definition.dateField) {
+    return {
+      startsAt: null,
+      endsAt: null
+    };
+  }
+
+  const dateValue = guide[definition.dateField] ?? null;
+
+  return {
+    startsAt: dateValue,
+    endsAt: dateValue
+  };
 }
 
 function compareSchoolCardsByDeadline(left, right) {
@@ -542,6 +633,143 @@ export function listTimelineEvents(filters = {}) {
     .filter((event) => !filters.eventKey || event.eventKey === filters.eventKey)
     .filter((event) => !filters.year || guidesById.get(event.admissionGuideId)?.admissionYear === filters.year)
     .sort(compareEventTime);
+}
+
+/**
+ * Calculates the student-facing status for a timeline node from its official
+ * dates. Missing official dates stay in the future-looking not-started state.
+ *
+ * @param {{startsAt?: string | null, endsAt?: string | null}} node
+ * @param {Date | string | number} [referenceDate]
+ * @returns {TimelineNodeStatus}
+ */
+export function calculateTimelineNodeStatus(node, referenceDate = new Date()) {
+  const now = referenceTimestamp(referenceDate);
+  const startsAt = nullableTimestamp(node.startsAt);
+  const endsAt = nullableTimestamp(node.endsAt);
+
+  if (startsAt === null && endsAt === null) {
+    return "not_started";
+  }
+
+  if (endsAt !== null && now > endsAt) {
+    return "ended";
+  }
+
+  if (startsAt !== null && now >= startsAt && (endsAt === null || now <= endsAt)) {
+    return "active";
+  }
+
+  const nextTimestamp = startsAt ?? endsAt;
+
+  if (nextTimestamp !== null && now < nextTimestamp && nextTimestamp - now <= dueSoonWindowMs) {
+    return "due_soon";
+  }
+
+  return "not_started";
+}
+
+/**
+ * Generates the full public Guangdong admissions timeline from each visible
+ * guide. Official guide fields provide guide publication and application dates;
+ * reviewed timeline seed records override generated titles and dates; unknown
+ * dates remain null.
+ *
+ * @param {TimelineFilters} [filters]
+ * @returns {ReadonlyArray<{
+ *   id: string,
+ *   admissionGuideId: string,
+ *   schoolId: string,
+ *   eventKey: string,
+ *   title: string,
+ *   startsAt: string | null,
+ *   endsAt: string | null,
+ *   status: TimelineNodeStatus,
+ *   officialDataStatus: string,
+ *   isDateKnown: boolean,
+ *   school: import("./seed-data.js").SchoolSeed,
+ *   guide: import("./seed-data.js").AdmissionGuideSeed
+ * }>}
+ */
+export function listTimelineNodes(filters = {}) {
+  const requestedSchoolIds = new Set([
+    ...(filters.schoolId ? [filters.schoolId] : []),
+    ...(filters.schoolIds ?? [])
+  ]);
+  const explicitEvents = new Map(
+    listTimelineEvents()
+      .map((event) => [`${event.admissionGuideId}:${event.eventKey}`, event])
+  );
+
+  return visibleGuides()
+    .filter((guide) => !filters.year || guide.admissionYear === filters.year)
+    .filter((guide) => requestedSchoolIds.size === 0 || requestedSchoolIds.has(guide.schoolId))
+    .flatMap((guide) => {
+      const school = getPublishedSchoolById(guide.schoolId);
+
+      if (!school) {
+        return [];
+      }
+
+      return timelineEventDefinitions
+        .filter((definition) => !filters.eventKey || definition.eventKey === filters.eventKey)
+        .map((definition) => {
+          const explicitEvent = explicitEvents.get(`${guide.id}:${definition.eventKey}`) ?? null;
+          const dates = timelineDatesFor(definition, guide, explicitEvent);
+          const node = {
+            id: explicitEvent?.id ?? `${guide.id}:${definition.eventKey}`,
+            admissionGuideId: guide.id,
+            schoolId: guide.schoolId,
+            eventKey: definition.eventKey,
+            title: explicitEvent?.title ?? definition.title,
+            startsAt: dates.startsAt,
+            endsAt: dates.endsAt,
+            officialDataStatus: explicitEvent?.status ?? guide.status,
+            isDateKnown: Boolean(dates.startsAt ?? dates.endsAt),
+            school,
+            guide
+          };
+
+          return {
+            ...node,
+            status: calculateTimelineNodeStatus(node, filters.referenceDate)
+          };
+        });
+    })
+    .sort(compareTimelineNodes);
+}
+
+/**
+ * Builds MVP site-only reminder indicators from active or due-soon timeline
+ * nodes. No external notification channel is represented or triggered here.
+ *
+ * @param {ReadonlyArray<ReturnType<typeof listTimelineNodes>[number]>} nodes
+ * @returns {ReadonlyArray<{
+ *   id: string,
+ *   eventId: string,
+ *   schoolId: string,
+ *   eventKey: string,
+ *   title: string,
+ *   dueAt: string | null,
+ *   status: TimelineNodeStatus,
+ *   delivery: "site_only",
+ *   channels: string[]
+ * }>}
+ */
+export function buildSiteTimelineReminders(nodes) {
+  return nodes
+    .filter((node) => node.status === "active" || node.status === "due_soon")
+    .map((node) => ({
+      id: `site-reminder:${node.id}`,
+      eventId: node.id,
+      schoolId: node.schoolId,
+      eventKey: node.eventKey,
+      title: node.title,
+      dueAt: node.endsAt ?? node.startsAt,
+      status: node.status,
+      delivery: "site_only",
+      channels: ["timeline", "personal_center"]
+    }));
 }
 
 /**

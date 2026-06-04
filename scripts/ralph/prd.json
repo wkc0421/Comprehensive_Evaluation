@@ -142,8 +142,8 @@
         "Tests cover full timeline, mine timeline authentication, favorite persistence, status calculation, site-only reminders, and unknown date rendering."
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented generated public and mine timelines with required event keys, timeline statuses, unknown-date handling, site-only reminder indicators, school favorite/unfavorite persistence, tests, and browser verification."
     },
     {
       "id": "US-010",
