@@ -75,8 +75,22 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /Mobile-first student web app/);
+    assert.match(body, /Mobile-first student home/);
     assert.match(body, /Grade-aware entry points/);
+    assert.match(body, /High school grade one/);
+    assert.match(body, /High school grade two/);
+    assert.match(body, /High school grade three/);
+    assert.match(body, /Annual progress/);
+    assert.match(body, /2026 Guangdong cycle/);
+    assert.match(body, /Nearest deadlines/);
+    assert.match(body, /Latest published guides/);
+    assert.match(body, /Sun Yat-sen University/);
+    assert.match(body, /Latest high-quality experiences/);
+    assert.match(body, /Interview focused on motivation/);
+    assert.doesNotMatch(body, /Draft Review Guide/);
+    assert.doesNotMatch(body, /Working Draft/);
+    assert.doesNotMatch(body, /Pending review experience/);
+    assert.doesNotMatch(body, /admission probability|ranking prediction|paid consulting|open comments|private messaging/i);
   });
 
   it("renders the admin placeholder route", async () => {

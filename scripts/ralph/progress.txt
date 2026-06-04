@@ -10,6 +10,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Core PostgreSQL schema migrations live in `src/db/migrations`; `src/db/schema.test.js` validates migration SQL statically without connecting to `DATABASE_URL`.
 - Seed fixtures and student-facing published-only data access helpers live in `src/db` as plain JavaScript modules; use them before introducing database tooling.
 - Authentication/session helpers live in `src/auth.js`; `handleRequest` accepts an optional `{ authService }` test context, and public auth responses must use the public user shape so phone fields do not leak.
+- Student-facing pages should consume published-only helpers from `src/db/data-access.js` instead of importing `seed-data.js` directly.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -135,4 +136,32 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Use `createAuthService` for isolated tests and pass it through `handleRequest(request, response, { authService })`.
   - The local OTP stub is available only when `NODE_ENV` is `development` or `test`; production integrations should configure `PHONE_VERIFICATION_REQUEST_URL` and `PHONE_VERIFICATION_VERIFY_URL` or provide auth service callbacks.
   - Restricted API routes should call the active-account gate before doing any action-specific work, and admin APIs should also pass reviewer/admin roles.
+---
+
+## Thu Jun  4 11:26:53 AM CST 2026 - Ralph runner
+- Iteration: 4
+- Story: US-004
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-104510/iteration-4
+---
+
+## Thu Jun  4 11:32:27 AM CST 2026 - US-005
+- What was implemented
+  - Rebuilt the student home page around published-only data access helpers for grade-aware entry points, annual Guangdong progress, nearest deadlines, latest published guides, and high-quality published experiences.
+  - Removed scaffold copy that surfaced prohibited feature categories and added route assertions for the required home sections and published-only behavior.
+  - Expanded mobile-first CSS for the new deadline, guide, and experience sections with explicit wrapping and responsive grid constraints.
+- Files changed
+  - `src/pages.js`, `public/styles.css`, `src/app.test.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for `/` at 375px, 390px, and 430px; required sections were visible and `scrollWidth` equaled `clientWidth` at each width.
+- **Learnings for future iterations:**
+  - `renderStudentHome()` can safely combine `listGuides()`, `listTimelineEvents()`, and `listExperiences()` because those helpers already enforce published-only visibility.
+  - Keep negative assertions for the student home page around disallowed feature labels so future copy changes do not accidentally advertise excluded MVP behaviors.
+  - Python Playwright is available at `/home/wkc/codex_project/linux_codex_gui/.venv/bin/python` for browser checks in this environment.
 ---
