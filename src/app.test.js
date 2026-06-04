@@ -388,6 +388,46 @@ describe("web routes", () => {
     assert.equal(noFormulaBody.error, "formula_not_available");
   });
 
+  it("renders the score calculator page with three steps and the selected published formula", async () => {
+    const response = await fetch(
+      `${baseUrl}/calculator?schoolId=${seedIds.schools.sysu}&year=2026`,
+      { headers: { accept: "text/html" } }
+    );
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /Score calculator/);
+    assert.match(body, /Step 1/);
+    assert.match(body, /Choose school and year/);
+    assert.match(body, /Step 2/);
+    assert.match(body, /Enter scores/);
+    assert.match(body, /Step 3/);
+    assert.match(body, /View results/);
+    assert.match(body, /Sun Yat-sen University/);
+    assert.match(body, /60\/30\/10 comprehensive score/);
+    assert.match(body, /name="scores\[gaokao\]"/);
+    assert.match(body, /name="scores\[schoolAssessment\]"/);
+    assert.match(body, /name="scores\[academicLevel\]"/);
+    assert.match(body, /Official source/);
+    assert.match(body, /calculator\.js/);
+    assert.doesNotMatch(body, /Draft Review Guide|Working Draft/);
+  });
+
+  it("hides the score calculation form when no clear published formula exists", async () => {
+    const response = await fetch(
+      `${baseUrl}/calculator?schoolId=${seedIds.schools.scut}&year=2025`,
+      { headers: { accept: "text/html" } }
+    );
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /South China University of Technology/);
+    assert.match(body, /No clear published formula/);
+    assert.match(body, /Calculation form is hidden/);
+    assert.doesNotMatch(body, /id="score-input-form"/);
+    assert.doesNotMatch(body, /name="scores\[gaokao\]"/);
+  });
+
   it("returns the full Guangdong timeline with generated nodes, statuses, and site-only reminders", async () => {
     const response = await fetch(
       `${baseUrl}/api/timeline?year=2026&schoolIds=${seedIds.schools.sysu},${seedIds.schools.scut}`

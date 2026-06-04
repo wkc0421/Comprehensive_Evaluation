@@ -1,4 +1,5 @@
 import {
+  getSchoolDetail,
   getSchoolById,
   listExperiences,
   listGuides,
@@ -62,6 +63,15 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function safeScriptJson(value) {
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
 }
 
 function formatDate(value) {
@@ -842,6 +852,217 @@ export function renderTimelinePage(timeline) {
         </div>
         <div class="timeline-list">${renderTimelineNodeCards(timeline.events, timeline.reminders)}</div>
       </section>
+    </main>`
+  });
+}
+
+function calculatorSchoolEntries(cards) {
+  const entriesById = new Map();
+
+  for (const card of cards) {
+    const existingEntry = entriesById.get(card.school.id);
+    const entry = existingEntry ?? {
+      school: card.school,
+      years: []
+    };
+
+    if (!entry.years.includes(card.guide.admissionYear)) {
+      entry.years.push(card.guide.admissionYear);
+    }
+
+    entriesById.set(card.school.id, entry);
+  }
+
+  return [...entriesById.values()]
+    .map((entry) => ({
+      ...entry,
+      years: entry.years.sort((left, right) => right - left)
+    }))
+    .sort((left, right) => compareSchoolNames(left.school, right.school));
+}
+
+function latestFormulaCard(cards) {
+  return [...cards]
+    .sort((left, right) => {
+      if (right.guide.admissionYear !== left.guide.admissionYear) {
+        return right.guide.admissionYear - left.guide.admissionYear;
+      }
+
+      return String(right.guide.updatedAt ?? "").localeCompare(String(left.guide.updatedAt ?? ""));
+    })
+    .find((card) => card.formula.available) ?? cards[0] ?? null;
+}
+
+function resolveCalculatorSelection(filters, entries, cards) {
+  const fallbackCard = latestFormulaCard(cards);
+  const requestedEntry = entries.find((entry) => entry.school.id === filters.schoolId);
+  const fallbackEntry = entries.find((entry) => entry.school.id === fallbackCard?.school.id) ?? entries[0] ?? null;
+  const selectedEntry = requestedEntry ?? fallbackEntry;
+  const selectedYear = selectedEntry?.years.includes(filters.year)
+    ? filters.year
+    : selectedEntry?.years[0];
+
+  return {
+    schoolId: selectedEntry?.school.id,
+    year: selectedYear
+  };
+}
+
+function compareSchoolNames(left, right) {
+  return left.name.localeCompare(right.name, "en");
+}
+
+function calculatorOptionsJson(entries) {
+  return safeScriptJson({
+    schools: entries.map((entry) => ({
+      id: entry.school.id,
+      name: entry.school.name,
+      years: entry.years
+    }))
+  });
+}
+
+function percentageLabel(value) {
+  const percentage = value * 100;
+  const rounded = Math.round(percentage * 10) / 10;
+
+  return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
+}
+
+function renderCalculatorSelectionForm(entries, selectedSchoolId, selectedYear) {
+  if (entries.length === 0) {
+    return `<p class="empty-state">No published school guide data is available for score calculation.</p>`;
+  }
+
+  const selectedEntry = entries.find((entry) => entry.school.id === selectedSchoolId) ?? entries[0];
+  const schoolOptions = entries
+    .map((entry) => renderOption(entry.school.id, entry.school.name, selectedSchoolId))
+    .join("");
+  const yearOptions = selectedEntry.years
+    .map((year) => renderOption(year, year, selectedYear))
+    .join("");
+
+  return `<form class="filter-panel calculator-selector" method="get" action="/calculator" aria-label="Score calculator selection">
+    <label class="filter-field wide-field">
+      <span>School</span>
+      <select name="schoolId" id="calculator-school">${schoolOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>Year</span>
+      <select name="year" id="calculator-year">${yearOptions}</select>
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Load formula</button>
+      <a class="secondary-action" href="/calculator">Reset</a>
+    </div>
+  </form>`;
+}
+
+function renderCalculatorInput(input) {
+  const inputId = `score-${input.key}`;
+
+  return `<label class="score-field" for="${escapeHtml(inputId)}">
+    <span>${escapeHtml(input.label)}</span>
+    <input
+      id="${escapeHtml(inputId)}"
+      name="scores[${escapeHtml(input.key)}]"
+      type="number"
+      inputmode="decimal"
+      min="0"
+      max="${escapeHtml(input.maxScore)}"
+      step="0.01"
+      required
+      data-score-key="${escapeHtml(input.key)}"
+      data-score-label="${escapeHtml(input.label)}"
+      data-max-score="${escapeHtml(input.maxScore)}"
+      data-weight="${escapeHtml(input.weight)}"
+      aria-describedby="${escapeHtml(inputId)}-hint">
+    <small id="${escapeHtml(inputId)}-hint">0 to ${escapeHtml(input.maxScore)} - ${escapeHtml(percentageLabel(input.weight))}</small>
+  </label>`;
+}
+
+function renderCalculatorFormulaForm(detail) {
+  if (!detail) {
+    return `<div class="calculator-unavailable">
+      <h3>No published guide selected</h3>
+      <p>Calculation form is hidden until a published school guide and year are available.</p>
+    </div>`;
+  }
+
+  if (!detail.formula) {
+    return `<div class="calculator-unavailable" id="score-input-unavailable">
+      <h3>No clear published formula</h3>
+      <p>Calculation form is hidden because no clear published score formula is available for ${escapeHtml(detail.school.name)} ${escapeHtml(detail.selectedYear)}.</p>
+      ${renderDetailLink(detail.guide.officialSourceUrl, "Published guide")}
+    </div>`;
+  }
+
+  const inputs = detail.formula.formulaConfig.inputs.map(renderCalculatorInput).join("");
+
+  return `<form class="score-entry-form" id="score-input-form" novalidate data-school-id="${escapeHtml(detail.school.id)}" data-year="${escapeHtml(detail.selectedYear)}">
+    <div class="formula-summary">
+      <div>
+        <h3>${escapeHtml(detail.formula.formulaName)}</h3>
+        <p>${escapeHtml(detail.formula.explanation)}</p>
+      </div>
+      <a class="text-link" href="${escapeHtml(detail.formula.officialSourceUrl)}" rel="noopener">Official source</a>
+    </div>
+    <div class="score-fields">${inputs}</div>
+    <div class="calculator-feedback" id="calculator-feedback" role="alert" aria-live="polite"></div>
+    <button class="primary-action" type="submit">Calculate score</button>
+  </form>`;
+}
+
+export function renderScoreCalculatorPage(filters = {}) {
+  const cards = listSchoolGuideCards({ sort: "name" });
+  const entries = calculatorSchoolEntries(cards);
+  const selection = resolveCalculatorSelection(filters, entries, cards);
+  const detail = selection.schoolId && selection.year
+    ? getSchoolDetail({ schoolId: selection.schoolId, year: selection.year })
+    : null;
+
+  return htmlPage({
+    title: `Score Calculator | ${productName}`,
+    body: `    <main class="app-shell">
+      <header class="top-bar">
+        <a class="brand" href="/">
+          <span class="brand-mark">Guangdong MVP</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
+        <a class="admin-link" href="/admin">Admin</a>
+      </header>
+
+      <section class="page-heading" aria-labelledby="calculator-title">
+        <p class="eyebrow">Published formula calculator</p>
+        <h1 id="calculator-title">Score calculator</h1>
+        <p class="lead">Calculate a comprehensive score from the selected school's published Guangdong formula and official score fields.</p>
+      </section>
+
+      <section class="section calculator-steps" aria-label="Score calculation steps">
+        <article class="calculator-step">
+          <div class="step-marker">Step 1</div>
+          <div class="section-heading"><h2>Choose school and year</h2></div>
+          ${renderCalculatorSelectionForm(entries, selection.schoolId, selection.year)}
+        </article>
+
+        <article class="calculator-step">
+          <div class="step-marker">Step 2</div>
+          <div class="section-heading"><h2>Enter scores</h2></div>
+          ${renderCalculatorFormulaForm(detail)}
+        </article>
+
+        <article class="calculator-step">
+          <div class="step-marker">Step 3</div>
+          <div class="section-heading"><h2>View results</h2></div>
+          <div class="calculator-result" id="calculator-result" aria-live="polite">
+            <p class="inline-empty">Result will appear after calculation.</p>
+          </div>
+        </article>
+      </section>
+
+      <script type="application/json" id="calculator-options">${calculatorOptionsJson(entries)}</script>
+      <script src="/calculator.js" defer></script>
     </main>`
   });
 }

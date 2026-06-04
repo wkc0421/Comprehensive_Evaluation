@@ -174,8 +174,8 @@
         "Verify calculator flows with browser automation and run the formula unit tests."
       ],
       "priority": 11,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Built the mobile-first score calculator page with school/year selection, published formula loading, unavailable no-formula state, client validation, API-backed result rendering, route tests, formula unit tests, and Playwright flow verification."
     },
     {
       "id": "US-012",

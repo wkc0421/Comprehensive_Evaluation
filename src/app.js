@@ -20,6 +20,7 @@ import {
   renderNotFound,
   renderSchoolDetailPage,
   renderSchoolListPage,
+  renderScoreCalculatorPage,
   renderStudentHome,
   renderTimelinePage
 } from "./pages.js";
@@ -203,6 +204,13 @@ function parseTimelineFilters(url) {
     year: optionalYearParam(url),
     schoolIds: parseSchoolIdsParam(url),
     mine: optionalBooleanParam(url, "mine")
+  };
+}
+
+function parseCalculatorFilters(url) {
+  return {
+    schoolId: optionalStringParam(url, "schoolId"),
+    year: optionalYearParam(url)
   };
 }
 
@@ -771,6 +779,16 @@ export async function handleRequest(request, response, context = {}) {
       sendJson(response, 200, calculateScoreFromBody(body));
     } catch (error) {
       sendError(response, errorStatus(error), error.code ?? "score_calculation_error", error.message);
+    }
+
+    return;
+  }
+
+  if (url.pathname === "/calculator" && request.method === "GET") {
+    try {
+      sendHtml(response, 200, renderScoreCalculatorPage(parseCalculatorFilters(url)));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "calculator_error", error.message);
     }
 
     return;

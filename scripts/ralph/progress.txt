@@ -16,6 +16,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public admission guide APIs should use `listGuides()` and `getGuideDetail()` from `src/db/data-access.js`; current guide lists stay published-only while detail responses can include source attribution, structured fields, and published version summaries.
 - Public timelines should use `listTimelineNodes()` and `buildSiteTimelineReminders()` from `src/db/data-access.js`; they keep `/timeline`, `/api/timeline`, status calculation, required generated event keys, unknown-date handling, published-only visibility, and site-only reminder indicators aligned.
 - Public score calculation should use `calculateScore()` from `src/db/data-access.js`; it keeps formula visibility, input normalization, validation errors, contribution breakdowns, source links, and disclaimer text aligned for `/score/calculate`, `/api/score/calculate`, and future calculator pages.
+- Public score calculator UI should use `renderScoreCalculatorPage()` with `listSchoolGuideCards()` and `getSchoolDetail()` for published school/year/formula loading, while `public/calculator.js` posts final calculations to `/api/score/calculate`; when `detail.formula` is null, hide the score-entry form and show the unavailable state.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -334,4 +335,36 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Use `calculateScore()` from `src/db/data-access.js` for score calculator page work so published-only formula visibility, input normalization, error codes, breakdown shape, source URL, and disclaimer remain consistent.
   - Formula contributions are calculated as `(score / maxScore) * outputMaxScore * weight`, then rounded to two decimals for API output.
   - No-formula behavior is exercised with South China University of Technology 2025 and pending-formula visibility with Southern University of Science and Technology 2025.
+---
+
+## Thu Jun  4 02:38:17 PM CST 2026 - Ralph runner
+- Iteration: 2
+- Story: US-010
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-2
+---
+
+## Thu Jun  4 02:45:47 PM CST 2026 - US-011
+- What was implemented
+  - Added the mobile-first `/calculator` page with three steps: choose school and year, enter scores, and view results.
+  - Loaded the selected published school-year formula through published school guide/detail helpers and hid the score-entry form for school years without a clear published formula.
+  - Added dependency-free client-side score validation and result rendering backed by `/api/score/calculate`, including contribution breakdown, formula explanation, official source, and the non-probability disclaimer.
+- Files changed
+  - `public/calculator.js`, `public/styles.css`
+  - `src/app.js`, `src/app.test.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for `/calculator` at 390px and 1280px; school/year selection, required-score validation, out-of-range validation, API-backed result rendering, official source, non-probability disclaimer, and no horizontal overflow were verified.
+  - Playwright Chromium verification passed for `/calculator?schoolId=00000000-0000-4000-8000-000000000002&year=2025` at 390px; the unavailable state was visible, the calculation form was hidden, and no horizontal overflow was present.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-141724/iteration-3/calculator-flow-390.png`, `calculator-flow-1280.png`, and `calculator-unavailable-390.png`.
+- **Learnings for future iterations:**
+  - Use `renderScoreCalculatorPage()` for calculator page work; it keeps the school/year picker on published guide cards and resolves the selected formula through `getSchoolDetail()`.
+  - `public/calculator.js` is the dependency-free browser workflow for score pages: it validates configured input ranges before posting to `/api/score/calculate` and renders the API response into the result panel.
+  - South China University of Technology 2025 remains the stable no-formula browser fixture; South China University of Technology 2024 is useful for a complete two-input calculator flow.
 ---
