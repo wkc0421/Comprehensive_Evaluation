@@ -327,6 +327,67 @@ describe("web routes", () => {
     assert.doesNotMatch(body, /Working Draft/);
   });
 
+  it("calculates public score formulas through the POST score API", async () => {
+    const response = await fetch(`${baseUrl}/score/calculate`, {
+      method: "POST",
+      ...jsonRequest({
+        schoolId: seedIds.schools.sysu,
+        year: 2026,
+        scores: {
+          gaokao: 690,
+          schoolAssessment: 80,
+          academicLevel: 90
+        }
+      })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.schoolId, seedIds.schools.sysu);
+    assert.equal(body.year, 2026);
+    assert.equal(body.formulaName, "60/30/10 comprehensive score");
+    assert.equal(body.totalScore, 88.2);
+    assert.deepEqual(body.breakdown.map((input) => input.contribution), [55.2, 24, 9]);
+    assert.equal(body.explanation, "Gaokao, school assessment, and academic level conversion are weighted 60%, 30%, and 10%.");
+    assert.equal(body.officialSourceUrl, "https://example.edu/sysu/2026-comprehensive-evaluation-guide");
+    assert.match(body.disclaimer, /not an admission probability/i);
+  });
+
+  it("returns clear score API validation errors", async () => {
+    const missingResponse = await fetch(`${baseUrl}/api/score/calculate`, {
+      method: "POST",
+      ...jsonRequest({
+        schoolId: seedIds.schools.sysu,
+        year: 2026,
+        scores: {
+          gaokao: 690,
+          schoolAssessment: 80
+        }
+      })
+    });
+    const missingBody = await missingResponse.json();
+
+    assert.equal(missingResponse.status, 400);
+    assert.equal(missingBody.error, "missing_score");
+    assert.match(missingBody.message, /Academic level conversion/);
+
+    const noFormulaResponse = await fetch(`${baseUrl}/api/score/calculate`, {
+      method: "POST",
+      ...jsonRequest({
+        schoolId: seedIds.schools.scut,
+        year: 2025,
+        scores: {
+          gaokao: 690,
+          schoolAssessment: 80
+        }
+      })
+    });
+    const noFormulaBody = await noFormulaResponse.json();
+
+    assert.equal(noFormulaResponse.status, 404);
+    assert.equal(noFormulaBody.error, "formula_not_available");
+  });
+
   it("returns the full Guangdong timeline with generated nodes, statuses, and site-only reminders", async () => {
     const response = await fetch(
       `${baseUrl}/api/timeline?year=2026&schoolIds=${seedIds.schools.sysu},${seedIds.schools.scut}`

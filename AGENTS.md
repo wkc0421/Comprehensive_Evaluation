@@ -12,3 +12,4 @@
 - Public school detail pages and APIs should use `getSchoolDetail` from `src/db/data-access.js` so year defaulting, published-only guide visibility, timeline/formula aggregation, and featured experience ranking stay consistent.
 - Public admission guide APIs should use `listGuides` and `getGuideDetail` from `src/db/data-access.js` so published-only current lists, keyword filters, source attribution, structured fields, and version summaries stay consistent.
 - Public timeline pages and APIs should use `listTimelineNodes` and `buildSiteTimelineReminders` from `src/db/data-access.js` so generated required nodes, status calculation, unknown-date handling, published-only visibility, and site-only reminder indicators stay consistent.
+- Public score calculation should use `calculateScore` from `src/db/data-access.js` so formula visibility, input normalization, validation errors, breakdowns, source links, and disclaimer text stay consistent across APIs and pages.

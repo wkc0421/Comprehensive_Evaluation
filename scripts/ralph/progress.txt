@@ -15,6 +15,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public school detail pages and APIs should use `getSchoolDetail()` from `src/db/data-access.js`; it keeps `/schools/:id`, `/api/schools/:id`, year defaulting, published-only visibility, timeline/formula aggregation, and featured experience ranking aligned.
 - Public admission guide APIs should use `listGuides()` and `getGuideDetail()` from `src/db/data-access.js`; current guide lists stay published-only while detail responses can include source attribution, structured fields, and published version summaries.
 - Public timelines should use `listTimelineNodes()` and `buildSiteTimelineReminders()` from `src/db/data-access.js`; they keep `/timeline`, `/api/timeline`, status calculation, required generated event keys, unknown-date handling, published-only visibility, and site-only reminder indicators aligned.
+- Public score calculation should use `calculateScore()` from `src/db/data-access.js`; it keeps formula visibility, input normalization, validation errors, contribution breakdowns, source links, and disclaimer text aligned for `/score/calculate`, `/api/score/calculate`, and future calculator pages.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -302,4 +303,35 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Use `listTimelineNodes()` for public timeline API/page work because it generates all required student-facing event keys while preserving published-only guide visibility and null unknown dates.
   - Use `buildSiteTimelineReminders()` for MVP reminder indicators; it returns timeline and personal-center site-only channels and does not represent external notification delivery.
   - Route tests can inject `createInteractionStore()` through `handleRequest(request, response, { interactionStore })` to keep favorite state isolated and deterministic.
+---
+
+## Thu Jun  4 02:31:47 PM CST 2026 - Ralph runner
+- Iteration: 1
+- Story: US-009
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-1
+---
+
+## Thu Jun  4 02:36:49 PM CST 2026 - US-010
+- What was implemented
+  - Added a published-only score formula engine that normalizes each configured input to the formula output scale before applying weights.
+  - Implemented `POST /score/calculate` and `/api/score/calculate` with total score, per-input contribution breakdown, formula metadata, explanation, official source link, and non-probability disclaimer.
+  - Added validation for missing required scores, non-numeric scores, out-of-range scores, missing school/year/scores input, unsupported formula types, and no published formula cases.
+- Files changed
+  - `AGENTS.md`
+  - `src/app.js`, `src/app.test.js`
+  - `src/db/data-access.js`, `src/db/data-access.test.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Not applicable; this story added a formula engine and JSON API, not a browser UI.
+- **Learnings for future iterations:**
+  - Use `calculateScore()` from `src/db/data-access.js` for score calculator page work so published-only formula visibility, input normalization, error codes, breakdown shape, source URL, and disclaimer remain consistent.
+  - Formula contributions are calculated as `(score / maxScore) * outputMaxScore * weight`, then rounded to two decimals for API output.
+  - No-formula behavior is exercised with South China University of Technology 2025 and pending-formula visibility with Southern University of Science and Technology 2025.
 ---

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { AuthError, authService as defaultAuthService } from "./auth.js";
 import {
   buildSiteTimelineReminders,
+  calculateScore,
   getGuideDetail,
   getSchoolById,
   getSchoolDetail,
@@ -684,6 +685,14 @@ function assertFavoriteTarget(body) {
   return { targetType, targetId };
 }
 
+function calculateScoreFromBody(body) {
+  return calculateScore({
+    schoolId: body.schoolId,
+    year: body.year,
+    scores: body.scores
+  });
+}
+
 async function sendPublicAsset(requestPath, response) {
   const normalizedPath = normalize(requestPath).replace(/^(\.\.[/\\])+/, "");
   const assetPath = join(publicDir, normalizedPath);
@@ -753,6 +762,17 @@ export async function handleRequest(request, response, context = {}) {
     }
 
     sendJson(response, 200, { user });
+    return;
+  }
+
+  if ((url.pathname === "/score/calculate" || url.pathname === "/api/score/calculate") && request.method === "POST") {
+    try {
+      const body = await readJsonBody(request);
+      sendJson(response, 200, calculateScoreFromBody(body));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "score_calculation_error", error.message);
+    }
+
     return;
   }
 

@@ -60,6 +60,15 @@ const timelineEventDefinitionOrder = new Map(
  * @property {boolean} [verified]
  */
 
+export class ScoreCalculationError extends Error {
+  constructor(code, message, statusCode = 400) {
+    super(message);
+    this.name = "ScoreCalculationError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
 function isPublished(record) {
   return record.status === publishedStatus;
 }
@@ -248,8 +257,86 @@ function normalizeFilterValue(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+function roundScore(value) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 function isRecentExperience(experience, year) {
   return experience.admissionYear <= year && experience.admissionYear >= year - 1;
+}
+
+function normalizeCalculationYear(year) {
+  const numericYear = Number(year);
+
+  if (!Number.isInteger(numericYear) || numericYear < 2000 || numericYear > 2100) {
+    throw new ScoreCalculationError("invalid_year", "Year must be a four-digit admission year.");
+  }
+
+  return numericYear;
+}
+
+function assertCalculationScores(scores) {
+  if (!scores || typeof scores !== "object" || Array.isArray(scores)) {
+    throw new ScoreCalculationError("invalid_scores", "Scores must be provided as an object keyed by formula input.");
+  }
+
+  return scores;
+}
+
+function configuredScoreValue(scores, input) {
+  if (!Object.hasOwn(scores, input.key) || scores[input.key] === null || scores[input.key] === "") {
+    throw new ScoreCalculationError("missing_score", `${input.label} is required.`);
+  }
+
+  const score = Number(scores[input.key]);
+
+  if (!Number.isFinite(score)) {
+    throw new ScoreCalculationError("invalid_score", `${input.label} must be a number.`);
+  }
+
+  if (score < 0 || score > input.maxScore) {
+    throw new ScoreCalculationError(
+      "score_out_of_range",
+      `${input.label} must be between 0 and ${input.maxScore}.`
+    );
+  }
+
+  return score;
+}
+
+function assertWeightedFormulaConfig(formula) {
+  if (formula.formulaType !== "weighted_sum" && formula.formulaType !== "custom") {
+    throw new ScoreCalculationError(
+      "unsupported_formula",
+      "This score formula type is not supported by the public calculator.",
+      422
+    );
+  }
+
+  if (!Array.isArray(formula.formulaConfig.inputs) || formula.formulaConfig.inputs.length === 0) {
+    throw new ScoreCalculationError("invalid_formula_config", "The score formula has no configured inputs.", 422);
+  }
+
+  const outputMaxScore = Number(formula.formulaConfig.outputMaxScore);
+
+  if (!Number.isFinite(outputMaxScore) || outputMaxScore <= 0) {
+    throw new ScoreCalculationError("invalid_formula_config", "The score formula output scale is invalid.", 422);
+  }
+
+  for (const input of formula.formulaConfig.inputs) {
+    const maxScore = Number(input.maxScore);
+    const weight = Number(input.weight);
+
+    if (!input.key || !input.label || !Number.isFinite(maxScore) || maxScore <= 0) {
+      throw new ScoreCalculationError("invalid_formula_config", "A score formula input is invalid.", 422);
+    }
+
+    if (!Number.isFinite(weight) || weight < 0) {
+      throw new ScoreCalculationError("invalid_formula_config", "A score formula weight is invalid.", 422);
+    }
+  }
+
+  return outputMaxScore;
 }
 
 function getPublishedSchoolById(schoolId) {
@@ -818,6 +905,86 @@ export function getScoreFormula(filters) {
  */
 export function getScoreFormulaById(formulaId) {
   return listScoreFormulas().find((formula) => formula.id === formulaId) ?? null;
+}
+
+/**
+ * Calculates a public comprehensive score from a published school-year formula.
+ * Each input score is normalized to the formula output scale before applying
+ * the configured weight, so differently scaled inputs can be combined.
+ *
+ * @param {{schoolId: string, year: number | string, scores: Record<string, number | string>}} input
+ * @returns {{
+ *   schoolId: string,
+ *   year: number,
+ *   formulaId: string,
+ *   formulaName: string,
+ *   formulaType: string,
+ *   totalScore: number,
+ *   outputMaxScore: number,
+ *   breakdown: Array<{
+ *     key: string,
+ *     label: string,
+ *     score: number,
+ *     maxScore: number,
+ *     normalizedScore: number,
+ *     weight: number,
+ *     contribution: number
+ *   }>,
+ *   explanation: string,
+ *   officialSourceUrl: string,
+ *   disclaimer: string
+ * }}
+ */
+export function calculateScore(input = {}) {
+  const schoolId = typeof input.schoolId === "string" ? input.schoolId.trim() : "";
+  const year = normalizeCalculationYear(input.year);
+  const scores = assertCalculationScores(input.scores);
+
+  if (!schoolId) {
+    throw new ScoreCalculationError("missing_school", "School id is required.");
+  }
+
+  const formula = getScoreFormula({ schoolId, year });
+
+  if (!formula) {
+    throw new ScoreCalculationError(
+      "formula_not_available",
+      "No published score formula is available for this school and year.",
+      404
+    );
+  }
+
+  const outputMaxScore = assertWeightedFormulaConfig(formula);
+  const breakdown = formula.formulaConfig.inputs.map((configuredInput) => {
+    const score = configuredScoreValue(scores, configuredInput);
+    const normalizedScore = (score / configuredInput.maxScore) * outputMaxScore;
+    const contribution = normalizedScore * configuredInput.weight;
+
+    return {
+      key: configuredInput.key,
+      label: configuredInput.label,
+      score,
+      maxScore: configuredInput.maxScore,
+      normalizedScore: roundScore(normalizedScore),
+      weight: configuredInput.weight,
+      contribution: roundScore(contribution)
+    };
+  });
+  const totalScore = roundScore(breakdown.reduce((total, item) => total + item.contribution, 0));
+
+  return {
+    schoolId: formula.schoolId,
+    year: formula.admissionYear,
+    formulaId: formula.id,
+    formulaName: formula.formulaName,
+    formulaType: formula.formulaType,
+    totalScore,
+    outputMaxScore,
+    breakdown,
+    explanation: formula.explanation,
+    officialSourceUrl: formula.officialSourceUrl,
+    disclaimer: "This calculation follows published formula fields for reference only and is not an admission probability or ranking prediction."
+  };
 }
 
 /**

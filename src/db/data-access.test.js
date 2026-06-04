@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildSiteTimelineReminders,
+  calculateScore,
   calculateTimelineNodeStatus,
   createGuideVersion,
   getExperienceById,
@@ -26,6 +27,14 @@ import { seedData, seedIds } from "./seed-data.js";
 
 function ids(records) {
   return records.map((record) => record.id);
+}
+
+function assertScoreError(fn, expected) {
+  assert.throws(fn, (error) => {
+    assert.equal(error.code, expected.code);
+    assert.equal(error.statusCode, expected.statusCode);
+    return true;
+  });
 }
 
 describe("Guangdong seed data", () => {
@@ -207,6 +216,126 @@ describe("student-facing data access helpers", () => {
       assessmentType: "structured_interview",
       verified: true
     })), [seedIds.experiences.scut2025]);
+  });
+
+  it("calculates 60/30/10 weighted formula scores with normalized input scales", () => {
+    const result = calculateScore({
+      schoolId: seedIds.schools.sysu,
+      year: 2026,
+      scores: {
+        gaokao: 690,
+        schoolAssessment: 80,
+        academicLevel: 90
+      }
+    });
+
+    assert.equal(result.formulaName, "60/30/10 comprehensive score");
+    assert.equal(result.totalScore, 88.2);
+    assert.equal(result.outputMaxScore, 100);
+    assert.deepEqual(result.breakdown.map((input) => input.contribution), [55.2, 24, 9]);
+    assert.deepEqual(result.breakdown.map((input) => input.normalizedScore), [92, 80, 90]);
+    assert.equal(result.officialSourceUrl, "https://example.edu/sysu/2026-comprehensive-evaluation-guide");
+    assert.match(result.disclaimer, /not an admission probability/i);
+  });
+
+  it("calculates 85/15 weighted formula scores", () => {
+    const result = calculateScore({
+      schoolId: seedIds.schools.sysu,
+      year: "2025",
+      scores: {
+        gaokao: 705,
+        schoolAssessment: 90
+      }
+    });
+
+    assert.equal(result.formulaName, "85/15 comprehensive score");
+    assert.equal(result.totalScore, 93.4);
+    assert.deepEqual(result.breakdown.map((input) => input.weight), [0.85, 0.15]);
+    assert.deepEqual(result.breakdown.map((input) => input.contribution), [79.9, 13.5]);
+  });
+
+  it("calculates custom configured weights", () => {
+    const result = calculateScore({
+      schoolId: seedIds.schools.scut,
+      year: 2024,
+      scores: {
+        gaokao: 600,
+        schoolAssessment: 88
+      }
+    });
+
+    assert.equal(result.formulaName, "70/30 comprehensive score");
+    assert.equal(result.totalScore, 82.4);
+    assert.deepEqual(result.breakdown.map((input) => input.weight), [0.7, 0.3]);
+    assert.deepEqual(result.breakdown.map((input) => input.contribution), [56, 26.4]);
+  });
+
+  it("rejects missing score inputs", () => {
+    assertScoreError(() => calculateScore({
+      schoolId: seedIds.schools.sysu,
+      year: 2026,
+      scores: {
+        gaokao: 690,
+        schoolAssessment: 80
+      }
+    }), {
+      code: "missing_score",
+      statusCode: 400
+    });
+  });
+
+  it("rejects score inputs outside the configured range", () => {
+    assertScoreError(() => calculateScore({
+      schoolId: seedIds.schools.sysu,
+      year: 2026,
+      scores: {
+        gaokao: -1,
+        schoolAssessment: 80,
+        academicLevel: 90
+      }
+    }), {
+      code: "score_out_of_range",
+      statusCode: 400
+    });
+
+    assertScoreError(() => calculateScore({
+      schoolId: seedIds.schools.sysu,
+      year: 2026,
+      scores: {
+        gaokao: 690,
+        schoolAssessment: 101,
+        academicLevel: 90
+      }
+    }), {
+      code: "score_out_of_range",
+      statusCode: 400
+    });
+  });
+
+  it("returns no-formula errors for school years without a published formula", () => {
+    assertScoreError(() => calculateScore({
+      schoolId: seedIds.schools.scut,
+      year: 2025,
+      scores: {
+        gaokao: 690,
+        schoolAssessment: 80
+      }
+    }), {
+      code: "formula_not_available",
+      statusCode: 404
+    });
+
+    assertScoreError(() => calculateScore({
+      schoolId: seedIds.schools.sustech,
+      year: 2025,
+      scores: {
+        gaokao: 690,
+        schoolAssessment: 80
+      }
+    }), {
+      code: "formula_not_available",
+      statusCode: 404
+    });
   });
 
   it("generates full public timeline nodes from published guides and keeps unknown dates empty", () => {

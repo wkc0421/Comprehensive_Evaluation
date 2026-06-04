@@ -158,8 +158,8 @@
         "Unit tests cover 60/30/10, 85/15, custom weights, missing inputs, out-of-range inputs, and no-formula cases."
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented published-only score calculation via POST /score/calculate and /api/score/calculate with weighted input normalization, contribution breakdowns, formula metadata, source link, disclaimer, validation errors, and formula unit tests."
     },
     {
       "id": "US-011",
