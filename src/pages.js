@@ -33,6 +33,7 @@ const entryPoints = [
 
 const workflowPlaceholders = [
   { title: "Official guide review", status: "Data review active" },
+  { title: "AI ingestion drafts", status: "Draft-only workflow active" },
   { title: "Timeline management", status: "Override workflow active" },
   { title: "Formula management", status: "Draft and publish workflow active" },
   { title: "Experience moderation", status: "Content review active" },
@@ -2038,6 +2039,270 @@ export function renderAdminFormulaManagementPage({ formulas, filters = {}, user 
           <p class="section-kicker">Drafts stay hidden until publication has a passing sample test</p>
         </div>
         <div class="admin-review-list">${renderAdminFormulaCards(formulas)}</div>
+      </section>
+    </main>`
+  });
+}
+
+function defaultIngestionSourcesJson() {
+  return JSON.stringify([
+    {
+      id: "source-official-1",
+      sourceUrl: "https://eea.gd.gov.cn/admission/example",
+      title: "Guangdong Education Examination Authority comprehensive evaluation notice",
+      sourceType: "guangdong_education_exam_authority",
+      status: "accepted"
+    }
+  ], null, 2);
+}
+
+function defaultExtractedGuideFieldsJson() {
+  return JSON.stringify({
+    guideTitle: {
+      value: "Example 2026 Guangdong Comprehensive Evaluation Guide",
+      sourceDocumentId: "source-official-1",
+      confidence: 0.91
+    },
+    summary: {
+      value: "Draft extraction summary for manual data review.",
+      sourceDocumentId: "source-official-1",
+      confidence: 0.87
+    },
+    applicationStatus: {
+      value: "open",
+      manualNote: "Reviewer can adjust after checking official attachments."
+    },
+    majors: {
+      value: [],
+      manualNote: "No major list extracted yet."
+    }
+  }, null, 2);
+}
+
+function renderAdminIngestionFilters(filters = {}) {
+  const statusOptions = [
+    renderOption("", "All run statuses", filters.status ?? ""),
+    renderOption("pending", "Pending", filters.status),
+    renderOption("running", "Running", filters.status),
+    renderOption("succeeded", "Succeeded", filters.status),
+    renderOption("failed", "Failed", filters.status)
+  ].join("");
+
+  return `<form class="filter-panel admin-filter-panel" method="get" action="/admin/ingestion-runs" aria-label="Admin ingestion filters">
+    <label class="filter-field">
+      <span>Year</span>
+      <input name="year" inputmode="numeric" value="${escapeHtml(filters.year ?? "")}" placeholder="2026">
+    </label>
+    <label class="filter-field">
+      <span>School id</span>
+      <input name="schoolId" value="${escapeHtml(filters.schoolId ?? "")}" placeholder="Optional school id">
+    </label>
+    <label class="filter-field">
+      <span>Keyword</span>
+      <input name="keyword" value="${escapeHtml(filters.keyword ?? "")}" placeholder="Source or field keyword">
+    </label>
+    <label class="filter-field">
+      <span>Status</span>
+      <select name="status">${statusOptions}</select>
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/admin/ingestion-runs">Reset</a>
+    </div>
+  </form>`;
+}
+
+function renderIngestionCreateForm() {
+  return `<form class="admin-draft-form" method="post" action="/admin/ingestion-runs" aria-label="Create ingestion run">
+    <div class="admin-form-grid">
+      <label class="form-field">
+        <span>Year</span>
+        <input name="year" inputmode="numeric" placeholder="2026">
+      </label>
+      <label class="form-field">
+        <span>School id</span>
+        <input name="schoolId" placeholder="Required for draft creation">
+      </label>
+      <label class="form-field">
+        <span>Keyword</span>
+        <input name="keyword" placeholder="School or guide keyword">
+      </label>
+      <label class="form-field">
+        <span>Confidence score</span>
+        <input name="confidenceScore" inputmode="decimal" placeholder="0.86">
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Source document candidates JSON</span>
+        <textarea name="sourceDocuments" rows="8">${escapeHtml(defaultIngestionSourcesJson())}</textarea>
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Extracted guide fields JSON</span>
+        <textarea name="extractedGuideFields" rows="10">${escapeHtml(defaultExtractedGuideFieldsJson())}</textarea>
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Timeline candidates JSON</span>
+        <textarea name="timelineCandidates" rows="4">[]</textarea>
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Formula candidates JSON</span>
+        <textarea name="formulaCandidates" rows="4">[]</textarea>
+      </label>
+      <label class="form-field admin-wide-field">
+        <span>Review note</span>
+        <textarea name="reviewNote" rows="2" placeholder="Manual checks needed before publishing"></textarea>
+      </label>
+      <div class="form-actions admin-wide-field">
+        <button class="primary-action" type="submit">Create draft run</button>
+      </div>
+    </div>
+  </form>`;
+}
+
+function renderIngestionSourceDocuments(sourceDocuments) {
+  if (sourceDocuments.length === 0) {
+    return `<p class="inline-empty">No source document candidates stored.</p>`;
+  }
+
+  return `<ol class="admin-audit-list ingestion-source-list">${sourceDocuments
+    .map((document) => `<li>
+      <strong>${escapeHtml(document.sourcePriority)}. ${escapeHtml(document.title)}</strong>
+      <span>${escapeHtml(document.sourcePriorityLabel)} - ${escapeHtml(humanizeToken(document.candidateStatus))}</span>
+      <em>${escapeHtml(document.contentHash.slice(0, 12))}</em>
+      ${renderDetailRows([
+        { label: "Source type", value: humanizeToken(document.sourceType) },
+        { label: "Authority role", value: humanizeToken(document.authorityRole) },
+        { label: "Fetched", value: formatDate(document.fetchedAt) },
+        { label: "Raw text asset", value: document.rawTextAssetUrl },
+        { label: "Source URL", html: renderDetailLink(document.sourceUrl, "Open source") }
+      ])}
+    </li>`)
+    .join("")}</ol>`;
+}
+
+function traceLabel(trace) {
+  if (trace.sourceDocumentId) {
+    const note = trace.manualNote ? `; manual note: ${trace.manualNote}` : "";
+    return `${trace.sourceTitle ?? trace.sourceDocumentId}${note}`;
+  }
+
+  return trace.manualNote ?? missingOfficialText;
+}
+
+function renderTraceableFieldRows(fields) {
+  const entries = Object.entries(fields);
+
+  if (entries.length === 0) {
+    return `<p class="inline-empty">No extracted guide fields stored.</p>`;
+  }
+
+  return renderDetailRows(entries.map(([name, field]) => ({
+    label: name,
+    value: `${JSON.stringify(field.value)} | trace: ${traceLabel(field.trace)}`
+  })));
+}
+
+function renderTraceableCandidateList(candidates, emptyText) {
+  if (candidates.length === 0) {
+    return `<p class="inline-empty">${escapeHtml(emptyText)}</p>`;
+  }
+
+  return `<ol class="admin-audit-list">${candidates
+    .map((candidate) => `<li>
+      <strong>${escapeHtml(candidate.eventKey ?? candidate.formulaName ?? candidate.title ?? "Candidate")}</strong>
+      <span>${escapeHtml(traceLabel(candidate.trace))}</span>
+      <em>${escapeHtml(candidate.confidence ?? "No confidence")}</em>
+      <p>${escapeHtml(JSON.stringify(candidate))}</p>
+    </li>`)
+    .join("")}</ol>`;
+}
+
+function renderIngestionRunCards(ingestionRuns) {
+  if (ingestionRuns.length === 0) {
+    return `<p class="empty-state">No ingestion runs match these filters.</p>`;
+  }
+
+  return ingestionRuns
+    .map((run) => `<article class="admin-review-card">
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(run.year ?? "Any year")}</span>
+        <span class="soft-badge">${escapeHtml(humanizeToken(run.status))}</span>
+        <span class="muted-badge">Confidence ${escapeHtml(run.confidenceScore ?? "not set")}</span>
+      </div>
+      <div class="section-heading">
+        <div>
+          <h3>${escapeHtml(run.keyword || run.school?.name || "Ingestion run")}</h3>
+          <p class="section-kicker">${escapeHtml(run.id)}${run.draftGuide ? ` - draft ${escapeHtml(run.draftGuide.id)}` : ""}</p>
+        </div>
+        <a class="secondary-action" href="/admin/ingestion-runs/${escapeHtml(encodeURIComponent(run.id))}?format=json">JSON detail</a>
+      </div>
+      <div class="admin-review-columns">
+        <section class="admin-review-section" aria-label="Source document candidates">
+          <h4>Source document candidates</h4>
+          ${renderIngestionSourceDocuments(run.sourceDocuments)}
+        </section>
+        <section class="admin-review-section" aria-label="Traceable extracted guide fields">
+          <h4>Extracted guide fields</h4>
+          ${renderTraceableFieldRows(run.extractedGuideFields)}
+        </section>
+      </div>
+      <div class="admin-review-columns">
+        <section class="admin-review-section" aria-label="Timeline candidates">
+          <h4>Timeline candidates</h4>
+          ${renderTraceableCandidateList(run.timelineCandidates, "No timeline candidates stored.")}
+        </section>
+        <section class="admin-review-section" aria-label="Formula candidates">
+          <h4>Formula candidates</h4>
+          ${renderTraceableCandidateList(run.formulaCandidates, "No formula candidates stored.")}
+        </section>
+      </div>
+      <section class="admin-review-section" aria-label="Draft-only output">
+        <h4>Draft-only output</h4>
+        ${run.draftGuide
+          ? renderDetailRows([
+              { label: "Draft guide", value: run.draftGuide.guideTitle },
+              { label: "Draft status", value: humanizeToken(run.draftGuide.status) },
+              { label: "Student visibility", value: "Hidden until manual publish" }
+            ])
+          : `<p class="inline-empty">No guide draft was created for this run.</p>`}
+      </section>
+    </article>`)
+    .join("");
+}
+
+export function renderAdminIngestionRunPage({ ingestionRuns, filters = {}, user }) {
+  return htmlPage({
+    title: `AI Ingestion | ${productName}`,
+    body: `    <main class="app-shell admin-main admin-review-main">
+      <header class="admin-header">
+        <a class="brand" href="/admin">
+          <span class="brand-mark">Admin</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <p class="eyebrow">AI-assisted official source ingestion</p>
+        <h1>Ingestion draft workflow</h1>
+        <p class="lead">Store official source candidates, extracted fields, timeline candidates, formula candidates, confidence, and review notes as draft-only review material.</p>
+        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
+        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
+      </header>
+
+      <section class="section" aria-label="Create ingestion run">
+        <div class="section-heading">
+          <h2>Create ingestion run</h2>
+          <p class="section-kicker">AI and extraction output can create drafts only; publishing stays in manual guide review</p>
+        </div>
+        ${renderIngestionCreateForm()}
+      </section>
+
+      <section class="section" aria-label="Ingestion filters">
+        ${renderAdminIngestionFilters(filters)}
+      </section>
+
+      <section class="section" aria-labelledby="admin-ingestion-results-title">
+        <div class="section-heading">
+          <h2 id="admin-ingestion-results-title">${escapeHtml(ingestionRuns.length)} ${escapeHtml(pluralize(ingestionRuns.length, "ingestion run"))}</h2>
+          <p class="section-kicker">Source priority: GEEA, CHSI/Yangguang Gaokao, university admissions, other official, discovery clues</p>
+        </div>
+        <div class="admin-review-list">${renderIngestionRunCards(ingestionRuns)}</div>
       </section>
     </main>`
   });

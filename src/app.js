@@ -8,15 +8,18 @@ import {
   archiveAdminGuide,
   buildSiteTimelineReminders,
   calculateScore,
+  createAdminIngestionRun,
   createAdminGuideDraft,
   getAdminFormulaDetail,
   getExperienceById,
   getAdminGuideReviewDetail,
+  getAdminIngestionRunDetail,
   getGuideDetail,
   getSchoolById,
   getSchoolDetail,
   listAdminFormulas,
   listAdminGuideReviews,
+  listAdminIngestionRuns,
   listAdminTimelineNodes,
   listGuides,
   listExperiences,
@@ -40,6 +43,7 @@ import {
   renderAdminExperienceModerationPage,
   renderAdminFormulaManagementPage,
   renderAdminGuideReviewPage,
+  renderAdminIngestionRunPage,
   renderAdminReportReviewPage,
   renderAdminTimelineManagementPage,
   renderAdminVerificationReviewPage,
@@ -91,6 +95,7 @@ const verificationStatuses = new Set([
   "returned"
 ]);
 const reportStatuses = new Set(["pending", "resolved"]);
+const ingestionRunStatuses = new Set(["pending", "running", "succeeded", "failed"]);
 const moderationReviewActions = new Set(["approve", "return", "hide", "ban"]);
 const verificationReviewActions = new Set(["approve", "reject", "return"]);
 const reportResolutionActions = new Set(["keep", "hide", "delete", "limit_account"]);
@@ -318,6 +323,21 @@ function parseAdminFormulaFilters(url) {
   return {
     year: optionalYearParam(url),
     schoolId: optionalStringParam(url, "schoolId"),
+    status
+  };
+}
+
+function parseAdminIngestionFilters(url) {
+  const status = optionalStringParam(url, "status");
+
+  if (status && !ingestionRunStatuses.has(status)) {
+    throw new RequestError("invalid_status", "Ingestion run status is not supported.");
+  }
+
+  return {
+    year: optionalYearParam(url),
+    schoolId: optionalStringParam(url, "schoolId"),
+    keyword: optionalStringParam(url, "keyword"),
     status
   };
 }
@@ -852,6 +872,55 @@ function adminFormulaJson(detail) {
   };
 }
 
+function adminIngestionRunJson(run) {
+  return {
+    id: run.id,
+    year: run.year,
+    schoolId: run.schoolId,
+    school: run.school,
+    keyword: run.keyword,
+    status: run.status,
+    sourceDocuments: run.sourceDocuments.map((document) => ({
+      id: document.id,
+      sourceUrl: document.sourceUrl,
+      title: document.title,
+      sourceType: document.sourceType,
+      declaredSourceType: document.declaredSourceType,
+      fetchedAt: document.fetchedAt,
+      contentHash: document.contentHash,
+      rawTextAssetUrl: document.rawTextAssetUrl,
+      candidateStatus: document.candidateStatus,
+      authorityRole: document.authorityRole,
+      sourcePriority: document.sourcePriority,
+      sourcePriorityLabel: document.sourcePriorityLabel,
+      reviewNote: document.reviewNote
+    })),
+    extractedGuideFields: run.extractedGuideFields,
+    timelineCandidates: run.timelineCandidates,
+    formulaCandidates: run.formulaCandidates,
+    confidenceScore: run.confidenceScore,
+    reviewNotes: run.reviewNotes,
+    draftGuide: run.draftGuide
+      ? {
+          id: run.draftGuide.id,
+          schoolId: run.draftGuide.schoolId,
+          year: run.draftGuide.admissionYear,
+          status: run.draftGuide.status,
+          version: run.draftGuide.version,
+          isCurrent: run.draftGuide.isCurrent,
+          guideTitle: run.draftGuide.guideTitle,
+          summary: run.draftGuide.summary,
+          officialSourceUrl: run.draftGuide.officialSourceUrl,
+          sourceType: run.draftGuide.sourceType,
+          updatedAt: run.draftGuide.updatedAt
+        }
+      : null,
+    createdBy: run.createdBy,
+    createdAt: run.createdAt,
+    updatedAt: run.updatedAt
+  };
+}
+
 function adminModerationSchoolJson(schoolId) {
   const school = getSchoolById(schoolId);
 
@@ -1300,6 +1369,16 @@ function sendAdminFormulaListJson(response, filters = {}) {
   });
 }
 
+function sendAdminIngestionRunListJson(response, filters = {}) {
+  const ingestionRuns = listAdminIngestionRuns(filters).map(adminIngestionRunJson);
+
+  sendJson(response, 200, {
+    filters,
+    count: ingestionRuns.length,
+    ingestionRuns
+  });
+}
+
 function sendAdminExperienceModerationListJson(response, experienceSubmissionStore, filters = {}) {
   const experiences = experienceSubmissionStore
     .listModerationExperiences(filters)
@@ -1418,6 +1497,20 @@ function parseAdminFormulaActionPath(pathname) {
     };
   } catch {
     throw new RequestError("invalid_formula_id", "Formula id must be URL encoded correctly.");
+  }
+}
+
+function parseAdminIngestionRunPath(pathname) {
+  const match = pathname.match(/^\/(?:api\/)?admin\/ingestion-runs\/(?<runId>[^/]+)$/);
+
+  if (!match?.groups?.runId) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match.groups.runId);
+  } catch {
+    throw new RequestError("invalid_ingestion_run_id", "Ingestion run id must be URL encoded correctly.");
   }
 }
 
@@ -2268,6 +2361,92 @@ export async function handleRequest(request, response, context = {}) {
       sendError(response, errorStatus(error), error.code ?? "admin_formula_error", error.message);
     }
 
+    return;
+  }
+
+  if (
+    (url.pathname === "/admin/ingestion-runs" || url.pathname === "/api/admin/ingestion-runs") &&
+    request.method === "GET"
+  ) {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const filters = parseAdminIngestionFilters(url);
+
+      if (shouldSendAdminJson(request, url)) {
+        sendAdminIngestionRunListJson(response, filters);
+        return;
+      }
+
+      sendHtml(response, 200, renderAdminIngestionRunPage({
+        filters,
+        ingestionRuns: listAdminIngestionRuns(filters),
+        user
+      }));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_ingestion_error", error.message);
+    }
+
+    return;
+  }
+
+  if (
+    (url.pathname === "/admin/ingestion-runs" || url.pathname === "/api/admin/ingestion-runs") &&
+    request.method === "POST"
+  ) {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const body = await readStructuredBody(request);
+      const run = createAdminIngestionRun({
+        body,
+        operator: user,
+        now: context.now
+      });
+
+      sendJson(response, 201, {
+        status: run.draftGuide ? "draft_created" : "ingestion_run_created",
+        ingestionRun: adminIngestionRunJson(run)
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_ingestion_error", error.message);
+    }
+
+    return;
+  }
+
+  let adminIngestionRunId;
+
+  try {
+    adminIngestionRunId = parseAdminIngestionRunPath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "admin_ingestion_error", error.message);
+    return;
+  }
+
+  if (adminIngestionRunId && request.method === "GET") {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    const run = getAdminIngestionRunDetail({ runId: adminIngestionRunId });
+
+    if (!run) {
+      sendError(response, 404, "not_found", "No ingestion run was found for admin review.");
+      return;
+    }
+
+    sendJson(response, 200, adminIngestionRunJson(run));
     return;
   }
 

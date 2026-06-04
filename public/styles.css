@@ -556,7 +556,11 @@ h1 {
 }
 
 .admin-draft-form textarea[name="formulaConfig"],
-.admin-draft-form textarea[name="sampleTests"] {
+.admin-draft-form textarea[name="sampleTests"],
+.admin-draft-form textarea[name="sourceDocuments"],
+.admin-draft-form textarea[name="extractedGuideFields"],
+.admin-draft-form textarea[name="timelineCandidates"],
+.admin-draft-form textarea[name="formulaCandidates"] {
   min-height: 180px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 0.84rem;

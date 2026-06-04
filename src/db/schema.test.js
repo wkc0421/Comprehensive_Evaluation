@@ -76,6 +76,33 @@ describe("core data model migration", () => {
     );
   });
 
+  it("stores ingestion draft outputs and source document candidate metadata", () => {
+    const ingestionRunsTable = tableDefinition("ingestion_runs");
+    const sourceDocumentsTable = tableDefinition("source_documents");
+
+    assert.match(ingestionRunsTable, /admission_year integer check \(admission_year between 2020 and 2100\)/);
+    assert.match(ingestionRunsTable, /school_id uuid references schools\(id\) on delete set null/);
+    assert.match(ingestionRunsTable, /keyword text/);
+    assert.match(ingestionRunsTable, /extracted_guide_fields jsonb not null default '\{\}'::jsonb/);
+    assert.match(ingestionRunsTable, /timeline_candidates jsonb not null default '\[\]'::jsonb/);
+    assert.match(ingestionRunsTable, /formula_candidates jsonb not null default '\[\]'::jsonb/);
+    assert.match(ingestionRunsTable, /confidence_score numeric check \(confidence_score >= 0 and confidence_score <= 1\)/);
+    assert.match(ingestionRunsTable, /review_notes jsonb not null default '\[\]'::jsonb/);
+    assert.match(ingestionRunsTable, /draft_guide_id uuid/);
+
+    assert.match(sourceDocumentsTable, /raw_text_asset_url text/);
+    assert.match(sourceDocumentsTable, /content_hash text/);
+    assert.match(sourceDocumentsTable, /candidate_status text not null default 'candidate'/);
+    assert.match(sourceDocumentsTable, /candidate_status in \('candidate', 'accepted', 'rejected'\)/);
+    assert.match(sourceDocumentsTable, /authority_role text not null default 'final_authority'/);
+    assert.match(sourceDocumentsTable, /authority_role in \('final_authority', 'discovery_clue'\)/);
+    assert.match(sourceDocumentsTable, /source_priority integer/);
+    assert.match(sourceDocumentsTable, /'guangdong_education_exam_authority'/);
+    assert.match(sourceDocumentsTable, /'chsi_yangguang_gaokao'/);
+    assert.match(sourceDocumentsTable, /'university_admissions'/);
+    assert.match(sourceDocumentsTable, /'third_party_info'/);
+  });
+
   it("stores authenticated user profile fields, roles, and account statuses", () => {
     const usersTable = tableDefinition("users");
     const roleDeclaration = migrationSql.match(/CREATE TYPE user_role AS ENUM \((?<values>[^)]+)\)/i);

@@ -309,8 +309,8 @@
         "Tests cover source priority ordering, third-party source rejection for final authority, draft-only creation, and traceability from each extracted field to source document or manual note."
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented protected admin ingestion run APIs and page with source candidate priority/traceability, third-party discovery-only enforcement, extracted guide/timeline/formula candidate storage, confidence and review notes, draft-only guide creation, schema coverage, route/data-access tests, and browser verification."
     },
     {
       "id": "US-020",

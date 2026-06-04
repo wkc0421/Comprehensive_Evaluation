@@ -5,7 +5,9 @@ import {
   buildSiteTimelineReminders,
   calculateScore,
   calculateTimelineNodeStatus,
+  createAdminIngestionRun,
   createGuideVersion,
+  getAdminIngestionRunDetail,
   getExperienceById,
   getGuideDetail,
   getGuideById,
@@ -15,6 +17,7 @@ import {
   getScoreFormulaById,
   listSchoolGuideCards,
   getTimelineEventById,
+  listAdminIngestionRuns,
   listExperiences,
   listGuides,
   listSchools,
@@ -35,6 +38,58 @@ function assertScoreError(fn, expected) {
     assert.equal(error.statusCode, expected.statusCode);
     return true;
   });
+}
+
+const ingestionOperator = Object.freeze({
+  id: "90000000-0000-4000-8000-000000000001",
+  nickname: "Ingestion reviewer",
+  role: "data_reviewer"
+});
+
+function officialSourceCandidate(overrides = {}) {
+  return {
+    id: "source-official-primary",
+    sourceUrl: "https://eea.gd.gov.cn/admissions/2028-comprehensive-evaluation",
+    title: "Guangdong Education Examination Authority 2028 comprehensive evaluation notice",
+    sourceType: "guangdong_education_exam_authority",
+    fetchedAt: "2028-03-15T02:00:00.000Z",
+    contentHash: "official-source-hash",
+    rawTextAssetUrl: "oss://raw/official-source.txt",
+    status: "accepted",
+    ...overrides
+  };
+}
+
+function traceableGuideFields(sourceDocumentId = "source-official-primary", overrides = {}) {
+  return {
+    guideTitle: {
+      value: "Sun Yat-sen University 2028 Guangdong Comprehensive Evaluation Guide",
+      sourceDocumentId,
+      confidence: 0.93
+    },
+    summary: {
+      value: "AI-extracted official guide draft for Guangdong candidates.",
+      sourceDocumentId,
+      confidence: 0.89
+    },
+    applicationStatus: {
+      value: "open",
+      sourceDocumentId,
+      confidence: 0.82
+    },
+    applicationDeadlineAt: {
+      value: "2028-04-20T15:59:59.000Z",
+      sourceDocumentId,
+      confidence: 0.88
+    },
+    majors: {
+      value: [
+        { name: "Integrated science program", track: "physics" }
+      ],
+      manualNote: "Reviewer copied the major list from the official PDF table."
+    },
+    ...overrides
+  };
 }
 
 describe("Guangdong seed data", () => {
@@ -189,6 +244,185 @@ describe("student-facing data access helpers", () => {
     assert.equal(previous?.version, 1);
     assert.equal(previous?.isCurrent, false);
     assert.equal(previous?.summary, original?.summary);
+  });
+
+  it("orders ingestion source candidates by official source priority", () => {
+    const run = createAdminIngestionRun({
+      operator: ingestionOperator,
+      now: () => new Date("2026-04-18T00:00:00.000Z"),
+      body: {
+        id: "ingestion-priority-order",
+        keyword: "priority ordering",
+        createDraft: false,
+        sourceDocuments: [
+          {
+            id: "source-third-party",
+            sourceUrl: "https://www.sohu.com/a/guangdong-gaokao",
+            title: "Third-party school summary",
+            sourceType: "third_party_info"
+          },
+          {
+            id: "source-university",
+            sourceUrl: "https://admission.sysu.edu.cn/2026-guide",
+            title: "SYSU undergraduate admissions guide",
+            sourceType: "university_admissions"
+          },
+          {
+            id: "source-chsi",
+            sourceUrl: "https://gaokao.chsi.com.cn/zsgs/zhpj",
+            title: "Yangguang Gaokao comprehensive evaluation announcement",
+            sourceType: "chsi_yangguang_gaokao"
+          },
+          {
+            id: "source-geea",
+            sourceUrl: "https://eea.gd.gov.cn/admission/zhpj",
+            title: "Guangdong Education Examination Authority notice",
+            sourceType: "guangdong_education_exam_authority"
+          },
+          {
+            id: "source-other",
+            sourceUrl: "https://edu.gd.gov.cn/notice/zhpj",
+            title: "Other official education notice",
+            sourceType: "other_official"
+          }
+        ]
+      }
+    });
+
+    assert.deepEqual(run.sourceDocuments.map((document) => document.id), [
+      "source-geea",
+      "source-chsi",
+      "source-university",
+      "source-other",
+      "source-third-party"
+    ]);
+    assert.deepEqual(run.sourceDocuments.map((document) => document.sourcePriority), [1, 2, 3, 4, 99]);
+    assert.equal(run.sourceDocuments.at(-1).authorityRole, "discovery_clue");
+  });
+
+  it("rejects third-party final authority and untraced extracted fields", () => {
+    assert.throws(() => createAdminIngestionRun({
+      operator: ingestionOperator,
+      body: {
+        keyword: "third-party accepted source",
+        createDraft: false,
+        sourceDocuments: [
+          {
+            id: "source-third-party-accepted",
+            sourceUrl: "https://www.zhihu.com/question/gaokao",
+            title: "Third-party admissions analysis",
+            sourceType: "third_party_info",
+            status: "accepted"
+          }
+        ]
+      }
+    }), (error) => {
+      assert.equal(error.code, "third_party_final_authority_rejected");
+      return true;
+    });
+
+    assert.throws(() => createAdminIngestionRun({
+      operator: ingestionOperator,
+      body: {
+        keyword: "missing trace",
+        createDraft: false,
+        sourceDocuments: [officialSourceCandidate()],
+        extractedGuideFields: {
+          guideTitle: {
+            value: "Untraced extracted guide title"
+          }
+        }
+      }
+    }), (error) => {
+      assert.equal(error.code, "missing_extraction_trace");
+      return true;
+    });
+
+    assert.throws(() => createAdminIngestionRun({
+      operator: ingestionOperator,
+      body: {
+        keyword: "direct publish",
+        publishDirectly: true,
+        sourceDocuments: [officialSourceCandidate()]
+      }
+    }), (error) => {
+      assert.equal(error.code, "direct_publish_forbidden");
+      return true;
+    });
+  });
+
+  it("creates draft-only guide records from ingestion output and keeps student APIs hidden", () => {
+    const run = createAdminIngestionRun({
+      operator: ingestionOperator,
+      now: () => new Date("2026-04-18T00:00:00.000Z"),
+      body: {
+        id: "ingestion-draft-only",
+        schoolId: seedIds.schools.sysu,
+        year: 2028,
+        keyword: "SYSU 2028",
+        sourceDocuments: [officialSourceCandidate()],
+        extractedGuideFields: traceableGuideFields(),
+        timelineCandidates: [
+          {
+            eventKey: "application_deadline",
+            title: "Application deadline",
+            endsAt: "2028-04-20T15:59:59.000Z",
+            sourceDocumentId: "source-official-primary",
+            confidence: 0.86
+          }
+        ],
+        formulaCandidates: [
+          {
+            formulaName: "Extracted weighted sum formula",
+            formulaType: "weighted_sum",
+            sourceDocumentId: "source-official-primary",
+            confidence: 0.78
+          }
+        ],
+        confidenceScore: 0.84,
+        reviewNotes: "Reviewer must verify fields before publish."
+      }
+    });
+
+    assert.equal(run.draftGuide.status, "draft");
+    assert.equal(run.draftGuide.isCurrent, false);
+    assert.equal(run.draftGuide.reviewAudit.at(-1).operation, "create_draft");
+    assert.equal(getGuideDetail({ guideId: run.draftGuide.id }), null);
+    assert.equal(listGuides({ schoolId: seedIds.schools.sysu, year: 2028 }).length, 0);
+    assert.equal(run.timelineCandidates[0].trace.sourceDocumentId, "source-official-primary");
+    assert.equal(run.formulaCandidates[0].trace.sourceDocumentId, "source-official-primary");
+  });
+
+  it("preserves extraction traceability to source documents or manual notes", () => {
+    const run = createAdminIngestionRun({
+      operator: ingestionOperator,
+      now: () => new Date("2026-04-18T00:00:00.000Z"),
+      body: {
+        id: "ingestion-traceability",
+        schoolId: seedIds.schools.scut,
+        year: 2029,
+        keyword: "SCUT traceability",
+        sourceDocuments: [officialSourceCandidate({
+          id: "trace-source",
+          sourceUrl: "https://admission.scut.edu.cn/2029-guide",
+          title: "SCUT undergraduate admissions guide",
+          sourceType: "university_admissions"
+        })],
+        extractedGuideFields: traceableGuideFields("trace-source", {
+          summary: {
+            value: "Manual summary after OCR review.",
+            manualNote: "Reviewer summarized the official PDF paragraph after OCR cleanup."
+          }
+        }),
+        confidenceScore: 0.8
+      }
+    });
+    const detail = getAdminIngestionRunDetail({ runId: run.id });
+
+    assert.equal(detail.extractedGuideFields.guideTitle.trace.sourceDocumentId, "trace-source");
+    assert.equal(detail.extractedGuideFields.summary.trace.sourceDocumentId, null);
+    assert.match(detail.extractedGuideFields.summary.trace.manualNote, /OCR cleanup/);
+    assert.ok(listAdminIngestionRuns({ keyword: "traceability" }).some((candidate) => candidate.id === run.id));
   });
 
   it("reads only visible records by id", () => {

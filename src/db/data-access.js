@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { seedData } from "./seed-data.js";
 
@@ -7,6 +7,8 @@ const reviewQueueStatuses = new Set(["draft", "pending_review"]);
 const officialDataStatuses = new Set(["draft", "pending_review", "published", "archived"]);
 const formulaDraftStatuses = new Set(["draft", "pending_review"]);
 const formulaTypes = new Set(["weighted_sum", "custom"]);
+const ingestionRunStatuses = new Set(["pending", "running", "succeeded", "failed"]);
+const sourceCandidateStatuses = new Set(["candidate", "accepted", "rejected"]);
 const guideSourceTypes = new Set([
   "official_notice",
   "admission_guide",
@@ -19,6 +21,7 @@ const sampleScoreTolerance = 0.01;
 let admissionGuideRecords = seedData.admissionGuides.map(cloneAdmissionGuide);
 let timelineEventRecords = seedData.timelineEvents.map(cloneTimelineEvent);
 let scoreFormulaRecords = seedData.scoreFormulas.map(cloneScoreFormula);
+let ingestionRunRecords = [];
 let publishedExperienceRecords = [];
 const moderatedExperienceActions = new Map();
 
@@ -111,6 +114,15 @@ export class AdminFormulaReviewError extends Error {
   constructor(code, message, statusCode = 400) {
     super(message);
     this.name = "AdminFormulaReviewError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
+export class AdminIngestionRunError extends Error {
+  constructor(code, message, statusCode = 400) {
+    super(message);
+    this.name = "AdminIngestionRunError";
     this.code = code;
     this.statusCode = statusCode;
   }
@@ -384,6 +396,18 @@ function cloneScoreFormula(formula) {
   };
 }
 
+function cloneJsonValue(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
+
+function cloneIngestionRun(run) {
+  return cloneJsonValue(run);
+}
+
 function cloneExperience(experience) {
   return {
     ...experience,
@@ -406,6 +430,10 @@ function scoreFormulas() {
   return scoreFormulaRecords;
 }
 
+function ingestionRuns() {
+  return ingestionRunRecords;
+}
+
 function publishedExperiences() {
   return [
     ...seedData.experiences.map(cloneExperience),
@@ -420,6 +448,568 @@ function currentIsoDate(now) {
 
   const value = now();
   return (value instanceof Date ? value : new Date(value)).toISOString();
+}
+
+function normalizeIngestionText(value, label, options = {}) {
+  const text = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+
+  if (text.length === 0) {
+    if (options.optional) {
+      return options.fallback ?? "";
+    }
+
+    throw new AdminIngestionRunError("missing_ingestion_field", `${label} is required.`);
+  }
+
+  if (text.length > (options.maxLength ?? 4000)) {
+    throw new AdminIngestionRunError("ingestion_field_too_long", `${label} is too long.`);
+  }
+
+  return text;
+}
+
+function normalizeIngestionYear(value) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const year = Number(value);
+
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    throw new AdminIngestionRunError("invalid_ingestion_year", "Year must be a four-digit admission year.");
+  }
+
+  return year;
+}
+
+function normalizeIngestionDate(value, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback ?? null;
+  }
+
+  const timestamp = Date.parse(value);
+
+  if (Number.isNaN(timestamp)) {
+    throw new AdminIngestionRunError("invalid_ingestion_date", "Ingestion dates must be valid dates.");
+  }
+
+  return new Date(timestamp).toISOString();
+}
+
+function normalizeConfidenceScore(value, label = "Confidence score", options = {}) {
+  if (value === undefined || value === null || value === "") {
+    return options.fallback ?? null;
+  }
+
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    throw new AdminIngestionRunError("invalid_confidence_score", `${label} must be a number.`);
+  }
+
+  if (number < 0 || number > 1) {
+    throw new AdminIngestionRunError("invalid_confidence_score", `${label} must be between 0 and 1.`);
+  }
+
+  return number;
+}
+
+function normalizeIngestionStatus(value) {
+  const status = typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : "succeeded";
+
+  if (!ingestionRunStatuses.has(status)) {
+    throw new AdminIngestionRunError("invalid_ingestion_status", "Ingestion run status is not supported.");
+  }
+
+  return status;
+}
+
+function parseIngestionJsonValue(value, label, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new AdminIngestionRunError("invalid_ingestion_json", `${label} must be valid JSON.`);
+  }
+}
+
+function shouldCreateDraftFromBody(value) {
+  return value !== false && value !== "false";
+}
+
+function normalizeCandidateStatus(value) {
+  const status = typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : "candidate";
+
+  if (!sourceCandidateStatuses.has(status)) {
+    throw new AdminIngestionRunError(
+      "invalid_source_candidate_status",
+      "Source document candidate status is not supported."
+    );
+  }
+
+  return status;
+}
+
+function domainForUrl(value) {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function textForSourceClassification(sourceUrl, title) {
+  return `${sourceUrl} ${title}`.toLowerCase();
+}
+
+function isThirdPartySourceType(sourceType) {
+  return sourceType === "third_party_info" || sourceType === "discovery_clue";
+}
+
+function classifyIngestionSource(sourceType, sourceUrl, title) {
+  const text = textForSourceClassification(sourceUrl, title);
+  const domain = domainForUrl(sourceUrl);
+
+  if (
+    sourceType === "guangdong_education_exam_authority" ||
+    sourceType === "education_exam_authority" ||
+    domain.endsWith("eea.gd.gov.cn") ||
+    text.includes("guangdong education examination authority")
+  ) {
+    return {
+      sourceType: "guangdong_education_exam_authority",
+      priority: 1,
+      priorityLabel: "Guangdong Education Examination Authority",
+      authorityRole: "final_authority"
+    };
+  }
+
+  if (
+    sourceType === "chsi_yangguang_gaokao" ||
+    domain.endsWith("chsi.com.cn") ||
+    text.includes("yangguang gaokao")
+  ) {
+    return {
+      sourceType: "chsi_yangguang_gaokao",
+      priority: 2,
+      priorityLabel: "CHSI/Yangguang Gaokao",
+      authorityRole: "final_authority"
+    };
+  }
+
+  if (
+    sourceType === "university_admissions" ||
+    sourceType === "admission_guide" ||
+    sourceType === "application_portal" ||
+    domain.includes("admission") ||
+    domain.includes("bkzs") ||
+    domain.includes("zsb")
+  ) {
+    return {
+      sourceType: "university_admissions",
+      priority: 3,
+      priorityLabel: "University undergraduate admissions site",
+      authorityRole: "final_authority"
+    };
+  }
+
+  if (
+    isThirdPartySourceType(sourceType) ||
+    domain.endsWith("sohu.com") ||
+    domain.endsWith("zhihu.com") ||
+    domain.endsWith("eol.cn") ||
+    domain.includes("gaokao100") ||
+    domain.includes("youzy")
+  ) {
+    return {
+      sourceType: "third_party_info",
+      priority: 99,
+      priorityLabel: "Third-party discovery clue",
+      authorityRole: "discovery_clue"
+    };
+  }
+
+  return {
+    sourceType: "other_official",
+    priority: 4,
+    priorityLabel: "Other official source",
+    authorityRole: "final_authority"
+  };
+}
+
+function contentHashFor(candidate) {
+  const providedHash = normalizeIngestionText(candidate.contentHash ?? candidate.checksum, "Content hash", {
+    optional: true,
+    fallback: ""
+  });
+
+  if (providedHash) {
+    return providedHash;
+  }
+
+  const hashInput = candidate.rawText ?? `${candidate.sourceUrl ?? candidate.url ?? ""}\n${candidate.title ?? ""}`;
+
+  return createHash("sha256").update(String(hashInput)).digest("hex");
+}
+
+function normalizeReviewNotes(value, operator, operatedAt) {
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+
+  const notes = Array.isArray(value) ? value : [value];
+
+  return notes
+    .map((item) => {
+      const note = typeof item === "object" && item !== null
+        ? normalizeIngestionText(item.note ?? item.text, "Review note", { optional: true, fallback: "" })
+        : normalizeIngestionText(item, "Review note", { optional: true, fallback: "" });
+
+      if (!note) {
+        return null;
+      }
+
+      return {
+        note,
+        ...operatorAuditFields(operator),
+        operatedAt
+      };
+    })
+    .filter(Boolean);
+}
+
+function assertPublishedSchoolForIngestion(schoolId) {
+  const school = getPublishedSchoolById(schoolId);
+
+  if (!school) {
+    throw new AdminIngestionRunError(
+      "school_not_found",
+      "A published school is required for ingestion draft creation.",
+      404
+    );
+  }
+
+  return school;
+}
+
+function normalizeIngestionInputs(body) {
+  const year = normalizeIngestionYear(body.year ?? body.admissionYear);
+  const schoolId = body.schoolId
+    ? normalizeIngestionText(body.schoolId, "School id")
+    : undefined;
+  const keyword = normalizeIngestionText(body.keyword, "Keyword", {
+    optional: true,
+    fallback: ""
+  });
+
+  if (!year && !schoolId && !keyword) {
+    throw new AdminIngestionRunError(
+      "missing_ingestion_input",
+      "Create an ingestion run with at least one of year, schoolId, or keyword."
+    );
+  }
+
+  const school = schoolId ? assertPublishedSchoolForIngestion(schoolId) : null;
+
+  return {
+    year,
+    schoolId,
+    school,
+    keyword
+  };
+}
+
+function normalizeSourceDocumentCandidates(candidates, runId, fetchedAt) {
+  if (candidates === undefined || candidates === null) {
+    return [];
+  }
+
+  if (!Array.isArray(candidates)) {
+    throw new AdminIngestionRunError(
+      "invalid_source_documents",
+      "Source document candidates must be provided as a list."
+    );
+  }
+
+  return candidates
+    .map((candidate, index) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        throw new AdminIngestionRunError(
+          "invalid_source_document",
+          "Each source document candidate must be an object."
+        );
+      }
+
+      const id = candidate.id ? normalizeIngestionText(candidate.id, "Source document id") : randomUUID();
+      const sourceUrl = normalizeIngestionText(candidate.sourceUrl ?? candidate.url, "Source document URL");
+      const title = normalizeIngestionText(candidate.title, "Source document title");
+      const declaredSourceType = normalizeIngestionText(candidate.sourceType, "Source type", {
+        optional: true,
+        fallback: ""
+      });
+      const classification = classifyIngestionSource(declaredSourceType, sourceUrl, title);
+      const candidateStatus = normalizeCandidateStatus(candidate.status ?? candidate.candidateStatus);
+
+      if (classification.authorityRole === "discovery_clue" && candidateStatus === "accepted") {
+        throw new AdminIngestionRunError(
+          "third_party_final_authority_rejected",
+          "Third-party information sites can only be stored as discovery clues."
+        );
+      }
+
+      return {
+        id,
+        ingestionRunId: runId,
+        sourceUrl,
+        title,
+        sourceType: classification.sourceType,
+        declaredSourceType: declaredSourceType || null,
+        fetchedAt: normalizeIngestionDate(candidate.fetchedAt, fetchedAt),
+        contentHash: contentHashFor(candidate),
+        rawTextAssetUrl: normalizeIngestionText(candidate.rawTextAssetUrl, "Raw text asset URL", {
+          optional: true,
+          fallback: `memory://ingestion-runs/${runId}/source-documents/${id}.txt`
+        }),
+        candidateStatus,
+        authorityRole: classification.authorityRole,
+        sourcePriority: classification.priority,
+        sourcePriorityLabel: classification.priorityLabel,
+        reviewNote: normalizeIngestionText(candidate.reviewNote, "Source review note", {
+          optional: true,
+          fallback: ""
+        }),
+        discoveredOrder: index
+      };
+    })
+    .sort((left, right) => {
+      if (left.sourcePriority !== right.sourcePriority) {
+        return left.sourcePriority - right.sourcePriority;
+      }
+
+      return left.discoveredOrder - right.discoveredOrder;
+    });
+}
+
+function sourceDocumentMap(sourceDocuments) {
+  return new Map(sourceDocuments.map((document) => [document.id, document]));
+}
+
+function normalizeTrace(field, sourceDocumentsById, label) {
+  const sourceDocumentId = normalizeIngestionText(field.sourceDocumentId ?? field.sourceCandidateId, "Source document id", {
+    optional: true,
+    fallback: ""
+  });
+  const manualNote = normalizeIngestionText(field.manualNote ?? field.reviewNote, "Manual note", {
+    optional: true,
+    fallback: ""
+  });
+
+  if (!sourceDocumentId && !manualNote) {
+    throw new AdminIngestionRunError(
+      "missing_extraction_trace",
+      `${label} must trace to a source document or manual note.`
+    );
+  }
+
+  const sourceDocument = sourceDocumentId ? sourceDocumentsById.get(sourceDocumentId) : null;
+
+  if (sourceDocumentId && !sourceDocument) {
+    throw new AdminIngestionRunError(
+      "source_document_not_found",
+      `${label} references a source document outside this ingestion run.`
+    );
+  }
+
+  if (sourceDocument?.authorityRole === "discovery_clue" && !manualNote) {
+    throw new AdminIngestionRunError(
+      "third_party_final_authority_rejected",
+      `${label} cannot use a third-party discovery clue as final authority.`
+    );
+  }
+
+  return {
+    sourceDocumentId: sourceDocumentId || null,
+    manualNote: manualNote || null,
+    sourceUrl: sourceDocument?.sourceUrl ?? null,
+    sourceTitle: sourceDocument?.title ?? null,
+    sourceType: sourceDocument?.sourceType ?? null,
+    authorityRole: sourceDocument?.authorityRole ?? (manualNote ? "manual_note" : null)
+  };
+}
+
+function normalizeTraceableField(field, sourceDocumentsById, label) {
+  if (!field || typeof field !== "object" || Array.isArray(field) || !Object.hasOwn(field, "value")) {
+    throw new AdminIngestionRunError(
+      "invalid_extracted_field",
+      `${label} must be an object with value and trace metadata.`
+    );
+  }
+
+  return {
+    value: cloneJsonValue(field.value),
+    confidence: normalizeConfidenceScore(field.confidenceScore ?? field.confidence, `${label} confidence`, {
+      fallback: null
+    }),
+    trace: normalizeTrace(field, sourceDocumentsById, label)
+  };
+}
+
+function normalizeTraceableFields(value, sourceDocumentsById) {
+  if (value === undefined || value === null) {
+    return {};
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new AdminIngestionRunError(
+      "invalid_extracted_fields",
+      "Extracted guide fields must be an object keyed by field name."
+    );
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([fieldName, field]) => [
+      fieldName,
+      normalizeTraceableField(field, sourceDocumentsById, `Extracted field ${fieldName}`)
+    ])
+  );
+}
+
+function normalizeTraceableCandidates(value, sourceDocumentsById, label) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new AdminIngestionRunError("invalid_candidate_list", `${label} must be a list.`);
+  }
+
+  return value.map((candidate, index) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new AdminIngestionRunError("invalid_candidate", `${label} entries must be objects.`);
+    }
+
+    const {
+      sourceDocumentId,
+      sourceCandidateId,
+      manualNote,
+      reviewNote,
+      confidence,
+      confidenceScore,
+      ...candidateFields
+    } = candidate;
+
+    return {
+      ...cloneJsonValue(candidateFields),
+      confidence: normalizeConfidenceScore(confidenceScore ?? confidence, `${label} ${index + 1} confidence`, {
+        fallback: null
+      }),
+      trace: normalizeTrace(
+        { sourceDocumentId, sourceCandidateId, manualNote, reviewNote },
+        sourceDocumentsById,
+        `${label} ${index + 1}`
+      )
+    };
+  });
+}
+
+function authoritativeSourceForDraft(sourceDocuments) {
+  return sourceDocuments.find((document) => {
+    return document.authorityRole === "final_authority" && document.candidateStatus === "accepted";
+  }) ?? sourceDocuments.find((document) => document.authorityRole === "final_authority") ?? null;
+}
+
+function guideSourceTypeForIngestionSource(sourceType) {
+  if (sourceType === "guangdong_education_exam_authority") {
+    return "education_exam_authority";
+  }
+
+  if (sourceType === "university_admissions") {
+    return "admission_guide";
+  }
+
+  if (sourceType === "chsi_yangguang_gaokao" || sourceType === "other_official") {
+    return "official_notice";
+  }
+
+  return "manual_upload";
+}
+
+function extractedFieldValue(fields, fieldName, fallback) {
+  if (!Object.hasOwn(fields, fieldName)) {
+    return fallback;
+  }
+
+  return fields[fieldName].value;
+}
+
+function draftPayloadFromIngestion({ inputs, sourceDocuments, extractedGuideFields, runId }) {
+  if (Object.keys(extractedGuideFields).length === 0) {
+    return null;
+  }
+
+  if (!inputs.schoolId || !inputs.year) {
+    throw new AdminIngestionRunError(
+      "missing_draft_target",
+      "Draft creation from extraction requires both schoolId and year."
+    );
+  }
+
+  const sourceDocument = authoritativeSourceForDraft(sourceDocuments);
+
+  if (!sourceDocument) {
+    throw new AdminIngestionRunError(
+      "missing_authoritative_source",
+      "Draft creation requires at least one official source document candidate."
+    );
+  }
+
+  return {
+    schoolId: inputs.schoolId,
+    admissionYear: inputs.year,
+    officialSourceUrl: sourceDocument.sourceUrl,
+    sourceType: guideSourceTypeForIngestionSource(sourceDocument.sourceType),
+    sourceTitle: sourceDocument.title,
+    sourceUpdatedAt: sourceDocument.fetchedAt,
+    guideTitle: extractedFieldValue(extractedGuideFields, "guideTitle"),
+    summary: extractedFieldValue(extractedGuideFields, "summary"),
+    structuredFields: {
+      applicationUrl: extractedFieldValue(extractedGuideFields, "applicationUrl", ""),
+      applicationStatus: extractedFieldValue(extractedGuideFields, "applicationStatus", "open"),
+      applicationStartAt: extractedFieldValue(extractedGuideFields, "applicationStartAt", null),
+      applicationDeadlineAt: extractedFieldValue(extractedGuideFields, "applicationDeadlineAt", null),
+      majors: extractedFieldValue(extractedGuideFields, "majors", []),
+      subjectRequirements: extractedFieldValue(extractedGuideFields, "subjectRequirements", []),
+      academicTestRequirements: extractedFieldValue(extractedGuideFields, "academicTestRequirements", ""),
+      assessmentMethod: extractedFieldValue(extractedGuideFields, "assessmentMethod", ""),
+      admissionRule: extractedFieldValue(extractedGuideFields, "admissionRule", ""),
+      fees: extractedFieldValue(extractedGuideFields, "fees", {}),
+      contact: extractedFieldValue(extractedGuideFields, "contact", {})
+    },
+    versionNotes: `Draft created from ingestion run ${runId}.`,
+    note: `AI/extraction draft created from ingestion run ${runId}; manual publication is still required.`
+  };
+}
+
+function assertDraftOnlyRequest(body) {
+  const requestedStatus = body.targetStatus ?? body.guideStatus ?? body.officialDataStatus;
+
+  if (requestedStatus === "published" || body.publishDirectly === true || body.publish === true) {
+    throw new AdminIngestionRunError(
+      "direct_publish_forbidden",
+      "AI ingestion can create drafts only and cannot publish official data directly."
+    );
+  }
 }
 
 function normalizeAdminText(value, label, options = {}) {
@@ -1752,6 +2342,160 @@ export function archiveAdminGuide(input) {
     now: input.now,
     note: input.note
   });
+}
+
+/**
+ * Lists AI-assisted ingestion runs for admin review. Runs remain admin-only and
+ * any extracted official data is kept as draft review material.
+ *
+ * @param {{schoolId?: string, year?: number, keyword?: string, status?: string}} [filters]
+ * @returns {ReadonlyArray<object>}
+ */
+export function listAdminIngestionRuns(filters = {}) {
+  if (filters.status && !ingestionRunStatuses.has(filters.status)) {
+    throw new AdminIngestionRunError("invalid_ingestion_status", "Ingestion run status is not supported.");
+  }
+
+  const keyword = normalizeKeyword(filters.keyword);
+
+  return ingestionRuns()
+    .filter((run) => !filters.schoolId || run.schoolId === filters.schoolId)
+    .filter((run) => !filters.year || run.year === filters.year)
+    .filter((run) => !filters.status || run.status === filters.status)
+    .filter((run) => {
+      if (!keyword) {
+        return true;
+      }
+
+      return [
+        run.keyword,
+        run.school?.name,
+        run.sourceDocuments.map((document) => document.title).join(" "),
+        Object.values(run.extractedGuideFields).map((field) => field.value).join(" ")
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword));
+    })
+    .map(cloneIngestionRun)
+    .sort((left, right) => {
+      if (right.createdAt !== left.createdAt) {
+        return right.createdAt.localeCompare(left.createdAt);
+      }
+
+      return left.id.localeCompare(right.id, "en");
+    });
+}
+
+/**
+ * Reads one AI-assisted ingestion run with source candidates, extracted fields,
+ * draft guide linkage, and trace metadata.
+ *
+ * @param {{runId: string}} filters
+ * @returns {object | null}
+ */
+export function getAdminIngestionRunDetail(filters) {
+  const run = ingestionRuns().find((candidate) => candidate.id === filters.runId);
+
+  return run ? cloneIngestionRun(run) : null;
+}
+
+/**
+ * Creates an admin-only ingestion run. Extraction output may create an official
+ * guide draft, but it can never publish directly to student-facing helpers.
+ *
+ * @param {{body: object, operator: object, now?: () => Date | string | number}} input
+ * @returns {object}
+ */
+export function createAdminIngestionRun(input) {
+  requireAdminOperator(input.operator, AdminIngestionRunError, "missing_ingestion_operator");
+
+  const body = input.body;
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new AdminIngestionRunError("invalid_ingestion_body", "Ingestion run payload must be an object.");
+  }
+
+  assertDraftOnlyRequest(body);
+
+  const operatedAt = currentIsoDate(input.now);
+  const runId = body.id ? normalizeIngestionText(body.id, "Ingestion run id") : randomUUID();
+  const inputs = normalizeIngestionInputs(body);
+  const sourceDocuments = normalizeSourceDocumentCandidates(
+    parseIngestionJsonValue(
+      body.sourceDocuments ?? body.sourceDocumentCandidates,
+      "Source document candidates",
+      []
+    ),
+    runId,
+    operatedAt
+  );
+  const sourceDocumentsById = sourceDocumentMap(sourceDocuments);
+  const extractedGuideFields = normalizeTraceableFields(
+    parseIngestionJsonValue(body.extractedGuideFields, "Extracted guide fields", {}),
+    sourceDocumentsById
+  );
+  const timelineCandidates = normalizeTraceableCandidates(
+    parseIngestionJsonValue(body.timelineCandidates, "Timeline candidates", []),
+    sourceDocumentsById,
+    "Timeline candidate"
+  );
+  const formulaCandidates = normalizeTraceableCandidates(
+    parseIngestionJsonValue(body.formulaCandidates, "Formula candidates", []),
+    sourceDocumentsById,
+    "Formula candidate"
+  );
+  let draftGuide = null;
+
+  if (shouldCreateDraftFromBody(body.createDraft)) {
+    const draftPayload = draftPayloadFromIngestion({
+      inputs,
+      sourceDocuments,
+      extractedGuideFields,
+      runId
+    });
+
+    if (draftPayload) {
+      draftGuide = createAdminGuideDraft({
+        body: draftPayload,
+        operator: input.operator,
+        now: input.now
+      }).guide;
+    }
+  }
+
+  const run = {
+    id: runId,
+    year: inputs.year ?? null,
+    schoolId: inputs.schoolId ?? null,
+    school: inputs.school
+      ? {
+          id: inputs.school.id,
+          name: inputs.school.name,
+          provinceScope: inputs.school.provinceScope,
+          city: inputs.school.city,
+          schoolType: inputs.school.schoolType
+        }
+      : null,
+    keyword: inputs.keyword,
+    status: normalizeIngestionStatus(body.status),
+    sourceDocuments,
+    extractedGuideFields,
+    timelineCandidates,
+    formulaCandidates,
+    confidenceScore: normalizeConfidenceScore(body.confidenceScore ?? body.confidence, "Run confidence", {
+      fallback: null
+    }),
+    reviewNotes: normalizeReviewNotes(body.reviewNotes ?? body.reviewNote, input.operator, operatedAt),
+    draftGuideId: draftGuide?.id ?? null,
+    draftGuide: draftGuide ? cloneAdmissionGuide(draftGuide) : null,
+    createdBy: operatorAuditFields(input.operator),
+    createdAt: operatedAt,
+    updatedAt: operatedAt
+  };
+
+  ingestionRunRecords = [...ingestionRunRecords, cloneIngestionRun(run)];
+
+  return cloneIngestionRun(run);
 }
 
 /**

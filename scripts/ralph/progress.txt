@@ -16,6 +16,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public admission guide APIs should use `listGuides()` and `getGuideDetail()` from `src/db/data-access.js`; current guide lists stay published-only while detail responses can include source attribution, structured fields, and published version summaries.
 - Admin official guide review uses `listAdminGuideReviews()`, `getAdminGuideReviewDetail()`, and the admin guide transition helpers in `src/db/data-access.js`; public student APIs still use `listGuides()`/`getGuideDetail()` and only see admin guide records after a transition sets status to `published` and `isCurrent`.
 - Admin timeline and formula management use `listAdminTimelineNodes()`, `overrideAdminTimelineNode()`, `listAdminFormulas()`, `upsertAdminFormulaDraft()`, and `publishAdminFormula()` from `src/db/data-access.js`; timeline overrides require an override reason and operator audit, while formula publication requires at least one passing sample calculation before the formula becomes visible to public calculator helpers.
+- Admin AI ingestion uses `createAdminIngestionRun()`, `listAdminIngestionRuns()`, and `getAdminIngestionRunDetail()` from `src/db/data-access.js`; source candidates keep priority/authority metadata, extracted fields require source-document or manual-note traceability, and generated guide records stay draft-only until the normal guide review publish transition.
 - Public timelines should use `listTimelineNodes()` and `buildSiteTimelineReminders()` from `src/db/data-access.js`; they keep `/timeline`, `/api/timeline`, status calculation, required generated event keys, unknown-date handling, published-only visibility, and site-only reminder indicators aligned.
 - Public score calculation should use `calculateScore()` from `src/db/data-access.js`; it keeps formula visibility, input normalization, validation errors, contribution breakdowns, source links, and disclaimer text aligned for `/score/calculate`, `/api/score/calculate`, and future calculator pages.
 - Public score calculator UI should use `renderScoreCalculatorPage()` with `listSchoolGuideCards()` and `getSchoolDetail()` for published school/year/formula loading, while `public/calculator.js` posts final calculations to `/api/score/calculate`; when `detail.formula` is null, hide the score-entry form and show the unavailable state.
@@ -595,4 +596,39 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Use `experienceSubmissionStore.reviewExperience()` and `reviewVerification()` for admin content review so moderation warnings, audit entries, and public publish updates stay together.
   - Public experience browsing can include approved user submissions through `registerPublishedExperience()` while remaining on the existing `listExperiences()` API/page path.
   - Report resolution side effects are intentionally applied in `src/app.js`: experience hide/delete uses `moderatePublishedExperience()`, while limiting a user account uses `authService.updateUserAccountStatus()`.
+---
+
+## Thu Jun  4 04:40:07 PM CST 2026 - Ralph runner
+- Iteration: 10
+- Story: US-018
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-10
+---
+
+## Thu Jun  4 04:56:53 PM CST 2026 - US-019
+- What was implemented
+  - Added protected AI ingestion draft APIs and page on `/admin/ingestion-runs`, `/api/admin/ingestion-runs`, and `/admin/ingestion-runs/:id`.
+  - Added dependency-free ingestion run storage with source document candidates, official source priority ordering, candidate/accepted/rejected status, raw text asset URLs, content hashes, confidence, review notes, timeline/formula candidates, and traceable extracted guide fields.
+  - Enforced third-party sources as discovery clues only and created official guide drafts from extraction output without making them visible to student APIs.
+  - Extended the migration validation surface for persisted ingestion outputs and source candidate metadata.
+- Files changed
+  - `AGENTS.md`, `public/styles.css`
+  - `src/app.js`, `src/app.test.js`, `src/db/data-access.js`, `src/db/data-access.test.js`, `src/db/migrations/001_core_data_model.sql`, `src/db/schema.test.js`, `src/lib/product.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `node --test src/db/data-access.test.js` passed
+  - `node --test src/app.test.js` passed
+  - `node --test src/db/schema.test.js` passed
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for logged-in `/admin/ingestion-runs` at 390px and 1280px; the ingestion draft workflow, source priority, traceable extracted fields, draft-only state, create form, and no horizontal overflow were verified.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-141724/iteration-11/admin-ingestion-mobile-390.png` and `scripts/ralph/runs/20260604-141724/iteration-11/admin-ingestion-desktop-1280.png`.
+- **Learnings for future iterations:**
+  - Use `createAdminIngestionRun()` for AI/extraction official data intake so third-party source rejection, source priority sorting, traceability validation, and draft-only guide creation stay together.
+  - Extracted guide fields must be objects with `value` plus either `sourceDocumentId` or `manualNote`; timeline and formula candidates follow the same trace pattern at the candidate level.
+  - Browser verification for protected ingestion pages can use a temporary test-style server that injects `authService`, creates a `data_reviewer`, and seeds one ingestion run before visiting the page.
 ---

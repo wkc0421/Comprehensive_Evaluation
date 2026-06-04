@@ -1862,6 +1862,192 @@ describe("web routes", () => {
     assert.doesNotMatch(calculatorBody, /No clear published formula/);
   });
 
+  it("creates AI ingestion runs as draft-only official guide review material", async () => {
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000048",
+      nickname: "Ingestion reviewer",
+      role: "data_reviewer"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(reviewer.id)).split(";")[0];
+    const sourceDocuments = [
+      {
+        id: "route-source-third-party",
+        sourceUrl: "https://www.sohu.com/a/guangdong-zhpj",
+        title: "Third-party discovery clue for comprehensive evaluation",
+        sourceType: "third_party_info",
+        status: "candidate"
+      },
+      {
+        id: "route-source-chsi",
+        sourceUrl: "https://gaokao.chsi.com.cn/zsgs/zhpj",
+        title: "Yangguang Gaokao official comprehensive evaluation notice",
+        sourceType: "chsi_yangguang_gaokao",
+        status: "candidate"
+      },
+      {
+        id: "route-source-geea",
+        sourceUrl: "https://eea.gd.gov.cn/admission/2029-zhpj",
+        title: "Guangdong Education Examination Authority 2029 notice",
+        sourceType: "guangdong_education_exam_authority",
+        fetchedAt: "2029-03-15T02:00:00.000Z",
+        contentHash: "route-geea-hash",
+        rawTextAssetUrl: "oss://raw/route-geea.txt",
+        status: "accepted"
+      }
+    ];
+    const extractedGuideFields = {
+      guideTitle: {
+        value: "Sun Yat-sen University 2029 Guangdong Comprehensive Evaluation Guide",
+        sourceDocumentId: "route-source-geea",
+        confidence: 0.92
+      },
+      summary: {
+        value: "AI-extracted guide draft for manual data review only.",
+        sourceDocumentId: "route-source-geea",
+        confidence: 0.9
+      },
+      applicationStatus: {
+        value: "open",
+        sourceDocumentId: "route-source-geea",
+        confidence: 0.8
+      },
+      majors: {
+        value: [
+          { name: "Clinical medicine pilot class", track: "physics" }
+        ],
+        manualNote: "Reviewer entered the major list from the official attachment."
+      }
+    };
+
+    const hiddenBeforeResponse = await fetch(
+      `${baseUrl}/api/guides?schoolId=${encodeURIComponent(seedIds.schools.sysu)}&year=2029`
+    );
+    const hiddenBeforeBody = await hiddenBeforeResponse.json();
+
+    assert.equal(hiddenBeforeResponse.status, 200);
+    assert.equal(hiddenBeforeBody.count, 0);
+
+    const createResponse = await fetch(`${baseUrl}/api/admin/ingestion-runs`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        id: "route-ingestion-run",
+        schoolId: seedIds.schools.sysu,
+        year: 2029,
+        keyword: "SYSU 2029",
+        sourceDocuments,
+        extractedGuideFields,
+        timelineCandidates: [
+          {
+            eventKey: "application_deadline",
+            title: "Application deadline",
+            endsAt: "2029-04-20T15:59:59.000Z",
+            sourceDocumentId: "route-source-geea",
+            confidence: 0.83
+          }
+        ],
+        formulaCandidates: [
+          {
+            formulaName: "Extracted 85/15 weighted formula",
+            formulaType: "weighted_sum",
+            manualNote: "Formula text requires data reviewer verification."
+          }
+        ],
+        confidenceScore: 0.86,
+        reviewNotes: "Manual review required before any publish transition."
+      })
+    });
+    const createBody = await createResponse.json();
+
+    assert.equal(createResponse.status, 201);
+    assert.equal(createBody.status, "draft_created");
+    assert.deepEqual(createBody.ingestionRun.sourceDocuments.map((document) => document.id), [
+      "route-source-geea",
+      "route-source-chsi",
+      "route-source-third-party"
+    ]);
+    assert.equal(createBody.ingestionRun.sourceDocuments[0].sourcePriorityLabel, "Guangdong Education Examination Authority");
+    assert.equal(createBody.ingestionRun.sourceDocuments.at(-1).authorityRole, "discovery_clue");
+    assert.equal(createBody.ingestionRun.draftGuide.status, "draft");
+    assert.equal(createBody.ingestionRun.draftGuide.isCurrent, false);
+    assert.equal(
+      createBody.ingestionRun.extractedGuideFields.guideTitle.trace.sourceDocumentId,
+      "route-source-geea"
+    );
+    assert.match(
+      createBody.ingestionRun.extractedGuideFields.majors.trace.manualNote,
+      /official attachment/
+    );
+
+    const hiddenDraftResponse = await fetch(
+      `${baseUrl}/api/guides?schoolId=${encodeURIComponent(seedIds.schools.sysu)}&year=2029`
+    );
+    const hiddenDraftBody = await hiddenDraftResponse.json();
+
+    assert.equal(hiddenDraftResponse.status, 200);
+    assert.equal(hiddenDraftBody.count, 0);
+
+    const listResponse = await fetch(`${baseUrl}/api/admin/ingestion-runs?keyword=SYSU`, {
+      headers: { cookie }
+    });
+    const listBody = await listResponse.json();
+
+    assert.equal(listResponse.status, 200);
+    assert.ok(listBody.ingestionRuns.some((run) => run.id === "route-ingestion-run"));
+
+    const detailResponse = await fetch(`${baseUrl}/api/admin/ingestion-runs/route-ingestion-run`, {
+      headers: { cookie }
+    });
+    const detailBody = await detailResponse.json();
+
+    assert.equal(detailResponse.status, 200);
+    assert.equal(detailBody.timelineCandidates[0].trace.sourceDocumentId, "route-source-geea");
+    assert.equal(detailBody.formulaCandidates[0].trace.authorityRole, "manual_note");
+
+    const pageResponse = await fetch(`${baseUrl}/admin/ingestion-runs`, {
+      headers: {
+        accept: "text/html",
+        cookie
+      }
+    });
+    const pageBody = await pageResponse.text();
+
+    assert.equal(pageResponse.status, 200);
+    assert.match(pageBody, /Ingestion draft workflow/);
+    assert.match(pageBody, /Source document candidates/);
+    assert.match(pageBody, /Traceable extracted guide fields/);
+    assert.match(pageBody, /Hidden until manual publish/);
+    assertNoPhoneFields(pageBody);
+
+    const rejectResponse = await fetch(`${baseUrl}/api/admin/ingestion-runs`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        keyword: "third-party rejected",
+        createDraft: false,
+        sourceDocuments: [
+          {
+            id: "route-source-third-party-rejected",
+            sourceUrl: "https://www.zhihu.com/question/zhpj",
+            title: "Third-party guide post",
+            sourceType: "third_party_info",
+            status: "accepted"
+          }
+        ]
+      })
+    });
+    const rejectBody = await rejectResponse.json();
+
+    assert.equal(rejectResponse.status, 400);
+    assert.equal(rejectBody.error, "third_party_final_authority_rejected");
+  });
+
   it("moderates pending experiences, publishes approved submissions, and keeps verification materials private", async () => {
     const student = authService.createUserForTesting({
       phoneNumber: "+8613000000038",
