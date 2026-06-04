@@ -328,8 +328,8 @@
         "Run build, typecheck, lint, unit tests, and browser tests successfully before marking the MVP complete."
       ],
       "priority": 20,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added MVP end-to-end route tests, data-quality reporting and validation, package quality scripts, and Playwright-backed mobile browser overflow verification for core pages."
     }
   ]
 }

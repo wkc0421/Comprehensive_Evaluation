@@ -6,6 +6,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - The app scaffold is dependency-free Node.js ESM; keep routing in `src/app.js` and server startup in `src/server.js`.
 - Server-rendered HTML is composed in `src/pages.js`, shared product metadata is in `src/lib/product.js`, and global mobile-first CSS is in `public/styles.css`.
 - Quality scripts live in `scripts/` and intentionally avoid scanning Ralph run logs or source PRD docs.
+- MVP-wide quality gates live in `src/e2e.test.js`, `scripts/data-quality.mjs`, and `scripts/browser-core-pages.mjs`; run `npm test`, `npm run data-quality`, and `npm run browser-test` for end-to-end acceptance.
 - `npm run build` creates `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`, and `dist/` is generated and ignored.
 - Core PostgreSQL schema migrations live in `src/db/migrations`; `src/db/schema.test.js` validates migration SQL statically without connecting to `DATABASE_URL`.
 - Seed fixtures and student-facing published-only data access helpers live in `src/db` as plain JavaScript modules; use them before introducing database tooling.
@@ -631,4 +632,37 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Use `createAdminIngestionRun()` for AI/extraction official data intake so third-party source rejection, source priority sorting, traceability validation, and draft-only guide creation stay together.
   - Extracted guide fields must be objects with `value` plus either `sourceDocumentId` or `manualNote`; timeline and formula candidates follow the same trace pattern at the candidate level.
   - Browser verification for protected ingestion pages can use a temporary test-style server that injects `authService`, creates a `data_reviewer`, and seeds one ingestion run before visiting the page.
+---
+
+## Thu Jun  4 04:59:58 PM CST 2026 - Ralph runner
+- Iteration: 11
+- Story: US-019
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-11
+---
+
+## Thu Jun  4 05:10:18 PM CST 2026 - US-020
+- What was implemented
+  - Added MVP end-to-end route tests for grade-three favorites and my timeline deadlines, grade-three calculator source attribution, grade-two guide/version and experience browsing, grade-one home-to-school overview, and submission through admin approval to student-visible display.
+  - Added dependency-free data quality reporting for 2024 through 2026 guide coverage, required published guide fields, calculable formula source/explanation checks, and hidden draft/pending official data visibility checks.
+  - Added a Playwright-backed browser verification script for core mobile pages at 375px, 390px, and 430px, plus npm scripts and docs for the new quality gates.
+- Files changed
+  - `AGENTS.md`, `README.md`, `package.json`
+  - `scripts/browser-core-pages.mjs`, `scripts/data-quality.mjs`
+  - `src/data-quality.test.js`, `src/e2e.test.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run data-quality` passed and reported annual guide coverage 3/3, 100.00% against the 95.00% target, with school-year guide coverage 6/9 for the seed fixture
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - `npm run browser-test` passed with Playwright Chromium for `/`, `/schools`, `/schools/:id`, `/timeline`, `/calculator`, and `/experiences` at 375px, 390px, and 430px; no horizontal overflow or hidden review-only text was detected.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-141724/iteration-12/home-390.png`, `schools-390.png`, `school-detail-390.png`, `timeline-390.png`, `calculator-390.png`, and `experiences-390.png`.
+- **Learnings for future iterations:**
+  - Keep MVP-wide user journeys in `src/e2e.test.js` so cross-feature regressions are separated from lower-level route tests in `src/app.test.js`.
+  - `scripts/data-quality.mjs` is import-safe for tests and executable as `npm run data-quality`; it reports both annual guide coverage and school-year fixture coverage while failing on missing required fields or hidden student-visible data.
+  - `scripts/browser-core-pages.mjs` starts an injected `handleRequest()` server and must run Playwright through async `spawn` so the Node HTTP server event loop can answer browser requests.
 ---

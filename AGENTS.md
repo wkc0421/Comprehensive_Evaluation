@@ -5,6 +5,7 @@
 - Server-rendered HTML belongs in `src/pages.js`, shared product metadata belongs in `src/lib/product.js`, and mobile-first styling belongs in `public/styles.css`.
 - `npm run build` writes production files to `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`.
 - Quality scripts in `scripts/` are intentionally dependency-free and should ignore Ralph run logs and PRD source files.
+- MVP-wide quality gates include `src/e2e.test.js`, `scripts/data-quality.mjs`, and `scripts/browser-core-pages.mjs`; run `npm test`, `npm run data-quality`, and `npm run browser-test` before marking end-to-end UI quality complete.
 - PostgreSQL schema migrations live in `src/db/migrations`; keep migration validation dependency-free until a later story introduces database tooling.
 - Dependency-free seed fixtures and student-facing published-only data access helpers live in `src/db`; keep them in plain JavaScript until database tooling is introduced.
 - Authentication/session helpers live in `src/auth.js`; route tests can inject an auth service through `handleRequest(request, response, { authService })`, and public responses should use the public user shape so phone fields never leak.

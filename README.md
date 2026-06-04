@@ -38,6 +38,8 @@ Mobile-first Node.js web application for Guangdong comprehensive evaluation admi
 - `npm run typecheck` runs syntax and route contract checks for the JavaScript modules.
 - `npm run lint` runs dependency-free lint checks for whitespace, tabs, and JavaScript syntax.
 - `npm test` runs the Node.js test suite once.
+- `npm run data-quality` reports 2024 through 2026 Guangdong guide coverage and validates student-facing official data quality.
+- `npm run browser-test` runs Playwright browser overflow checks for core mobile pages when Python Playwright is available.
 
 ## Environment
 
