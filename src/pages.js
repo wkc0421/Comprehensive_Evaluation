@@ -990,6 +990,263 @@ function renderExperienceListCards(experiences) {
     .join("");
 }
 
+const assessmentTypeSubmissionOptions = [
+  ["structured_interview", "Structured interview"],
+  ["group_discussion", "Group discussion"],
+  ["machine_test", "Machine test"],
+  ["materials_review", "Materials review"],
+  ["practical_task", "Practical task"]
+];
+
+const questionTypeSubmissionOptions = [
+  ["motivation", "Motivation"],
+  ["current_affairs", "Current affairs"],
+  ["major_interest", "Major interest"],
+  ["experiment_design", "Experiment design"],
+  ["project_reflection", "Project reflection"],
+  ["math_reasoning", "Math reasoning"],
+  ["teamwork", "Teamwork"],
+  ["learning_plan", "Learning plan"]
+];
+
+function checkedAttribute(values, optionValue) {
+  return values.includes(optionValue) ? " checked" : "";
+}
+
+function renderCheckboxOptions(name, options, defaults = []) {
+  return options
+    .map(([value, label]) => `<label class="checkbox-field">
+      <input type="checkbox" name="${escapeHtml(name)}" value="${escapeHtml(value)}"${checkedAttribute(defaults, value)}>
+      <span>${escapeHtml(label)}</span>
+    </label>`)
+    .join("");
+}
+
+function submissionSchoolOptions() {
+  const schoolsById = new Map(
+    listSchoolGuideCards({ sort: "name" }).map((card) => [card.school.id, card.school])
+  );
+
+  return [
+    renderOption("", "Select school", ""),
+    ...[...schoolsById.values()].map((school) => renderOption(school.id, school.name, ""))
+  ].join("");
+}
+
+function submissionYearOptions() {
+  const years = uniqueSorted(listGuides().map((guide) => guide.admissionYear))
+    .sort((left, right) => right - left);
+
+  return [
+    renderOption("", "Select year", ""),
+    ...years.map((year) => renderOption(year, year, ""))
+  ].join("");
+}
+
+function ratingOptions() {
+  return [
+    renderOption("", "Select score", ""),
+    ...[1, 2, 3, 4, 5].map((score) => renderOption(score, String(score), ""))
+  ].join("");
+}
+
+function renderSubmissionStatus(submission) {
+  if (!submission) {
+    return "";
+  }
+
+  const school = getSchoolById(submission.schoolId);
+
+  return `<section class="submission-status" aria-labelledby="submission-status-title">
+    <div class="section-heading">
+      <h2 id="submission-status-title">Pending review</h2>
+      <p class="section-kicker">${escapeHtml(submission.verification.materialCount)} verification ${escapeHtml(pluralize(submission.verification.materialCount, "metadata record"))}</p>
+    </div>
+    <dl class="detail-list split-details">
+      <div>
+        <dt>School</dt>
+        <dd>${escapeHtml(school?.name ?? "Published school")}</dd>
+      </div>
+      <div>
+        <dt>Year</dt>
+        <dd>${escapeHtml(submission.year)}</dd>
+      </div>
+      <div>
+        <dt>Stage</dt>
+        <dd>${escapeHtml(humanizeToken(submission.stage))}</dd>
+      </div>
+      <div>
+        <dt>Display</dt>
+        <dd>${escapeHtml(submission.author.displayName ?? submission.author.nickname)}</dd>
+      </div>
+    </dl>
+  </section>`;
+}
+
+function renderSubmissionError(error) {
+  return error ? `<p class="form-error" role="alert">${escapeHtml(error)}</p>` : "";
+}
+
+export function renderExperienceSubmissionPage({ user, submission = null, error = "" }) {
+  const anonymousDefault = user.defaultAnonymous ? "true" : "false";
+  const anonymousOptions = [
+    renderOption("true", "Anonymous display", anonymousDefault),
+    renderOption("false", "Show nickname", anonymousDefault)
+  ].join("");
+
+  return htmlPage({
+    title: `Submit experience | ${productName}`,
+    body: `    <main class="app-shell">
+      <header class="top-bar">
+        <a class="brand" href="/">
+          <span class="brand-mark">Guangdong MVP</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
+        <a class="admin-link" href="/admin">Admin</a>
+      </header>
+
+      <section class="page-heading" aria-labelledby="experience-submit-title">
+        <p class="eyebrow">Structured submission</p>
+        <h1 id="experience-submit-title">Submit experience</h1>
+        <p class="lead">Record school assessment details, preparation signals, and optional verification metadata for reviewer approval.</p>
+      </section>
+
+      ${renderSubmissionStatus(submission)}
+
+      <form class="submission-form" method="post" action="/experiences" aria-label="Experience submission form">
+        ${renderSubmissionError(error)}
+        <fieldset class="form-section">
+          <legend>School and result</legend>
+          <label class="form-field wide-field">
+            <span>School</span>
+            <select name="schoolId" required>${submissionSchoolOptions()}</select>
+          </label>
+          <label class="form-field">
+            <span>Year</span>
+            <select name="year" required>${submissionYearOptions()}</select>
+          </label>
+          <label class="form-field">
+            <span>Major group</span>
+            <input name="majorGroup" autocomplete="off" required>
+          </label>
+          <label class="form-field">
+            <span>Candidate track</span>
+            <select name="candidateTrack" required>
+              <option value="">Select track</option>
+              <option value="physics">Physics</option>
+              <option value="history">History</option>
+              <option value="general">General</option>
+            </select>
+          </label>
+          <label class="form-field">
+            <span>Stage</span>
+            <select name="stage" required>
+              <option value="">Select stage</option>
+              <option value="preliminary_review">Preliminary review</option>
+              <option value="school_assessment">School assessment</option>
+              <option value="admission_result">Admission result</option>
+            </select>
+          </label>
+          <label class="form-field">
+            <span>Shortlisted status</span>
+            <select name="shortlistedStatus" required>
+              <option value="">Select status</option>
+              <option value="true">Shortlisted</option>
+              <option value="false">Not shortlisted</option>
+            </select>
+          </label>
+          <label class="form-field">
+            <span>Admitted status</span>
+            <select name="admittedStatus">
+              <option value="">Not disclosed</option>
+              <option value="true">Admitted</option>
+              <option value="false">Not admitted</option>
+            </select>
+          </label>
+          <label class="form-field wide-field">
+            <span>Location</span>
+            <input name="location" autocomplete="off">
+          </label>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>Assessment details</legend>
+          <div class="form-field wide-field">
+            <span>Assessment types</span>
+            <div class="choice-grid">${renderCheckboxOptions("assessmentTypes", assessmentTypeSubmissionOptions, ["structured_interview"])}</div>
+          </div>
+          <label class="form-field full-field">
+            <span>Process</span>
+            <textarea name="processSummary" rows="5" required></textarea>
+          </label>
+          <div class="form-field full-field">
+            <span>Question types</span>
+            <div class="choice-grid">${renderCheckboxOptions("questionTypes", questionTypeSubmissionOptions, ["motivation"])}</div>
+          </div>
+          <label class="form-field full-field">
+            <span>Preparation</span>
+            <textarea name="preparationSummary" rows="4" required></textarea>
+          </label>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>Scores and advice</legend>
+          <label class="form-field">
+            <span>Difficulty score</span>
+            <select name="difficultyScore" required>${ratingOptions()}</select>
+          </label>
+          <label class="form-field">
+            <span>Pressure score</span>
+            <select name="pressureScore" required>${ratingOptions()}</select>
+          </label>
+          <label class="form-field">
+            <span>Differentiation score</span>
+            <select name="differentiationScore" required>${ratingOptions()}</select>
+          </label>
+          <label class="form-field">
+            <span>Anonymous preference</span>
+            <select name="isAnonymous" required>${anonymousOptions}</select>
+          </label>
+          <label class="form-field full-field">
+            <span>Advice</span>
+            <textarea name="advice" rows="4" required></textarea>
+          </label>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>Verification metadata</legend>
+          <label class="form-field">
+            <span>Material type</span>
+            <input name="verificationMaterialType" autocomplete="off">
+          </label>
+          <label class="form-field">
+            <span>Storage key</span>
+            <input name="verificationObjectStorageKey" autocomplete="off">
+          </label>
+          <label class="form-field">
+            <span>Material title</span>
+            <input name="verificationTitle" autocomplete="off">
+          </label>
+          <label class="form-field">
+            <span>Source account</span>
+            <input name="verificationSourceAccount" autocomplete="off">
+          </label>
+          <label class="form-field full-field">
+            <span>Verification notes</span>
+            <textarea name="verificationNotes" rows="3"></textarea>
+          </label>
+        </fieldset>
+
+        <div class="form-actions">
+          <button class="primary-action" type="submit">Submit</button>
+          <a class="secondary-action" href="/experiences">Cancel</a>
+        </div>
+      </form>
+    </main>`
+  });
+}
+
 export function renderExperienceListPage(filters = {}) {
   const allExperiences = listExperiences();
   const experiences = listExperiences(filters);
@@ -1010,6 +1267,9 @@ export function renderExperienceListPage(filters = {}) {
         <p class="eyebrow">Published assessment experiences</p>
         <h1 id="experience-list-title">Experience list</h1>
         <p class="lead">Browse structured interview and assessment references by school, year, stage, verification, and useful count.</p>
+        <div class="actions">
+          <a class="primary-action" href="/experiences/new">Submit experience</a>
+        </div>
       </section>
 
       <section class="section" aria-label="Experience filters">

@@ -5,6 +5,7 @@ import { after, before, describe, it } from "node:test";
 import { createAuthService } from "./auth.js";
 import { handleRequest } from "./app.js";
 import { seedIds } from "./db/seed-data.js";
+import { createExperienceSubmissionStore } from "./experience-submissions.js";
 import { createInteractionStore } from "./interactions.js";
 
 function jsonRequest(body = {}) {
@@ -35,6 +36,7 @@ function schoolNames(payload) {
 describe("web routes", () => {
   let authService;
   let baseUrl;
+  let experienceSubmissionStore;
   let interactionStore;
   let server;
 
@@ -50,9 +52,15 @@ describe("web routes", () => {
       },
       now: timelineNow
     });
+    experienceSubmissionStore = createExperienceSubmissionStore({ now: timelineNow });
     interactionStore = createInteractionStore({ now: timelineNow });
     server = createServer((request, response) => {
-      handleRequest(request, response, { authService, interactionStore, now: timelineNow }).catch((error) => {
+      handleRequest(request, response, {
+        authService,
+        experienceSubmissionStore,
+        interactionStore,
+        now: timelineNow
+      }).catch((error) => {
         response.writeHead(500, { "content-type": "application/json; charset=utf-8" });
         response.end(JSON.stringify({ error: error.message }));
       });
@@ -491,7 +499,159 @@ describe("web routes", () => {
     assert.match(body, /Verified experience/);
     assert.match(body, /Useful count/);
     assert.match(body, /Historical reference/);
+    assert.match(body, /Submit experience/);
     assert.doesNotMatch(body, /Pending review experience that must remain hidden/);
+  });
+
+  it("renders the structured experience submission form for logged-in users", async () => {
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000013",
+      nickname: "Experience student",
+      defaultAnonymous: true
+    });
+    const session = authService.createSessionForUser(user.id);
+    const cookie = authService.serializeSessionCookie(session).split(";")[0];
+
+    const response = await fetch(`${baseUrl}/experiences/new`, {
+      headers: {
+        accept: "text/html",
+        cookie
+      }
+    });
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /Submit experience/);
+    assert.match(body, /action="\/experiences"/);
+    assert.match(body, /name="schoolId"/);
+    assert.match(body, /name="year"/);
+    assert.match(body, /name="majorGroup"/);
+    assert.match(body, /name="candidateTrack"/);
+    assert.match(body, /name="stage"/);
+    assert.match(body, /name="shortlistedStatus"/);
+    assert.match(body, /name="admittedStatus"/);
+    assert.match(body, /name="assessmentTypes"/);
+    assert.match(body, /name="location"/);
+    assert.match(body, /name="processSummary"/);
+    assert.match(body, /name="questionTypes"/);
+    assert.match(body, /name="preparationSummary"/);
+    assert.match(body, /name="difficultyScore"/);
+    assert.match(body, /name="pressureScore"/);
+    assert.match(body, /name="differentiationScore"/);
+    assert.match(body, /name="advice"/);
+    assert.match(body, /name="isAnonymous"/);
+    assert.match(body, /name="verificationMaterialType"/);
+    assert.match(body, /name="verificationSourceAccount"/);
+  });
+
+  it("validates required fields for structured experience submissions", async () => {
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000014",
+      nickname: "Validation student"
+    });
+    const session = authService.createSessionForUser(user.id);
+    const cookie = authService.serializeSessionCookie(session).split(";")[0];
+
+    const response = await fetch(`${baseUrl}/api/experiences`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ schoolId: seedIds.schools.sysu })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.equal(body.error, "missing_required_field");
+    assert.match(body.message, /Process is required|Year is required|Major group is required/);
+  });
+
+  it("creates pending review structured experiences with anonymous sanitized output", async () => {
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000015",
+      nickname: "Anonymous submitter",
+      defaultAnonymous: true
+    });
+    const session = authService.createSessionForUser(user.id);
+    const cookie = authService.serializeSessionCookie(session).split(";")[0];
+    const payload = {
+      schoolId: seedIds.schools.sysu,
+      year: 2026,
+      majorGroup: "Science pilot group",
+      candidateTrack: "physics",
+      stage: "school_assessment",
+      shortlistedStatus: true,
+      admittedStatus: null,
+      assessmentTypes: ["structured_interview", "group_discussion"],
+      location: "Guangzhou campus",
+      processSummary: "Panel interview followed a group discussion and individual experiment design prompts.",
+      questionTypes: ["motivation", "experiment_design"],
+      preparationSummary: "Prepared personal statement examples and concise experiment explanations.",
+      difficultyScore: 4,
+      pressureScore: 3,
+      differentiationScore: 4,
+      advice: "Use specific coursework examples and do not share personal sensitive details.",
+      isAnonymous: true,
+      verificationMaterials: [
+        {
+          materialType: "shortlist_notice",
+          objectStorageKey: "private/submissions/sysu-shortlist.png",
+          metadata: {
+            sourceAccount: "source-account-123",
+            realName: "Student Real Name",
+            notes: "Screenshot metadata only"
+          }
+        }
+      ]
+    };
+
+    const response = await fetch(`${baseUrl}/experiences`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 201);
+    assert.equal(body.status, "pending_review");
+    assert.equal(body.experience.status, "pending_review");
+    assert.equal(body.experience.schoolId, seedIds.schools.sysu);
+    assert.equal(body.experience.year, 2026);
+    assert.equal(body.experience.shortlistedStatus, true);
+    assert.equal(body.experience.admittedStatus, null);
+    assert.deepEqual(body.experience.assessmentTypes, ["structured_interview", "group_discussion"]);
+    assert.equal(body.experience.verification.status, "pending_review");
+    assert.equal(body.experience.verification.materialCount, 1);
+    assert.deepEqual(body.experience.author, {
+      anonymous: true,
+      displayName: "Anonymous student"
+    });
+    assert.doesNotMatch(serialized, /Anonymous submitter/);
+    assert.doesNotMatch(serialized, /source-account-123/);
+    assert.doesNotMatch(serialized, /Student Real Name/);
+    assert.doesNotMatch(serialized, /private\/submissions/);
+    assert.doesNotMatch(serialized, /verificationMaterials|phone|realName|sourceAccount|userId/i);
+
+    const privateMaterials = experienceSubmissionStore.listVerificationMaterials({
+      experienceId: body.experience.id,
+      userId: user.id
+    });
+
+    assert.equal(privateMaterials.length, 1);
+    assert.equal(privateMaterials[0].metadata.sourceAccount, "source-account-123");
+
+    const publicResponse = await fetch(`${baseUrl}/api/experiences?schoolId=${seedIds.schools.sysu}&year=2026`);
+    const publicBody = await publicResponse.json();
+    const publicSerialized = JSON.stringify(publicBody);
+
+    assert.equal(publicResponse.status, 200);
+    assert.doesNotMatch(publicSerialized, new RegExp(body.experience.id));
+    assert.doesNotMatch(publicSerialized, /Panel interview followed a group discussion/);
   });
 
   it("returns the full Guangdong timeline with generated nodes, statuses, and site-only reminders", async () => {
@@ -663,6 +823,8 @@ describe("web routes", () => {
 
   it("blocks unauthenticated users from restricted student and admin APIs", async () => {
     const cases = [
+      { method: "GET", path: "/experiences/new" },
+      { method: "POST", path: "/experiences", body: { schoolId: seedIds.schools.sysu } },
       { method: "POST", path: "/api/experiences", body: { schoolId: seedIds.schools.sysu } },
       { method: "POST", path: "/api/favorites", body: { targetType: "school", targetId: seedIds.schools.sysu } },
       { method: "DELETE", path: "/api/favorites/missing-favorite" },

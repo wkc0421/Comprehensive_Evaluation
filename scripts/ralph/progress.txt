@@ -17,7 +17,8 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public timelines should use `listTimelineNodes()` and `buildSiteTimelineReminders()` from `src/db/data-access.js`; they keep `/timeline`, `/api/timeline`, status calculation, required generated event keys, unknown-date handling, published-only visibility, and site-only reminder indicators aligned.
 - Public score calculation should use `calculateScore()` from `src/db/data-access.js`; it keeps formula visibility, input normalization, validation errors, contribution breakdowns, source links, and disclaimer text aligned for `/score/calculate`, `/api/score/calculate`, and future calculator pages.
 - Public score calculator UI should use `renderScoreCalculatorPage()` with `listSchoolGuideCards()` and `getSchoolDetail()` for published school/year/formula loading, while `public/calculator.js` posts final calculations to `/api/score/calculate`; when `detail.formula` is null, hide the score-entry form and show the unavailable state.
-- Public experience browsing should use `listExperiences()` from `src/db/data-access.js`; it keeps `/experiences`, `/api/experiences`, filters, newest/useful/verified sorting, and published-only visibility aligned while POST `/api/experiences` remains the login-gated submission route for later stories.
+- Public experience browsing should use `listExperiences()` from `src/db/data-access.js`; it keeps `/experiences`, `/api/experiences`, filters, newest/useful/verified sorting, and published-only visibility aligned while pending submissions remain outside public browse results.
+- Structured experience submissions should use `src/experience-submissions.js` for required-field normalization, pending_review defaults, private verification metadata storage, and sanitized public or anonymous output; `handleRequest` accepts an injectable `experienceSubmissionStore` for route tests.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -401,4 +402,36 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - `/experiences` follows the existing content-negotiation pattern: browser requests with `Accept: text/html` receive HTML, while `/api/experiences`, API-style accepts, or `format=json` receive JSON.
   - `listExperiences()` is the shared public helper for experience browsing; use sort values `newest`, `useful`, and `verified` for UI state, with `useful_count` and `verified_first` accepted as aliases.
   - The stable historical notice browser fixture is Southern University of Science and Technology 2024; the stable pending-verification fixture is Sun Yat-sen University 2026 pending verification.
+---
+
+## Thu Jun  4 03:10:50 PM CST 2026 - Ralph runner
+- Iteration: 4
+- Story: US-012
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-4
+---
+
+## Thu Jun  4 03:22:53 PM CST 2026 - US-013
+- What was implemented
+  - Added logged-in structured experience submission on `/experiences/new` and `POST /experiences` or `POST /api/experiences`.
+  - Added dependency-free submission validation and in-memory storage with `pending_review` defaults, required structured fields, private verification metadata capture, and sanitized anonymous output.
+  - Kept pending submissions out of public experience browsing until future moderation approves them.
+- Files changed
+  - `AGENTS.md`
+  - `public/styles.css`
+  - `src/app.js`, `src/app.test.js`, `src/experience-submissions.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for logged-in `/experiences/new` form load and submit at 390px and 1280px; the submitted state showed pending review, hid verification source-account values, and had no horizontal overflow.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-141724/iteration-5/experience-submit-mobile-390.png` and `scripts/ralph/runs/20260604-141724/iteration-5/experience-submit-desktop-1280.png`.
+- **Learnings for future iterations:**
+  - Use `createExperienceSubmissionStore({ now })` and pass it through `handleRequest(..., { experienceSubmissionStore })` for isolated submission route tests.
+  - Pending experience submissions are intentionally separate from `listExperiences()` so student-facing browsing remains published-only until moderation stories wire approval into public data.
+  - Verification materials can be stored internally through the submission store, but public or anonymous response shapes should expose only status and material count.
 ---

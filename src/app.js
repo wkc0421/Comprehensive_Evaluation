@@ -15,10 +15,14 @@ import {
   listSchoolGuideCards,
   listTimelineNodes
 } from "./db/data-access.js";
+import {
+  experienceSubmissionStore as defaultExperienceSubmissionStore
+} from "./experience-submissions.js";
 import { interactionStore as defaultInteractionStore } from "./interactions.js";
 import {
   renderAdminPage,
   renderExperienceListPage,
+  renderExperienceSubmissionPage,
   renderNotFound,
   renderSchoolDetailPage,
   renderSchoolListPage,
@@ -83,6 +87,20 @@ function errorStatus(error) {
 }
 
 async function readJsonBody(request) {
+  const rawBody = await readRawBody(request);
+
+  if (rawBody.length === 0) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(rawBody);
+  } catch {
+    throw new RequestError("invalid_json", "Request body must be valid JSON.");
+  }
+}
+
+async function readRawBody(request) {
   const chunks = [];
   let bytes = 0;
 
@@ -97,20 +115,58 @@ async function readJsonBody(request) {
   }
 
   if (chunks.length === 0) {
-    return {};
+    return "";
   }
 
   const rawBody = Buffer.concat(chunks).toString("utf8").trim();
+
+  return rawBody;
+}
+
+function formBodyFromParams(params) {
+  const body = {};
+
+  for (const [key, value] of params) {
+    if (Object.hasOwn(body, key)) {
+      body[key] = Array.isArray(body[key]) ? [...body[key], value] : [body[key], value];
+      continue;
+    }
+
+    body[key] = value;
+  }
+
+  return body;
+}
+
+async function readStructuredBody(request) {
+  const rawBody = await readRawBody(request);
 
   if (rawBody.length === 0) {
     return {};
   }
 
-  try {
-    return JSON.parse(rawBody);
-  } catch {
-    throw new RequestError("invalid_json", "Request body must be valid JSON.");
+  const contentType = (headerValue(request.headers, "content-type") ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+
+  if (contentType === "application/x-www-form-urlencoded") {
+    return formBodyFromParams(new URLSearchParams(rawBody));
   }
+
+  if (!contentType || contentType === "application/json" || contentType.endsWith("+json")) {
+    try {
+      return JSON.parse(rawBody);
+    } catch {
+      throw new RequestError("invalid_json", "Request body must be valid JSON.");
+    }
+  }
+
+  throw new RequestError(
+    "unsupported_media_type",
+    "Experience submissions must use JSON or URL-encoded form data.",
+    415
+  );
 }
 
 function headerValue(headers, name) {
@@ -288,6 +344,20 @@ function shouldSendTimelineJson(request, url) {
 }
 
 function shouldSendExperienceListJson(request, url) {
+  if (url.pathname === "/api/experiences" || url.searchParams.get("format") === "json") {
+    return true;
+  }
+
+  const accept = headerValue(request.headers, "accept") ?? "";
+
+  if (accept.includes("text/html")) {
+    return false;
+  }
+
+  return accept.length === 0 || accept.includes("*/*") || accept.includes("application/json");
+}
+
+function shouldSendExperienceSubmissionJson(request, url) {
   if (url.pathname === "/api/experiences" || url.searchParams.get("format") === "json") {
     return true;
   }
@@ -844,6 +914,7 @@ async function sendPublicAsset(requestPath, response) {
 
 export async function handleRequest(request, response, context = {}) {
   const authService = context.authService ?? defaultAuthService;
+  const experienceSubmissionStore = context.experienceSubmissionStore ?? defaultExperienceSubmissionStore;
   const interactionStore = context.interactionStore ?? defaultInteractionStore;
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
@@ -935,14 +1006,49 @@ export async function handleRequest(request, response, context = {}) {
     return;
   }
 
-  if (url.pathname === "/api/experiences" && request.method === "POST") {
+  if (url.pathname === "/experiences/new" && request.method === "GET") {
     const user = requireActiveUser(request, response, authService);
 
     if (!user) {
       return;
     }
 
-    sendJson(response, 202, { status: "pending_review", submittedBy: user.id });
+    sendHtml(response, 200, renderExperienceSubmissionPage({ user }));
+    return;
+  }
+
+  if ((url.pathname === "/experiences" || url.pathname === "/api/experiences") && request.method === "POST") {
+    const user = requireActiveUser(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const body = await readStructuredBody(request);
+      const experience = experienceSubmissionStore.submitExperience({ user, body });
+
+      if (shouldSendExperienceSubmissionJson(request, url)) {
+        sendJson(response, 201, {
+          status: "pending_review",
+          experience
+        });
+        return;
+      }
+
+      sendHtml(response, 201, renderExperienceSubmissionPage({ user, submission: experience }));
+    } catch (error) {
+      if (!shouldSendExperienceSubmissionJson(request, url)) {
+        sendHtml(response, errorStatus(error), renderExperienceSubmissionPage({
+          user,
+          error: error.message
+        }));
+        return;
+      }
+
+      sendError(response, errorStatus(error), error.code ?? "experience_submission_error", error.message);
+    }
+
     return;
   }
 

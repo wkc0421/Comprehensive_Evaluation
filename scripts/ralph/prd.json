@@ -206,8 +206,8 @@
         "Tests cover required fields, pending_review default status, anonymous output, and unauthenticated blocking."
       ],
       "priority": 13,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented logged-in structured experience submission on /experiences/new and POST /experiences or /api/experiences with required-field validation, pending_review defaults, private verification metadata capture, anonymous sanitized output, and published-only hiding for pending submissions."
     },
     {
       "id": "US-014",
