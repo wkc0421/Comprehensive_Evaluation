@@ -49,6 +49,7 @@ import {
   renderAdminVerificationReviewPage,
   renderExperienceListPage,
   renderExperienceSubmissionPage,
+  renderLoginPage,
   renderNotFound,
   renderPersonalCenterPage,
   renderSchoolDetailPage,
@@ -1598,6 +1599,100 @@ function shouldSendSchoolDetailJson(request, url) {
   return accept.length === 0 || accept.includes("*/*") || accept.includes("application/json");
 }
 
+function acceptsHtml(request) {
+  return (headerValue(request.headers, "accept") ?? "").includes("text/html");
+}
+
+function shouldRenderLoginGuide(request, url, options = {}) {
+  return options.htmlLogin === true &&
+    !url.pathname.startsWith("/api/") &&
+    acceptsHtml(request);
+}
+
+function safeReturnTo(value, fallback = "/") {
+  if (
+    typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    !value.startsWith("/api/")
+  ) {
+    return value;
+  }
+
+  return fallback;
+}
+
+function requestReturnTo(url) {
+  return safeReturnTo(`${url.pathname}${url.search}`);
+}
+
+function returnToFromBodyOrRequest(body, request, url) {
+  const fromBody = safeReturnTo(scalarBodyValue(body?.returnTo), "");
+
+  if (fromBody) {
+    return fromBody;
+  }
+
+  const referer = headerValue(request.headers, "referer");
+
+  if (referer) {
+    try {
+      const refererUrl = new URL(referer, `http://${request.headers.host ?? "localhost"}`);
+      return safeReturnTo(`${refererUrl.pathname}${refererUrl.search}`, requestReturnTo(url));
+    } catch {
+      return requestReturnTo(url);
+    }
+  }
+
+  return requestReturnTo(url);
+}
+
+function encodePendingAction(action) {
+  return Buffer.from(JSON.stringify(action), "utf8").toString("base64url");
+}
+
+function decodePendingAction(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  if (value.length > 4096) {
+    throw new RequestError("invalid_pending_action", "Login action is no longer valid.");
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Pending action must be an object.");
+    }
+
+    return parsed;
+  } catch {
+    throw new RequestError("invalid_pending_action", "Login action is no longer valid.");
+  }
+}
+
+function redirect(response, location, headers = {}) {
+  response.writeHead(303, {
+    location,
+    "cache-control": "no-store",
+    ...headers
+  });
+  response.end();
+}
+
+function withToast(returnTo, toast) {
+  const safePath = safeReturnTo(returnTo);
+  const url = new URL(safePath, "http://localhost");
+
+  if (toast) {
+    url.searchParams.set("toast", toast);
+  }
+
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 function sessionTokenFromRequest(request, authService) {
   const authorization = headerValue(request.headers, "authorization");
   const bearerToken = authorization?.match(/^Bearer\s+(?<token>.+)$/i)?.groups?.token;
@@ -1622,8 +1717,18 @@ function currentUserFromRequest(request, authService) {
 
 function requireActiveUser(request, response, authService, options = {}) {
   const user = currentUserFromRequest(request, authService);
+  const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
   if (!user) {
+    if (shouldRenderLoginGuide(request, url, options)) {
+      sendHtml(response, 401, renderLoginPage({
+        returnTo: safeReturnTo(options.returnTo ?? requestReturnTo(url)),
+        pendingAction: options.pendingAction ? encodePendingAction(options.pendingAction) : "",
+        notice: options.notice ?? ""
+      }));
+      return null;
+    }
+
     sendError(response, 401, "login_required", "Login is required for this action.");
     return null;
   }
@@ -1769,6 +1874,74 @@ function assertReportBody(body, authService) {
       optional: true
     })
   };
+}
+
+function applyPendingLoginAction({ action, user, interactionStore, authService }) {
+  if (!action) {
+    return "logged_in";
+  }
+
+  if (action.type === "favorite") {
+    const target = assertFavoriteTarget(action.body ?? action);
+    const result = interactionStore.addFavorite({
+      userId: user.id,
+      targetType: target.targetType,
+      targetId: target.targetId
+    });
+
+    return result.created ? "favorite_saved" : "already_favorited";
+  }
+
+  if (action.type === "useful") {
+    const experienceId = typeof action.experienceId === "string" ? action.experienceId : "";
+    const experience = getExperienceById(experienceId);
+
+    if (!experience) {
+      throw new RequestError("experience_not_found", "No published experience was found.", 404);
+    }
+
+    const result = interactionStore.markExperienceUseful({
+      userId: user.id,
+      experienceId: experience.id
+    });
+
+    return result.created ? "useful_saved" : "useful_saved";
+  }
+
+  if (action.type === "report") {
+    const reportBody = assertReportBody(action.body ?? action, authService);
+    interactionStore.createReport({
+      reporterId: user.id,
+      targetType: reportBody.targetType,
+      targetId: reportBody.targetId,
+      reason: reportBody.reason,
+      description: reportBody.description
+    });
+
+    return "report_submitted";
+  }
+
+  if (action.type === "publish") {
+    return "publish_ready";
+  }
+
+  throw new RequestError("invalid_pending_action", "Login action is no longer valid.");
+}
+
+function loginErrorMessage(error) {
+  if (error?.code === "invalid_otp") {
+    return "Verification code is invalid. Please re-enter.";
+  }
+
+  if (error?.code === "invalid_phone") {
+    return "Enter a mainland China phone number.";
+  }
+
+  if (error?.code === "missing_agreement") {
+    return "Agreement consent is required before login.";
+  }
+
+  return error?.message ?? "Login failed. Please try again.";
 }
 
 function scalarBodyValue(value) {
@@ -1968,8 +2141,64 @@ export async function handleRequest(request, response, context = {}) {
     return;
   }
 
+  if (url.pathname === "/login" && request.method === "GET") {
+    const returnTo = safeReturnTo(url.searchParams.get("returnTo") ?? "/");
+
+    sendHtml(response, 200, renderLoginPage({
+      returnTo,
+      pendingAction: url.searchParams.get("pendingAction") ?? ""
+    }));
+    return;
+  }
+
+  if (url.pathname === "/login" && request.method === "POST") {
+    let body = {};
+    const fallbackReturnTo = safeReturnTo(url.searchParams.get("returnTo") ?? "/");
+
+    try {
+      body = await readStructuredBody(request);
+
+      if (scalarBodyValue(body.agreement) !== "accepted") {
+        throw new RequestError("missing_agreement", "Agreement consent is required before login.");
+      }
+
+      const result = await authService.loginWithPhoneOtp({
+        phoneNumber: scalarBodyValue(body.phoneNumber),
+        otpCode: scalarBodyValue(body.otpCode)
+      });
+      const pendingAction = decodePendingAction(scalarBodyValue(body.pendingAction));
+      const toast = applyPendingLoginAction({
+        action: pendingAction,
+        user: result.user,
+        interactionStore,
+        authService
+      });
+      const returnTo = safeReturnTo(pendingAction?.returnTo ?? scalarBodyValue(body.returnTo), fallbackReturnTo);
+
+      redirect(response, withToast(returnTo, toast), {
+        "set-cookie": authService.serializeSessionCookie(result.session)
+      });
+    } catch (error) {
+      const statusCode = error instanceof AuthError || error instanceof RequestError ? errorStatus(error) : 500;
+
+      sendHtml(response, statusCode, renderLoginPage({
+        returnTo: safeReturnTo(scalarBodyValue(body.returnTo), fallbackReturnTo),
+        pendingAction: scalarBodyValue(body.pendingAction) ?? "",
+        phoneNumber: scalarBodyValue(body.phoneNumber) ?? "",
+        otpCode: scalarBodyValue(body.otpCode) ?? "",
+        agreement: scalarBodyValue(body.agreement) === "accepted",
+        error: loginErrorMessage(error)
+      }));
+    }
+
+    return;
+  }
+
   if ((url.pathname === "/me" || url.pathname === "/api/me") && request.method === "GET") {
-    const user = requireActiveUser(request, response, authService);
+    const user = requireActiveUser(request, response, authService, {
+      htmlLogin: true,
+      returnTo: requestReturnTo(url)
+    });
 
     if (!user) {
       return;
@@ -1992,7 +2221,10 @@ export async function handleRequest(request, response, context = {}) {
   }
 
   if ((url.pathname === "/me/favorites" || url.pathname === "/api/me/favorites") && request.method === "GET") {
-    const user = requireActiveUser(request, response, authService);
+    const user = requireActiveUser(request, response, authService, {
+      htmlLogin: true,
+      returnTo: requestReturnTo(url)
+    });
 
     if (!user) {
       return;
@@ -2008,7 +2240,10 @@ export async function handleRequest(request, response, context = {}) {
   }
 
   if ((url.pathname === "/me/experiences" || url.pathname === "/api/me/experiences") && request.method === "GET") {
-    const user = requireActiveUser(request, response, authService);
+    const user = requireActiveUser(request, response, authService, {
+      htmlLogin: true,
+      returnTo: requestReturnTo(url)
+    });
 
     if (!user) {
       return;
@@ -2033,7 +2268,10 @@ export async function handleRequest(request, response, context = {}) {
     ) &&
     (request.method === "PATCH" || request.method === "POST")
   ) {
-    let user = requireActiveUser(request, response, authService);
+    let user = requireActiveUser(request, response, authService, {
+      htmlLogin: true,
+      returnTo: requestReturnTo(url)
+    });
 
     if (!user) {
       return;
@@ -2696,7 +2934,14 @@ export async function handleRequest(request, response, context = {}) {
   }
 
   if (url.pathname === "/experiences/new" && request.method === "GET") {
-    const user = requireActiveUser(request, response, authService);
+    const user = requireActiveUser(request, response, authService, {
+      htmlLogin: true,
+      returnTo: requestReturnTo(url),
+      pendingAction: {
+        type: "publish",
+        returnTo: requestReturnTo(url)
+      }
+    });
 
     if (!user) {
       return;
@@ -2707,7 +2952,14 @@ export async function handleRequest(request, response, context = {}) {
   }
 
   if ((url.pathname === "/experiences" || url.pathname === "/api/experiences") && request.method === "POST") {
-    const user = requireActiveUser(request, response, authService);
+    const user = requireActiveUser(request, response, authService, {
+      htmlLogin: true,
+      returnTo: "/experiences/new",
+      pendingAction: {
+        type: "publish",
+        returnTo: "/experiences/new"
+      }
+    });
 
     if (!user) {
       return;
@@ -2742,20 +2994,34 @@ export async function handleRequest(request, response, context = {}) {
   }
 
   if ((url.pathname === "/favorites" || url.pathname === "/api/favorites") && request.method === "POST") {
-    const user = requireActiveUser(request, response, authService);
-
-    if (!user) {
-      return;
-    }
-
     try {
-      const body = await readJsonBody(request);
+      const body = await readStructuredBody(request);
+      const returnTo = returnToFromBodyOrRequest(body, request, url);
+      const user = requireActiveUser(request, response, authService, {
+        htmlLogin: true,
+        returnTo,
+        pendingAction: {
+          type: "favorite",
+          body,
+          returnTo
+        }
+      });
+
+      if (!user) {
+        return;
+      }
+
       const target = assertFavoriteTarget(body);
       const result = interactionStore.addFavorite({
         userId: user.id,
         targetType: target.targetType,
         targetId: target.targetId
       });
+
+      if (acceptsHtml(request) && !url.pathname.startsWith("/api/")) {
+        redirect(response, withToast(returnTo, result.created ? "favorite_saved" : "already_favorited"));
+        return;
+      }
 
       sendJson(response, result.created ? 201 : 200, {
         status: result.created ? "favorited" : "already_favorited",
@@ -2808,7 +3074,16 @@ export async function handleRequest(request, response, context = {}) {
   }
 
   if (usefulExperienceId && request.method === "POST") {
-    const user = requireActiveUser(request, response, authService);
+    const returnTo = returnToFromBodyOrRequest({}, request, url);
+    const user = requireActiveUser(request, response, authService, {
+      htmlLogin: true,
+      returnTo,
+      pendingAction: {
+        type: "useful",
+        experienceId: usefulExperienceId,
+        returnTo
+      }
+    });
 
     if (!user) {
       return;
@@ -2828,9 +3103,19 @@ export async function handleRequest(request, response, context = {}) {
     const usefulCount = experience.usefulCount + result.voteCount;
 
     if (!result.created) {
+      if (acceptsHtml(request) && !url.pathname.startsWith("/api/")) {
+        redirect(response, withToast(returnTo, "useful_saved"));
+        return;
+      }
+
       sendError(response, 409, "duplicate_useful_vote", "This experience was already marked useful by this user.", {
         usefulCount
       });
+      return;
+    }
+
+    if (acceptsHtml(request) && !url.pathname.startsWith("/api/")) {
+      redirect(response, withToast(returnTo, "useful_saved"));
       return;
     }
 
@@ -2844,14 +3129,23 @@ export async function handleRequest(request, response, context = {}) {
   }
 
   if ((url.pathname === "/reports" || url.pathname === "/api/reports") && request.method === "POST") {
-    const user = requireActiveUser(request, response, authService);
-
-    if (!user) {
-      return;
-    }
-
     try {
-      const body = await readJsonBody(request);
+      const body = await readStructuredBody(request);
+      const returnTo = returnToFromBodyOrRequest(body, request, url);
+      const user = requireActiveUser(request, response, authService, {
+        htmlLogin: true,
+        returnTo,
+        pendingAction: {
+          type: "report",
+          body,
+          returnTo
+        }
+      });
+
+      if (!user) {
+        return;
+      }
+
       const reportBody = assertReportBody(body, authService);
       const report = interactionStore.createReport({
         reporterId: user.id,
@@ -2860,6 +3154,11 @@ export async function handleRequest(request, response, context = {}) {
         reason: reportBody.reason,
         description: reportBody.description
       });
+
+      if (acceptsHtml(request) && !url.pathname.startsWith("/api/")) {
+        redirect(response, withToast(returnTo, "report_submitted"));
+        return;
+      }
 
       sendJson(response, 201, {
         status: "pending",
@@ -2875,7 +3174,12 @@ export async function handleRequest(request, response, context = {}) {
   if ((url.pathname === "/timeline" || url.pathname === "/api/timeline") && request.method === "GET") {
     try {
       const filters = parseTimelineFilters(url);
-      const user = filters.mine ? requireActiveUser(request, response, authService) : null;
+      const user = filters.mine
+        ? requireActiveUser(request, response, authService, {
+            htmlLogin: true,
+            returnTo: requestReturnTo(url)
+          })
+        : null;
 
       if (filters.mine && !user) {
         return;
@@ -3016,7 +3320,12 @@ export async function handleRequest(request, response, context = {}) {
   }
 
   if (url.pathname === "/") {
-    sendHtml(response, 200, renderStudentHome());
+    sendHtml(response, 200, renderStudentHome({
+      user: currentUserFromRequest(request, authService),
+      interactionStore,
+      now: context.now,
+      grade: optionalStringParam(url, "grade")
+    }));
     return;
   }
 

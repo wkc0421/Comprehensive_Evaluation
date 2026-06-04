@@ -365,8 +365,8 @@
         "Route tests and browser tests cover grade-one, grade-two, grade-three, guest, and logged-in home states plus login-required action continuation."
       ],
       "priority": 22,
-      "passes": false,
-      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+      "passes": true,
+      "notes": "Implemented the frontend PRD student home first-screen redesign, shared phone OTP login page, login-required action continuation, route coverage, and browser coverage."
     },
     {
       "id": "US-023",

@@ -10,6 +10,7 @@
 - PostgreSQL schema migrations live in `src/db/migrations`; keep migration validation dependency-free until a later story introduces database tooling.
 - Dependency-free seed fixtures and student-facing published-only data access helpers live in `src/db`; keep them in plain JavaScript until database tooling is introduced.
 - Authentication/session helpers live in `src/auth.js`; route tests can inject an auth service through `handleRequest(request, response, { authService })`, and public responses should use the public user shape so phone fields never leak.
+- HTML login-required student actions should use the shared `/login` flow with safe `returnTo` and bounded pending-action data; API-style requests should continue returning JSON `login_required` responses.
 - Public school browsing cards should use `listSchoolGuideCards` from `src/db/data-access.js` so API and page behavior share published-only visibility, filters, sort order, timeline nodes, formula availability, and experience signals.
 - Public school detail pages and APIs should use `getSchoolDetail` from `src/db/data-access.js` so year defaulting, published-only guide visibility, timeline/formula aggregation, and featured experience ranking stay consistent.
 - Public admission guide APIs should use `listGuides` and `getGuideDetail` from `src/db/data-access.js` so published-only current lists, keyword filters, source attribution, structured fields, and version summaries stay consistent.

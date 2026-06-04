@@ -26,6 +26,8 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Structured experience submissions should use `src/experience-submissions.js` for required-field normalization, pending_review defaults, private verification metadata storage, and sanitized public or anonymous output; `handleRequest` accepts an injectable `experienceSubmissionStore` for route tests.
 - Student interaction state should use `src/interactions.js`; `handleRequest` accepts an injectable `interactionStore` for route tests covering school/experience favorites, useful-once experience votes, and pending reports without exposing phone fields or private reporter data.
 - Personal center routes should build user-owned aggregates in `src/app.js` from the public user shape, `interactionStore`, `experienceSubmissionStore`, and site-only timeline reminders; `/me`, `/api/me`, `/me/favorites`, and `/me/experiences` outputs must stay phone-free and omit private verification material details.
+- The redesigned student home should render through `renderStudentHome({ user, interactionStore, now, grade })`; it uses published `listGuides()`, `listTimelineNodes()`, and `listExperiences()` by default, while `homeData` is reserved for deterministic empty-state renderer tests.
+- HTML login-required student actions should pass `htmlLogin`, `returnTo`, and a bounded `pendingAction` into `requireActiveUser()`; `/login` POST continues favorite/useful/report/publish actions and redirects with a `toast` query handled by `public/student.js`.
 - Admin moderation queues should use `experienceSubmissionStore` review helpers for pending experiences and verification materials, `interactionStore` report resolution for audit state, `registerPublishedExperience()` for approved submission visibility, and `moderatePublishedExperience()` plus `authService.updateUserAccountStatus()` for report side effects.
 ---
 
@@ -704,4 +706,46 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Keep `studentNavigation` to the four PRD tabs only; Timeline and Calculator should remain task entries rather than bottom-tab items unless a later PRD explicitly changes the shell.
   - The fixed bottom nav needs `student-main` bottom padding and browser obstruction checks; the first implementation exposed a 375px home top-bar overflow until the title group was allowed to shrink before the grade switch.
   - Student-specific media overrides must come after the legacy 720px desktop grid query, otherwise the 520px desktop student frame inherits multi-column card layouts intended for admin or full-width pages.
+---
+
+## Thu Jun  4 11:31:56 PM CST 2026 - Ralph runner
+- Iteration: 1
+- Story: US-021
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-231401/iteration-1
+---
+
+## Fri Jun  5 07:42:00 AM CST 2026 - US-022
+- What was implemented
+  - Redesigned the student home first screen around grade greeting, four core task entries, and nearest timeline nodes, with latest guides, latest experiences, and grade tips below the first screen.
+  - Added logged-in home personalization from user grade and favorited school timeline nodes while keeping guest fallback and login prompt behavior.
+  - Added a shared phone OTP login page with mainland China phone validation, agreement-gated submit, 60 second code countdown, retryable send errors, preserved OTP-error form values, and toast handling after redirects.
+  - Continued login-triggered favorite, useful vote, report, and publish actions through bounded pending actions without exposing private phone fields or system internals.
+- Files changed
+  - `public/styles.css`, `public/login.js`, `public/student.js`
+  - `src/app.js`, `src/auth.js`, `src/pages.js`
+  - `src/app.test.js`, `src/e2e.test.js`
+  - `scripts/browser-core-pages.mjs`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `node --test src/app.test.js` passed
+  - `npm test` passed
+  - `npm run data-quality` passed and reported annual guide coverage 3/3, 100.00% against the 95.00% target, with school-year guide coverage 6/9 for the seed fixture
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `BROWSER_SCREENSHOT_DIR=scripts/ralph/runs/20260605-073123/iteration-1 npm run browser-test` passed
+  - `git diff --check` passed
+- Acceptance matrix summary
+  - Home first-screen structure, four task links, below-first-screen latest content, three guide rows, three experience rows, empty-state copy, and negative product-boundary checks map to `src/pages.js`, `public/styles.css`, route tests, and browser checks.
+  - Guest grade-one, grade-two, grade-three and logged-in home states map to `renderStudentHome()` plus `handleRequest()` user/interaction injection; tests verify guest fallback, favorited-school source, and one to three nearest nodes.
+  - Phone OTP login validation, consent gating, retryable send errors, countdown behavior, and preserved OTP-error values map to `src/auth.js`, `/login`, `public/login.js`, route tests, and browser checks.
+  - Login-required favorite, useful, report, and publish continuation maps to pending-action handling in `src/app.js`; route tests verify all four actions and browser checks verify favorite continuation plus toast.
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for core student pages at 375px, 390px, and 430px, plus grade-one, grade-two, grade-three guest home states at those widths, logged-in favorited home states at those widths, and favorite-login continuation at 390px.
+  - Screenshots were saved to `scripts/ralph/runs/20260605-073123/iteration-1/home-390.png`, `home-g1-390.png`, `home-g2-390.png`, `home-g3-390.png`, `home-logged-in-390.png`, `login-favorite-continuation-390.png`, `schools-390.png`, `school-detail-390.png`, `timeline-390.png`, `calculator-390.png`, and `experiences-390.png`.
+- **Learnings for future iterations:**
+  - Keep home first-screen browser checks layout-based and content-based: the latest sections should be outside `.home-first-screen` and begin below the 390px viewport.
+  - Use form-encoded HTML requests with `Accept: text/html` to exercise login-required continuation; API-style requests should keep returning JSON `login_required`.
+  - Useful-vote continuation tests should avoid mutating the same seeded experience used by later useful-count assertions in the shared route-test server.
 ---

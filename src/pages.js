@@ -4,7 +4,7 @@ import {
   listExperiences,
   listGuides,
   listSchoolGuideCards,
-  listTimelineEvents
+  listTimelineNodes
 } from "./db/data-access.js";
 import {
   adminNavigation,
@@ -184,9 +184,12 @@ ${body}
 function renderIcon(name) {
   const icons = {
     back: `<path d="M15 18l-6-6 6-6"></path>`,
+    calculator: `<rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M8 7h8"></path><path d="M8 11h.01"></path><path d="M12 11h.01"></path><path d="M16 11h.01"></path><path d="M8 15h.01"></path><path d="M12 15h.01"></path><path d="M16 15h.01"></path>`,
+    calendar: `<rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path>`,
     filter: `<path d="M4 6h16"></path><path d="M7 12h10"></path><path d="M10 18h4"></path>`,
     heart: `<path d="M12 21s-7-4.4-9-8.4C1.3 9.1 3.4 5 7.2 5c2 0 3.5 1.1 4.8 2.7C13.3 6.1 14.8 5 16.8 5c3.8 0 5.9 4.1 4.2 7.6C19 16.6 12 21 12 21z"></path>`,
     home: `<path d="M4 10.5 12 4l8 6.5"></path><path d="M6.5 10v9h11v-9"></path><path d="M10 19v-5h4v5"></path>`,
+    login: `<path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path><path d="M14 4h4a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-4"></path>`,
     school: `<path d="M4 6h16v13H4z"></path><path d="M8 10h8"></path><path d="M8 14h5"></path>`,
     experience: `<path d="M5 5h14v12H8l-3 3z"></path><path d="M8.5 9h7"></path><path d="M8.5 13h5"></path>`,
     user: `<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path>`
@@ -213,11 +216,20 @@ function renderStudentBottomNav(currentKey = "") {
   return `<nav class="student-bottom-nav" aria-label="Student bottom navigation" data-student-bottom-nav="true">${renderStudentNav(currentKey)}</nav>`;
 }
 
-function renderGradeSwitch() {
+function renderGradeSwitch(currentGrade = "high_school_g3") {
+  const grades = [
+    ["high_school_g1", "G1"],
+    ["high_school_g2", "G2"],
+    ["high_school_g3", "G3"]
+  ];
+
   return `<div class="grade-switch" aria-label="Grade switch" role="group">
-    <a href="/?grade=high_school_g1">G1</a>
-    <a href="/?grade=high_school_g2">G2</a>
-    <a href="/?grade=high_school_g3">G3</a>
+    ${grades
+      .map(([grade, label]) => {
+        const current = grade === currentGrade ? ` aria-current="page"` : "";
+        return `<a href="/?grade=${escapeHtml(grade)}"${current}>${escapeHtml(label)}</a>`;
+      })
+      .join("")}
   </div>`;
 }
 
@@ -225,10 +237,11 @@ function renderIconLink({ href, label, icon }) {
   return `<a class="icon-button" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">${renderIcon(icon)}</a>`;
 }
 
-function renderFavoriteSchoolAction(schoolId) {
+function renderFavoriteSchoolAction(schoolId, returnTo = "/schools") {
   return `<form class="top-action-form" method="post" action="/favorites" aria-label="Favorite school action">
     <input type="hidden" name="targetType" value="school">
     <input type="hidden" name="targetId" value="${escapeHtml(schoolId)}">
+    <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
     <button class="icon-button" type="submit" aria-label="Favorite school">${renderIcon("heart")}</button>
   </form>`;
 }
@@ -275,7 +288,9 @@ function renderStudentPage({
       <main class="app-shell student-main${mainClass ? ` ${escapeHtml(mainClass)}` : ""}">
 ${content}
       </main>
+      <div class="student-toast" role="status" aria-live="polite" hidden data-student-toast="true"></div>
       ${hideBottomNav ? "" : renderStudentBottomNav(currentKey)}
+      <script src="/student.js" defer></script>
     </div>`
   });
 }
@@ -782,7 +797,10 @@ export function renderSchoolDetailPage(detail) {
       title: detail.school.name,
       backHref: "/schools",
       backLabel: "Back to schools",
-      actionHtml: renderFavoriteSchoolAction(detail.school.id)
+      actionHtml: renderFavoriteSchoolAction(
+        detail.school.id,
+        `/schools/${encodeURIComponent(detail.school.id)}?year=${detail.selectedYear}`
+      )
     }),
     content: `
       <section class="page-heading detail-heading" aria-labelledby="school-detail-title">
@@ -2994,23 +3012,203 @@ export function renderPersonalCenterPage({ personalCenter, notice = "", error = 
   });
 }
 
-export function renderStudentHome() {
-  const guides = listGuides();
-  const timelineEvents = listTimelineEvents();
-  const experiences = listExperiences();
-  const currentYear = currentAdmissionYear(guides);
-  const annualGuides = guides.filter((guide) => guide.admissionYear === currentYear);
-  const annualTimelineEvents = listTimelineEvents({ year: currentYear });
-  const annualExperiences = experiences.filter((experience) => experience.admissionYear === currentYear);
-  const nearestEvents = nearestImportantEvents(timelineEvents);
-  const latestGuides = guides.slice(0, 3);
-  const featuredExperiences = highQualityExperiences(experiences);
-  const statusCards = renderStatusCards({
-    currentYear,
-    annualGuideCount: annualGuides.length,
-    annualTimelineCount: annualTimelineEvents.length,
-    annualExperienceCount: annualExperiences.length
+const homeTaskEntries = Object.freeze([
+  {
+    title: "Schools",
+    label: "Browse schools",
+    href: "/schools",
+    icon: "school"
+  },
+  {
+    title: "Timeline",
+    label: "Key dates",
+    href: "/timeline",
+    icon: "calendar"
+  },
+  {
+    title: "Score Calculator",
+    label: "Calculate score",
+    href: "/calculator",
+    icon: "calculator"
+  },
+  {
+    title: "Experiences",
+    label: "Read stories",
+    href: "/experiences",
+    icon: "experience"
+  }
+]);
+
+const gradePreparationTips = Object.freeze({
+  high_school_g1: [
+    "Understand the comprehensive evaluation path.",
+    "Watch subject choices and school scope.",
+    "Start saving material examples."
+  ],
+  high_school_g2: [
+    "Check academic test and subject requirements.",
+    "Compare target school guide changes.",
+    "Track assessment formats before application year."
+  ],
+  high_school_g3: [
+    "Watch current guide releases.",
+    "Keep deadline and confirmation dates visible.",
+    "Prepare school assessment examples."
+  ],
+  graduated: [
+    "Use current guides as official reference.",
+    "Check school-year changes before acting.",
+    "Read experiences by year and stage."
+  ]
+});
+
+function normalizeHomeGrade(grade) {
+  return Object.hasOwn(gradeLabels, grade) ? grade : "high_school_g3";
+}
+
+function homeReferenceDate(now) {
+  if (typeof now !== "function") {
+    return new Date();
+  }
+
+  const value = now();
+  return value instanceof Date ? value : new Date(value);
+}
+
+function renderHomeTasks() {
+  return homeTaskEntries
+    .map((entry) => `<a class="home-task-card" href="${escapeHtml(entry.href)}">
+      <span class="home-task-icon">${renderIcon(entry.icon)}</span>
+      <strong>${escapeHtml(entry.title)}</strong>
+      <span>${escapeHtml(entry.label)}</span>
+    </a>`)
+    .join("");
+}
+
+function nearestHomeTimelineNodes({ user, interactionStore, year, now, nodesOverride = null }) {
+  if (Array.isArray(nodesOverride)) {
+    return {
+      favoriteScoped: false,
+      nodes: nearestImportantEvents(nodesOverride, homeReferenceDate(now))
+    };
+  }
+
+  const favoriteSchoolIds = user && typeof interactionStore?.listFavoriteSchoolIds === "function"
+    ? interactionStore.listFavoriteSchoolIds(user.id)
+    : [];
+  const favoriteScoped = favoriteSchoolIds.length > 0;
+  const nodes = listTimelineNodes({
+    year,
+    schoolIds: favoriteScoped ? favoriteSchoolIds : [],
+    referenceDate: homeReferenceDate(now)
   });
+
+  return {
+    favoriteScoped,
+    nodes: nearestImportantEvents(nodes, homeReferenceDate(now))
+  };
+}
+
+function renderHomeTimelineRows(nodes) {
+  if (nodes.length === 0) {
+    return `<p class="empty-state">No clear timeline nodes yet. We will update when published.</p>`;
+  }
+
+  return nodes
+    .slice(0, 3)
+    .map((node) => {
+      const school = node.school ?? getSchoolById(node.schoolId);
+
+      return `<article class="home-list-row" data-home-timeline-row="true">
+        <div>
+          <span class="row-label">${escapeHtml(school?.name ?? "Published school")}</span>
+          <strong>${escapeHtml(node.title)}</strong>
+        </div>
+        <div class="row-side">
+          <span>${escapeHtml(formatTimelineWindow(node))}</span>
+          <em>${escapeHtml(humanizeToken(node.status ?? "not_started"))}</em>
+        </div>
+      </article>`;
+    })
+    .join("");
+}
+
+function renderHomeGuideRows(guides) {
+  if (guides.length === 0) {
+    return `<p class="empty-state">Current-year guides are not published yet. Start with previous official rules.</p>`;
+  }
+
+  return guides
+    .slice(0, 3)
+    .map((guide) => `<a class="home-list-row" href="/schools/${escapeHtml(encodeURIComponent(guide.schoolId))}?year=${escapeHtml(guide.admissionYear)}" data-home-guide-row="true">
+      <div>
+        <span class="row-label">${escapeHtml(schoolNameFor(guide))}</span>
+        <strong>${escapeHtml(guide.admissionYear)} ${escapeHtml(humanizeToken(guide.status))}</strong>
+      </div>
+      <div class="row-side">
+        <span>Deadline ${escapeHtml(formatDate(guide.applicationDeadlineAt))}</span>
+        <em>${escapeHtml(humanizeToken(guide.sourceType ?? "official_source"))}</em>
+      </div>
+    </a>`)
+    .join("");
+}
+
+function renderHomeExperienceRows(experiences) {
+  if (experiences.length === 0) {
+    return `<p class="empty-state">No published experiences yet. Check school guides first.</p>`;
+  }
+
+  return experiences
+    .slice(0, 3)
+    .map((experience) => {
+      const school = getSchoolById(experience.schoolId);
+      const assessmentFormat = experience.assessmentTypes.map(humanizeToken).join(", ");
+
+      return `<a class="home-list-row" href="/schools/${escapeHtml(encodeURIComponent(experience.schoolId))}?year=${escapeHtml(experience.admissionYear)}" data-home-experience-row="true">
+        <div>
+          <span class="row-label">${escapeHtml(school?.name ?? "Published school")}</span>
+          <strong>${escapeHtml(experience.admissionYear)} ${escapeHtml(humanizeToken(experience.stage))}</strong>
+        </div>
+        <div class="row-side">
+          <span>${escapeHtml(assessmentFormat)}</span>
+          <em>${escapeHtml(experienceVerifiedLabel(experience))}</em>
+        </div>
+      </a>`;
+    })
+    .join("");
+}
+
+function renderGradeTips(grade) {
+  return gradePreparationTips[grade]
+    .map((tip) => `<li>${escapeHtml(tip)}</li>`)
+    .join("");
+}
+
+export function renderStudentHome({
+  user = null,
+  interactionStore = null,
+  now,
+  grade,
+  homeData = {}
+} = {}) {
+  const guides = Array.isArray(homeData.guides) ? homeData.guides : listGuides();
+  const currentYear = currentAdmissionYear(guides);
+  const selectedGrade = normalizeHomeGrade(grade ?? user?.grade);
+  const timeline = nearestHomeTimelineNodes({
+    user,
+    interactionStore,
+    year: currentYear,
+    now,
+    nodesOverride: homeData.timelineNodes
+  });
+  const latestGuides = guides.slice(0, 3);
+  const latestExperiences = (
+    Array.isArray(homeData.experiences) ? homeData.experiences : listExperiences({ sort: "newest" })
+  ).slice(0, 3);
+  const timelineSource = timeline.favoriteScoped ? "Favorited schools" : "Site-wide published nodes";
+  const guestPrompt = !user
+    ? `<p class="login-prompt">Log in to favorite schools and view your personal timeline.</p>`
+    : "";
 
   return renderStudentPage({
     title: productName,
@@ -3018,58 +3216,140 @@ export function renderStudentHome() {
     topBar: renderStudentTopBar({
       type: "home",
       title: productName,
-      actionHtml: renderGradeSwitch()
+      actionHtml: renderGradeSwitch(selectedGrade)
     }),
     content: `
-      <section class="hero" aria-labelledby="home-title">
-        <div class="hero-copy">
-          <p class="eyebrow">Mobile-first student home</p>
-          <h1 id="home-title">Guangdong comprehensive evaluation admissions</h1>
-          <p class="lead">
-            Follow published admissions guides, official timeline nodes, score formula
-            availability, and verified assessment experiences for Guangdong high school applicants.
-          </p>
-          <div class="actions" aria-label="Primary sections">
-            <a class="primary-action" href="/schools">Browse schools</a>
-            <a class="secondary-action" href="/timeline">View timeline</a>
+      <section class="home-first-screen" aria-labelledby="home-title">
+        <article class="home-greeting-card">
+          <p class="eyebrow">${escapeHtml(gradeLabel(selectedGrade))}</p>
+          <h1 id="home-title">Guangdong Comprehensive Evaluation</h1>
+          <p>Use your grade to move quickly between schools, dates, score tools, and structured experiences.</p>
+        </article>
+
+        <nav class="home-task-grid" aria-label="Core student tasks">
+          ${renderHomeTasks()}
+        </nav>
+
+        <section class="home-panel" aria-labelledby="nearest-nodes-title">
+          <div class="section-heading">
+            <h2 id="nearest-nodes-title">Nearest timeline nodes</h2>
+            <p class="section-kicker">${escapeHtml(timelineSource)}</p>
           </div>
-        </div>
-
-        <aside class="status-panel" aria-label="Annual admissions progress">
-          <p class="eyebrow">Annual progress</p>
-          <h2>${escapeHtml(currentYear)} Guangdong cycle</h2>
-          <div class="status-grid">${statusCards}</div>
-        </aside>
+          <div class="home-list">${renderHomeTimelineRows(timeline.nodes)}</div>
+          ${guestPrompt}
+        </section>
       </section>
 
-      <section class="section" aria-labelledby="entry-title">
-        <div class="section-heading"><h2 id="entry-title">Grade-aware entry points</h2></div>
-        <div class="card-grid">${renderGradeCards()}</div>
-      </section>
-
-      <section class="section" aria-labelledby="deadline-title">
+      <section class="section home-panel" aria-labelledby="latest-guides-title">
         <div class="section-heading">
-          <h2 id="deadline-title">Nearest deadlines</h2>
-          <p class="section-kicker">Official timeline dates from published guide data</p>
+          <h2 id="latest-guides-title">Latest guides</h2>
+          <a class="text-link" href="/schools">All schools</a>
         </div>
-        <div class="timeline-grid">${renderTimelineCards(nearestEvents)}</div>
+        <div class="home-list">${renderHomeGuideRows(latestGuides)}</div>
       </section>
 
-      <section class="section content-grid" aria-label="Latest admissions content">
-        <div class="content-column" id="guides">
-          <div class="section-heading">
-            <h2>Latest published guides</h2>
-          </div>
-          <div class="card-grid">${renderGuideCards(latestGuides)}</div>
+      <section class="section home-panel" aria-labelledby="latest-experiences-title">
+        <div class="section-heading">
+          <h2 id="latest-experiences-title">Latest experiences</h2>
+          <a class="text-link" href="/experiences">All experiences</a>
+        </div>
+        <div class="home-list">${renderHomeExperienceRows(latestExperiences)}</div>
+      </section>
+
+      <section class="section home-panel" aria-labelledby="grade-tips-title">
+        <div class="section-heading">
+          <h2 id="grade-tips-title">Grade preparation tips</h2>
+          <p class="section-kicker">${escapeHtml(gradeLabel(selectedGrade))}</p>
+        </div>
+        <ul class="tip-list">${renderGradeTips(selectedGrade)}</ul>
+      </section>
+`
+  });
+}
+
+function safeReturnHref(returnTo) {
+  return typeof returnTo === "string" &&
+    returnTo.startsWith("/") &&
+    !returnTo.startsWith("//")
+    ? returnTo
+    : "/";
+}
+
+export function renderLoginPage({
+  returnTo = "/",
+  pendingAction = "",
+  phoneNumber = "",
+  otpCode = "",
+  agreement = false,
+  error = "",
+  notice = ""
+} = {}) {
+  const checked = agreement ? " checked" : "";
+  const disabled = agreement ? "" : " disabled";
+
+  return renderStudentPage({
+    title: `Login | ${productName}`,
+    hideBottomNav: true,
+    topBar: renderStudentTopBar({
+      type: "form",
+      title: "Login",
+      backHref: safeReturnHref(returnTo),
+      backLabel: "Back"
+    }),
+    content: `
+      <section class="login-card" aria-labelledby="login-title">
+        <div class="login-heading">
+          <p class="eyebrow">Phone OTP</p>
+          <h1 id="login-title">Login Guangdong CE</h1>
+          <p>Log in to favorite schools, publish experiences, and track review status.</p>
         </div>
 
-        <div class="content-column" id="experiences">
-          <div class="section-heading">
-            <h2>Latest high-quality experiences</h2>
+        ${notice ? `<p class="form-success" role="status">${escapeHtml(notice)}</p>` : ""}
+        ${error ? `<p class="form-error" role="alert">${escapeHtml(error)}</p>` : ""}
+
+        <form class="login-form" method="post" action="/login" data-login-form="true" aria-label="Phone OTP login">
+          <input type="hidden" name="returnTo" value="${escapeHtml(safeReturnHref(returnTo))}">
+          <input type="hidden" name="pendingAction" value="${escapeHtml(pendingAction)}">
+
+          <label class="form-field">
+            <span>Mainland China phone</span>
+            <input
+              name="phoneNumber"
+              type="tel"
+              inputmode="numeric"
+              autocomplete="tel"
+              placeholder="13812345678"
+              pattern="^(?:\\+?86)?1[3-9]\\d{9}$"
+              value="${escapeHtml(phoneNumber)}"
+              required>
+          </label>
+
+          <label class="form-field">
+            <span>Verification code</span>
+            <div class="otp-row">
+              <input
+                name="otpCode"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                value="${escapeHtml(otpCode)}"
+                required>
+              <button class="secondary-action otp-send-button" type="button" data-send-otp="true">Send code</button>
+            </div>
+          </label>
+
+          <p class="login-inline-error" role="alert" aria-live="polite" data-login-error="true"></p>
+
+          <label class="checkbox-field login-agreement">
+            <input type="checkbox" name="agreement" value="accepted"${checked} data-login-agreement="true">
+            <span>I agree to the user agreement and privacy policy.</span>
+          </label>
+
+          <div class="form-actions">
+            <button class="primary-action" type="submit" data-login-submit="true"${disabled}>Login</button>
           </div>
-          <div class="card-grid">${renderExperienceCards(featuredExperiences)}</div>
-        </div>
+        </form>
       </section>
+      <script src="/login.js" defer></script>
 `
   });
 }

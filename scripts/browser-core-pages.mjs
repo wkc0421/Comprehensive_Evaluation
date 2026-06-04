@@ -46,6 +46,7 @@ from playwright.async_api import async_playwright
 base_url = os.environ["BASE_URL"].rstrip("/")
 screenshot_dir = Path(os.environ["BROWSER_SCREENSHOT_DIR"])
 sysu_school_id = os.environ["SYSU_SCHOOL_ID"]
+logged_in_cookie = os.environ["LOGGED_IN_COOKIE"]
 
 core_pages = [
     ("/", "home", True, "/"),
@@ -60,7 +61,105 @@ hidden_text = [
     "Draft Review Guide",
     "Working Draft",
     "Pending review experience that must remain hidden",
+    "admission probability",
+    "ranking prediction",
+    "paid consulting",
+    "open comments",
+    "private messaging",
 ]
+
+home_grade_states = [
+    ("/?grade=high_school_g1", "High school grade one", "Understand the comprehensive evaluation path."),
+    ("/?grade=high_school_g2", "High school grade two", "Check academic test and subject requirements."),
+    ("/?grade=high_school_g3", "High school grade three", "Watch current guide releases."),
+]
+
+async def verify_home_state(page, path, expected_grade, expected_tip, *, logged_in=False):
+    await page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
+    await page.locator(".home-first-screen").wait_for()
+    metrics = await page.evaluate("""({ expectedGrade }) => {
+        const first = document.querySelector(".home-first-screen");
+        const latestGuides = document.querySelector("#latest-guides-title");
+        const taskLinks = Array.from(document.querySelectorAll(".home-task-card"))
+            .map((link) => ({ href: link.getAttribute("href"), text: link.innerText.trim() }));
+        const timelineRows = Array.from(document.querySelectorAll("[data-home-timeline-row='true']"));
+        const guideRows = Array.from(document.querySelectorAll("[data-home-guide-row='true']"));
+        const experienceRows = Array.from(document.querySelectorAll("[data-home-experience-row='true']"));
+        const latestBox = latestGuides ? latestGuides.getBoundingClientRect() : null;
+        const firstText = first ? first.innerText : "";
+        return {
+            bodyText: document.body.innerText,
+            firstText,
+            taskLinks,
+            timelineCount: timelineRows.length,
+            guideCount: guideRows.length,
+            experienceCount: experienceRows.length,
+            latestGuideTop: latestBox ? latestBox.top : null,
+            viewportHeight: window.innerHeight,
+            currentGradeHref: document.querySelector(".grade-switch a[aria-current='page']")?.getAttribute("href") ?? "",
+            expectedGrade
+        };
+    }""", {"expectedGrade": expected_grade})
+
+    if expected_grade not in metrics["bodyText"]:
+        raise AssertionError(f"Home state missing grade {expected_grade}")
+    if expected_tip not in metrics["bodyText"]:
+        raise AssertionError(f"Home state missing grade tip {expected_tip}")
+    if "Latest guides" in metrics["firstText"] or "Latest experiences" in metrics["firstText"]:
+        raise AssertionError("Home first screen contains below-the-fold latest content")
+    if metrics["latestGuideTop"] is None or metrics["latestGuideTop"] < metrics["viewportHeight"] - 8:
+        raise AssertionError(f"Latest guides are not below the first screen: {metrics}")
+    expected_tasks = [
+        ("/schools", "Schools\\nBrowse schools"),
+        ("/timeline", "Timeline\\nKey dates"),
+        ("/calculator", "Score Calculator\\nCalculate score"),
+        ("/experiences", "Experiences\\nRead stories"),
+    ]
+    actual_tasks = [(item["href"], "\\n".join(item["text"].splitlines()[-2:])) for item in metrics["taskLinks"]]
+    if actual_tasks != expected_tasks:
+        raise AssertionError(f"Unexpected home tasks: {actual_tasks}")
+    if metrics["timelineCount"] < 1 or metrics["timelineCount"] > 3:
+        raise AssertionError(f"Nearest timeline count should be 1-3, got {metrics['timelineCount']}")
+    if metrics["guideCount"] != 3 or metrics["experienceCount"] != 3:
+        raise AssertionError(f"Latest row counts are wrong: {metrics}")
+    if logged_in:
+        if "Favorited schools" not in metrics["bodyText"]:
+            raise AssertionError("Logged-in home did not use favorited school timeline source")
+        if "Log in to favorite schools" in metrics["bodyText"]:
+            raise AssertionError("Logged-in home still shows the guest timeline login prompt")
+    else:
+        if "Log in to favorite schools and view your personal timeline." not in metrics["bodyText"]:
+            raise AssertionError("Guest home missing personal timeline login prompt")
+
+async def verify_login_favorite_continuation(page):
+    await page.goto(f"{base_url}/schools/{sysu_school_id}?year=2026", wait_until="domcontentloaded")
+    await page.locator("button[aria-label='Favorite school']").click()
+    await page.locator("#login-title").wait_for()
+
+    submit = page.locator("[data-login-submit='true']")
+    if not await submit.is_disabled():
+        raise AssertionError("Login submit should be disabled until agreement is checked")
+
+    await page.locator("input[name='phoneNumber']").fill("12112345678")
+    await page.locator("[data-send-otp='true']").click()
+    error_text = await page.locator("[data-login-error='true']").inner_text()
+    if "mainland China phone number" not in error_text:
+        raise AssertionError(f"Invalid phone did not show retryable validation: {error_text}")
+
+    await page.locator("input[name='phoneNumber']").fill("13900001234")
+    await page.locator("input[name='otpCode']").fill("246810")
+    await page.locator("[data-login-agreement='true']").check()
+    if await submit.is_disabled():
+        raise AssertionError("Login submit stayed disabled after agreement was checked")
+
+    await page.locator("[data-send-otp='true']").click()
+    await page.wait_for_function("""() => document.querySelector("[data-send-otp='true']")?.textContent === "60s" """)
+    await submit.click()
+    await page.wait_for_url(f"**/schools/{sysu_school_id}?year=2026&toast=favorite_saved")
+    await page.locator("[data-student-toast='true']").wait_for(state="visible")
+    toast_text = await page.locator("[data-student-toast='true']").inner_text()
+    if toast_text != "Favorite saved":
+        raise AssertionError(f"Favorite continuation toast was wrong: {toast_text}")
 
 async def main():
     screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -176,6 +275,35 @@ async def main():
 
             await page.close()
 
+            home_page = await browser.new_page(viewport={"width": width, "height": 940})
+            for path, expected_grade, expected_tip in home_grade_states:
+                await verify_home_state(home_page, path, expected_grade, expected_tip)
+                if width == 390:
+                    screenshot_name = path.split("=")[-1].replace("high_school_", "home-")
+                    await home_page.screenshot(path=screenshot_dir / f"{screenshot_name}-{width}.png", full_page=True)
+            await home_page.close()
+
+            logged_context = await browser.new_context(
+                viewport={"width": width, "height": 940},
+                extra_http_headers={"Cookie": logged_in_cookie}
+            )
+            logged_home = await logged_context.new_page()
+            await verify_home_state(
+                logged_home,
+                "/",
+                "High school grade two",
+                "Check academic test and subject requirements.",
+                logged_in=True
+            )
+            if width == 390:
+                await logged_home.screenshot(path=screenshot_dir / f"home-logged-in-{width}.png", full_page=True)
+            await logged_context.close()
+
+        login_page = await browser.new_page(viewport={"width": 390, "height": 940})
+        await verify_login_favorite_continuation(login_page)
+        await login_page.screenshot(path=screenshot_dir / "login-favorite-continuation-390.png", full_page=True)
+        await login_page.close()
+
         desktop_page = await browser.new_page(viewport={"width": 1280, "height": 940})
         await desktop_page.goto(f"{base_url}/", wait_until="domcontentloaded")
         desktop_metrics = await desktop_page.evaluate("""() => {
@@ -193,7 +321,7 @@ async def main():
         await browser.close()
 
 asyncio.run(main())
-print("Core browser verification passed at 375px, 390px, 430px, and desktop student frame width")
+print("Core browser verification passed at 375px, 390px, 430px, home/login states, and desktop student frame width")
 `;
 }
 
@@ -211,6 +339,21 @@ function startServer() {
   });
   const experienceSubmissionStore = createExperienceSubmissionStore({ now });
   const interactionStore = createInteractionStore({ now });
+  const loggedInUser = authService.createUserForTesting({
+    phoneNumber: "+8613900001200",
+    nickname: "Browser home student",
+    grade: "high_school_g2"
+  });
+  const loggedInCookie = authService.serializeSessionCookie(
+    authService.createSessionForUser(loggedInUser.id)
+  ).split(";")[0];
+
+  interactionStore.addFavorite({
+    userId: loggedInUser.id,
+    targetType: "school",
+    targetId: seedIds.schools.sysu
+  });
+
   const server = createServer((request, response) => {
     handleRequest(request, response, {
       authService,
@@ -228,7 +371,8 @@ function startServer() {
       const address = server.address();
       resolve({
         server,
-        baseUrl: `http://127.0.0.1:${address.port}`
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        loggedInCookie
       });
     });
   });
@@ -247,14 +391,15 @@ async function closeServer(server) {
   });
 }
 
-async function runBrowserVerification({ python, baseUrl }) {
+async function runBrowserVerification({ python, baseUrl, loggedInCookie }) {
   await new Promise((resolve, reject) => {
     const child = spawn(python, ["-c", pythonBrowserScript()], {
       env: {
         ...process.env,
         BASE_URL: baseUrl,
         BROWSER_SCREENSHOT_DIR: screenshotDir,
-        SYSU_SCHOOL_ID: seedIds.schools.sysu
+        SYSU_SCHOOL_ID: seedIds.schools.sysu,
+        LOGGED_IN_COOKIE: loggedInCookie
       },
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -280,11 +425,11 @@ async function runBrowserVerification({ python, baseUrl }) {
 }
 
 const python = findPlaywrightPython();
-const { server, baseUrl } = await startServer();
+const { server, baseUrl, loggedInCookie } = await startServer();
 
 try {
   await mkdir(screenshotDir, { recursive: true });
-  await runBrowserVerification({ python, baseUrl });
+  await runBrowserVerification({ python, baseUrl, loggedInCookie });
 } finally {
   await closeServer(server);
 }

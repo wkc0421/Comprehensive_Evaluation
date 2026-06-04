@@ -263,8 +263,10 @@ describe("MVP end-to-end quality gates", () => {
 
     assert.equal(homeResponse.status, 200);
     assert.match(homeBody, /High school grade one/);
-    assert.match(homeBody, /Build a baseline view of participating schools/);
-    assert.match(homeBody, /Annual progress/);
+    assert.match(homeBody, /Core student tasks/);
+    assert.match(homeBody, /Understand the comprehensive evaluation path\./);
+    assert.match(homeBody, /Nearest timeline nodes/);
+    assert.match(homeBody, /Latest guides/);
     assert.match(homeBody, /href="\/schools"/);
     assert.doesNotMatch(homeBody, /admission probability|paid consulting|private messaging/i);
 

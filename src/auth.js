@@ -57,10 +57,17 @@ function normalizePhoneNumber(phoneNumber) {
     throw new AuthError("invalid_phone", "A valid phone number is required.");
   }
 
-  const normalized = phoneNumber.trim().replace(/[\s-]/g, "");
+  const compact = phoneNumber.trim().replace(/[\s-]/g, "");
+  const normalized = compact.startsWith("+86")
+    ? compact
+    : compact.startsWith("86") && compact.length === 13
+      ? `+${compact}`
+      : compact.length === 11
+        ? `+86${compact}`
+        : compact;
 
-  if (!/^\+?[0-9]{10,15}$/.test(normalized)) {
-    throw new AuthError("invalid_phone", "A valid phone number is required.");
+  if (!/^\+861[3-9]\d{9}$/.test(normalized)) {
+    throw new AuthError("invalid_phone", "A mainland China phone number is required.");
   }
 
   return normalized;

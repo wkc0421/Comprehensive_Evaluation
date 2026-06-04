@@ -9,11 +9,31 @@ import { getExperienceById } from "./db/data-access.js";
 import { seedIds } from "./db/seed-data.js";
 import { createExperienceSubmissionStore } from "./experience-submissions.js";
 import { createInteractionStore } from "./interactions.js";
+import { renderStudentHome } from "./pages.js";
 
 function jsonRequest(body = {}) {
   return {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
+  };
+}
+
+function formRequest(body = {}, headers = {}) {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(body)) {
+    if (value !== undefined && value !== null) {
+      params.set(key, String(value));
+    }
+  }
+
+  return {
+    headers: {
+      accept: "text/html",
+      "content-type": "application/x-www-form-urlencoded",
+      ...headers
+    },
+    body: params.toString()
   };
 }
 
@@ -29,6 +49,31 @@ function assertNoPhoneFields(payload) {
 
   assert.doesNotMatch(serialized, /13812345678/);
   assert.doesNotMatch(serialized, /phone(Hash|Ciphertext|Number)?/i);
+}
+
+function decodeHtmlAttribute(value) {
+  return String(value)
+    .replaceAll("&quot;", "\"")
+    .replaceAll("&#39;", "'")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">");
+}
+
+function formValue(body, name) {
+  const pattern = new RegExp(`name="${name}" value="([^"]*)"`);
+  const match = body.match(pattern);
+
+  assert.ok(match, `Expected form value for ${name}`);
+  return decodeHtmlAttribute(match[1]);
+}
+
+function countOccurrences(body, token) {
+  return body.split(token).length - 1;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function studentBottomNav(body) {
@@ -140,27 +185,118 @@ describe("web routes", () => {
     });
   });
 
-  it("renders the student home route", async () => {
-    const response = await fetch(`${baseUrl}/`);
+  it("renders the redesigned student home for guest grade states", async () => {
+    const gradeCases = [
+      {
+        grade: "high_school_g1",
+        label: "High school grade one",
+        tip: "Understand the comprehensive evaluation path."
+      },
+      {
+        grade: "high_school_g2",
+        label: "High school grade two",
+        tip: "Check academic test and subject requirements."
+      },
+      {
+        grade: "high_school_g3",
+        label: "High school grade three",
+        tip: "Watch current guide releases."
+      }
+    ];
+    const bodies = new Map();
+
+    for (const currentCase of gradeCases) {
+      const response = await fetch(`${baseUrl}/?grade=${currentCase.grade}`, {
+        headers: { accept: "text/html" }
+      });
+      const body = await response.text();
+
+      assert.equal(response.status, 200);
+      assert.match(body, /class="home-first-screen"/);
+      assert.match(body, new RegExp(escapeRegExp(currentCase.label)));
+      assert.match(body, new RegExp(`href="/\\?grade=${currentCase.grade}" aria-current="page"`));
+      assert.match(body, new RegExp(escapeRegExp(currentCase.tip)));
+      assert.match(body, /Log in to favorite schools and view your personal timeline\./);
+      bodies.set(currentCase.grade, body);
+    }
+
+    const body = bodies.get("high_school_g3");
+    const firstScreenIndex = body.indexOf("home-first-screen");
+    const latestGuideIndex = body.indexOf("Latest guides");
+    const latestExperienceIndex = body.indexOf("Latest experiences");
+    const gradeTipsIndex = body.indexOf("Grade preparation tips");
+    const nearestNodesIndex = body.indexOf("Nearest timeline nodes");
+
+    assert.ok(firstScreenIndex >= 0);
+    assert.ok(nearestNodesIndex > firstScreenIndex);
+    assert.ok(latestGuideIndex > nearestNodesIndex);
+    assert.ok(latestExperienceIndex > latestGuideIndex);
+    assert.ok(gradeTipsIndex > latestExperienceIndex);
+    assert.match(body, /Core student tasks/);
+    assert.match(body, /class="home-task-card" href="\/schools"[\s\S]*<strong>Schools<\/strong>[\s\S]*Browse schools/);
+    assert.match(body, /class="home-task-card" href="\/timeline"[\s\S]*<strong>Timeline<\/strong>[\s\S]*Key dates/);
+    assert.match(body, /class="home-task-card" href="\/calculator"[\s\S]*<strong>Score Calculator<\/strong>[\s\S]*Calculate score/);
+    assert.match(body, /class="home-task-card" href="\/experiences"[\s\S]*<strong>Experiences<\/strong>[\s\S]*Read stories/);
+    assert.ok(countOccurrences(body, `data-home-timeline-row="true"`) >= 1);
+    assert.ok(countOccurrences(body, `data-home-timeline-row="true"`) <= 3);
+    assert.equal(countOccurrences(body, `data-home-guide-row="true"`), 3);
+    assert.equal(countOccurrences(body, `data-home-experience-row="true"`), 3);
+    assert.match(body, /Sun Yat-sen University/);
+    assert.match(body, /2026 Published/);
+    assert.match(body, /Deadline Apr 20, 2026/);
+    assert.match(body, /Admission Guide/);
+    assert.match(body, /School Assessment/);
+    assert.match(body, /Structured Interview/);
+    assert.match(body, /Verified experience|Verification pending/);
+    assert.doesNotMatch(body, /Mobile-first student home|Grade-aware entry points|Annual progress|Nearest deadlines|Latest published guides|Latest high-quality experiences/);
+    assert.doesNotMatch(body, /Draft Review Guide|Working Draft|Pending review experience/);
+    assert.doesNotMatch(body, /admission probability|ranking prediction|paid consulting|open comments|private messaging/i);
+
+    const emptyHome = renderStudentHome({
+      grade: "high_school_g1",
+      homeData: {
+        guides: [],
+        timelineNodes: [],
+        experiences: []
+      }
+    });
+
+    assert.match(emptyHome, /No clear timeline nodes yet\. We will update when published\./);
+    assert.match(emptyHome, /Current-year guides are not published yet\. Start with previous official rules\./);
+    assert.match(emptyHome, /No published experiences yet\. Check school guides first\./);
+    assert.doesNotMatch(emptyHome, /admission probability|ranking prediction|paid consulting|open comments|private messaging/i);
+  });
+
+  it("renders the logged-in home with user grade and favorited timeline nodes", async () => {
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613900001000",
+      nickname: "Home grade two",
+      grade: "high_school_g2"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(user.id)).split(";")[0];
+
+    interactionStore.addFavorite({
+      userId: user.id,
+      targetType: "school",
+      targetId: seedIds.schools.sysu
+    });
+
+    const response = await fetch(`${baseUrl}/`, {
+      headers: {
+        accept: "text/html",
+        cookie
+      }
+    });
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /Mobile-first student home/);
-    assert.match(body, /Grade-aware entry points/);
-    assert.match(body, /High school grade one/);
     assert.match(body, /High school grade two/);
-    assert.match(body, /High school grade three/);
-    assert.match(body, /Annual progress/);
-    assert.match(body, /2026 Guangdong cycle/);
-    assert.match(body, /Nearest deadlines/);
-    assert.match(body, /Latest published guides/);
+    assert.match(body, /Favorited schools/);
     assert.match(body, /Sun Yat-sen University/);
-    assert.match(body, /Latest high-quality experiences/);
-    assert.match(body, /Interview focused on motivation/);
-    assert.doesNotMatch(body, /Draft Review Guide/);
-    assert.doesNotMatch(body, /Working Draft/);
-    assert.doesNotMatch(body, /Pending review experience/);
-    assert.doesNotMatch(body, /admission probability|ranking prediction|paid consulting|open comments|private messaging/i);
+    assert.ok(countOccurrences(body, `data-home-timeline-row="true"`) >= 1);
+    assert.ok(countOccurrences(body, `data-home-timeline-row="true"`) <= 3);
+    assert.doesNotMatch(body, /Log in to favorite schools and view your personal timeline\./);
+    assertNoPhoneFields(body);
   });
 
   it("applies the frontend PRD design tokens and typography guardrails", async () => {
@@ -900,6 +1036,206 @@ describe("web routes", () => {
     assert.equal(meResponse.status, 200);
     assert.equal(meBody.user.id, loginBody.user.id);
     assertNoPhoneFields(meBody);
+  });
+
+  it("renders phone OTP login validation and preserves retry inputs", async () => {
+    const invalidOtpResponse = await fetch(`${baseUrl}/api/auth/otp`, {
+      method: "POST",
+      ...jsonRequest({ phoneNumber: "12112345678" })
+    });
+    const invalidOtpBody = await invalidOtpResponse.json();
+
+    assert.equal(invalidOtpResponse.status, 400);
+    assert.equal(invalidOtpBody.error, "invalid_phone");
+    assert.match(invalidOtpBody.message, /mainland China phone number/i);
+
+    const validOtpResponse = await fetch(`${baseUrl}/api/auth/otp`, {
+      method: "POST",
+      ...jsonRequest({ phoneNumber: "13900001010" })
+    });
+    const validOtpBody = await validOtpResponse.json();
+
+    assert.equal(validOtpResponse.status, 200);
+    assert.equal(validOtpBody.delivery, "local_stub");
+
+    const pageResponse = await fetch(`${baseUrl}/login?returnTo=/schools`, {
+      headers: { accept: "text/html" }
+    });
+    const pageBody = await pageResponse.text();
+
+    assert.equal(pageResponse.status, 200);
+    assert.match(pageBody, /Login Guangdong CE/);
+    assert.match(pageBody, /name="phoneNumber"/);
+    assert.match(pageBody, /inputmode="numeric"/);
+    assert.match(pageBody, /placeholder="13812345678"/);
+    assert.match(pageBody, /data-send-otp="true"/);
+    assert.match(pageBody, /data-login-submit="true" disabled/);
+    assert.match(pageBody, /I agree to the user agreement and privacy policy\./);
+    assert.match(pageBody, /\/login\.js/);
+    assert.doesNotMatch(pageBody, /Student bottom navigation/);
+
+    const missingAgreementResponse = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      ...formRequest({
+        returnTo: "/schools",
+        phoneNumber: "13900001010",
+        otpCode: "246810"
+      })
+    });
+    const missingAgreementBody = await missingAgreementResponse.text();
+
+    assert.equal(missingAgreementResponse.status, 400);
+    assert.match(missingAgreementBody, /Agreement consent is required before login\./);
+    assert.match(missingAgreementBody, /name="phoneNumber"[\s\S]*value="13900001010"/);
+    assert.match(missingAgreementBody, /name="otpCode"[\s\S]*value="246810"/);
+    assert.doesNotMatch(missingAgreementBody, /name="agreement" value="accepted" checked/);
+
+    const invalidLoginResponse = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      ...formRequest({
+        returnTo: "/schools",
+        phoneNumber: "13900001010",
+        otpCode: "000000",
+        agreement: "accepted"
+      })
+    });
+    const invalidLoginBody = await invalidLoginResponse.text();
+
+    assert.equal(invalidLoginResponse.status, 401);
+    assert.match(invalidLoginBody, /Verification code is invalid\. Please re-enter\./);
+    assert.match(invalidLoginBody, /name="phoneNumber"[\s\S]*value="13900001010"/);
+    assert.match(invalidLoginBody, /name="otpCode"[\s\S]*value="000000"/);
+    assert.match(invalidLoginBody, /name="agreement" value="accepted" checked/);
+  });
+
+  it("continues login-triggered favorite, useful, report, and publish actions", async () => {
+    async function loginFromPrompt(promptBody, phoneNumber) {
+      const response = await fetch(`${baseUrl}/login`, {
+        method: "POST",
+        redirect: "manual",
+        ...formRequest({
+          returnTo: formValue(promptBody, "returnTo"),
+          pendingAction: formValue(promptBody, "pendingAction"),
+          phoneNumber,
+          otpCode: "246810",
+          agreement: "accepted"
+        })
+      });
+      const cookie = sessionCookieFrom(response);
+      const location = response.headers.get("location") ?? "";
+
+      assert.equal(response.status, 303);
+      assert.match(location, /[?&]toast=/);
+      return { cookie, location };
+    }
+
+    const schoolReturnTo = `/schools/${seedIds.schools.sysu}?year=2026`;
+    const favoritePromptResponse = await fetch(`${baseUrl}/favorites`, {
+      method: "POST",
+      ...formRequest({
+        targetType: "school",
+        targetId: seedIds.schools.sysu,
+        returnTo: schoolReturnTo
+      })
+    });
+    const favoritePromptBody = await favoritePromptResponse.text();
+
+    assert.equal(favoritePromptResponse.status, 401);
+    assert.match(favoritePromptBody, /Login Guangdong CE/);
+
+    const favoriteLogin = await loginFromPrompt(favoritePromptBody, "13900001101");
+
+    assert.equal(favoriteLogin.location, `${schoolReturnTo}&toast=favorite_saved`);
+
+    const favoriteMeResponse = await fetch(`${baseUrl}/api/me/favorites`, {
+      headers: { cookie: favoriteLogin.cookie }
+    });
+    const favoriteMeBody = await favoriteMeResponse.json();
+
+    assert.equal(favoriteMeResponse.status, 200);
+    assert.equal(favoriteMeBody.favorites.schools[0].school.id, seedIds.schools.sysu);
+
+    const usefulExperienceId = seedIds.experiences.scut2025;
+    const usefulPromptResponse = await fetch(`${baseUrl}/experiences/${usefulExperienceId}/useful`, {
+      method: "POST",
+      headers: {
+        accept: "text/html",
+        referer: `${baseUrl}/experiences`
+      }
+    });
+    const usefulPromptBody = await usefulPromptResponse.text();
+
+    assert.equal(usefulPromptResponse.status, 401);
+    assert.match(usefulPromptBody, /Login Guangdong CE/);
+
+    const usefulLogin = await loginFromPrompt(usefulPromptBody, "13900001102");
+
+    assert.equal(usefulLogin.location, "/experiences?toast=useful_saved");
+
+    const duplicateUsefulResponse = await fetch(`${baseUrl}/api/experiences/${usefulExperienceId}/useful`, {
+      method: "POST",
+      headers: { cookie: usefulLogin.cookie }
+    });
+    const duplicateUsefulBody = await duplicateUsefulResponse.json();
+
+    assert.equal(duplicateUsefulResponse.status, 409);
+    assert.equal(duplicateUsefulBody.error, "duplicate_useful_vote");
+
+    const reportPromptResponse = await fetch(`${baseUrl}/reports`, {
+      method: "POST",
+      ...formRequest({
+        targetType: "experience",
+        targetId: seedIds.experiences.sysu2026,
+        reason: "contains unverifiable claims",
+        description: "Please review source clarity.",
+        returnTo: "/experiences"
+      })
+    });
+    const reportPromptBody = await reportPromptResponse.text();
+
+    assert.equal(reportPromptResponse.status, 401);
+    assert.match(reportPromptBody, /Login Guangdong CE/);
+
+    const reportLogin = await loginFromPrompt(reportPromptBody, "13900001103");
+    const reportMeResponse = await fetch(`${baseUrl}/api/me`, {
+      headers: { cookie: reportLogin.cookie }
+    });
+    const reportMeBody = await reportMeResponse.json();
+    const reports = interactionStore.listReports({
+      reporterId: reportMeBody.user.id,
+      status: "pending"
+    });
+
+    assert.equal(reportLogin.location, "/experiences?toast=report_submitted");
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0].targetType, "experience");
+    assert.equal(reports[0].targetId, seedIds.experiences.sysu2026);
+    assert.equal(reports[0].reason, "contains unverifiable claims");
+    assertNoPhoneFields(reports);
+
+    const publishPromptResponse = await fetch(`${baseUrl}/experiences/new`, {
+      headers: { accept: "text/html" }
+    });
+    const publishPromptBody = await publishPromptResponse.text();
+
+    assert.equal(publishPromptResponse.status, 401);
+    assert.match(publishPromptBody, /Login Guangdong CE/);
+
+    const publishLogin = await loginFromPrompt(publishPromptBody, "13900001104");
+
+    assert.equal(publishLogin.location, "/experiences/new?toast=publish_ready");
+
+    const publishPageResponse = await fetch(`${baseUrl}${publishLogin.location}`, {
+      headers: {
+        accept: "text/html",
+        cookie: publishLogin.cookie
+      }
+    });
+    const publishPageBody = await publishPageResponse.text();
+
+    assert.equal(publishPageResponse.status, 200);
+    assert.match(publishPageBody, /Review after submit/);
+    assert.doesNotMatch(publishPageBody, /system internals|stack trace|exception/i);
   });
 
   it("returns personal center data for favorites, submissions, notifications, and preferences", async () => {
