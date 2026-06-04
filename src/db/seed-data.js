@@ -134,7 +134,8 @@ export const seedIds = deepFreeze({
     sysu2026: "30000000-0000-4000-8000-000000000001",
     scut2025: "30000000-0000-4000-8000-000000000002",
     sustech2024: "30000000-0000-4000-8000-000000000003",
-    pending: "30000000-0000-4000-8000-000000000004"
+    pending: "30000000-0000-4000-8000-000000000004",
+    sysu2026PendingVerification: "30000000-0000-4000-8000-000000000005"
   }
 });
 
@@ -562,6 +563,30 @@ const experiences = [
     verificationStatus: "verified",
     usefulCount: 18,
     createdAt: "2026-05-02T08:00:00.000Z"
+  },
+  {
+    id: seedIds.experiences.sysu2026PendingVerification,
+    schoolId: seedIds.schools.sysu,
+    admissionYear: 2026,
+    provinceScope: "guangdong",
+    status: "published",
+    majorGroup: "Humanities pilot group",
+    candidateTrack: "history",
+    stage: "school_assessment",
+    assessmentTypes: ["structured_interview"],
+    location: "Guangzhou campus",
+    summary: "Published student account awaiting verification with questions about public affairs and major fit.",
+    processSummary: "The interview followed a structured panel format with individual answers and short follow-up prompts.",
+    questionTypes: ["current_affairs", "major_interest", "motivation"],
+    preparationSummary: "Connect current affairs examples to the selected major and personal study plan.",
+    difficultyScore: 3,
+    pressureScore: 2,
+    differentiationScore: 3,
+    advice: "Keep examples specific and separate personal opinion from official policy facts.",
+    isAnonymous: true,
+    verificationStatus: "pending_review",
+    usefulCount: 22,
+    createdAt: "2026-05-18T08:00:00.000Z"
   },
   {
     id: seedIds.experiences.scut2025,

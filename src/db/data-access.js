@@ -58,6 +58,7 @@ const timelineEventDefinitionOrder = new Map(
  * @property {string} [stage]
  * @property {string} [assessmentType]
  * @property {boolean} [verified]
+ * @property {"newest" | "useful" | "useful_count" | "verified" | "verified_first"} [sort]
  */
 
 export class ScoreCalculationError extends Error {
@@ -109,6 +110,25 @@ function compareExperienceRecency(left, right) {
   }
 
   return right.usefulCount - left.usefulCount;
+}
+
+function compareExperienceUsefulCount(left, right) {
+  if (right.usefulCount !== left.usefulCount) {
+    return right.usefulCount - left.usefulCount;
+  }
+
+  return compareExperienceRecency(left, right);
+}
+
+function compareExperienceVerifiedFirst(left, right) {
+  const verifiedDifference =
+    Number(right.verificationStatus === "verified") - Number(left.verificationStatus === "verified");
+
+  if (verifiedDifference !== 0) {
+    return verifiedDifference;
+  }
+
+  return compareExperienceRecency(left, right);
 }
 
 function compareFeaturedExperiences(left, right, schoolId, year) {
@@ -994,7 +1014,8 @@ export function calculateScore(input = {}) {
  * @returns {ReadonlyArray<import("./seed-data.js").ExperienceSeed>}
  */
 export function listExperiences(filters = {}) {
-  return seedData.experiences
+  const sort = filters.sort ?? "newest";
+  const experiences = seedData.experiences
     .filter((experience) => experience.status === publishedStatus)
     .filter((experience) => getPublishedSchoolById(experience.schoolId))
     .filter((experience) => !filters.schoolId || experience.schoolId === filters.schoolId)
@@ -1009,6 +1030,16 @@ export function listExperiences(filters = {}) {
       return (experience.verificationStatus === "verified") === filters.verified;
     })
     .sort(compareExperienceRecency);
+
+  if (sort === "useful" || sort === "useful_count") {
+    return experiences.sort(compareExperienceUsefulCount);
+  }
+
+  if (sort === "verified" || sort === "verified_first") {
+    return experiences.sort(compareExperienceVerifiedFirst);
+  }
+
+  return experiences;
 }
 
 /**

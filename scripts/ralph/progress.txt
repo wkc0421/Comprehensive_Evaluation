@@ -17,6 +17,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public timelines should use `listTimelineNodes()` and `buildSiteTimelineReminders()` from `src/db/data-access.js`; they keep `/timeline`, `/api/timeline`, status calculation, required generated event keys, unknown-date handling, published-only visibility, and site-only reminder indicators aligned.
 - Public score calculation should use `calculateScore()` from `src/db/data-access.js`; it keeps formula visibility, input normalization, validation errors, contribution breakdowns, source links, and disclaimer text aligned for `/score/calculate`, `/api/score/calculate`, and future calculator pages.
 - Public score calculator UI should use `renderScoreCalculatorPage()` with `listSchoolGuideCards()` and `getSchoolDetail()` for published school/year/formula loading, while `public/calculator.js` posts final calculations to `/api/score/calculate`; when `detail.formula` is null, hide the score-entry form and show the unavailable state.
+- Public experience browsing should use `listExperiences()` from `src/db/data-access.js`; it keeps `/experiences`, `/api/experiences`, filters, newest/useful/verified sorting, and published-only visibility aligned while POST `/api/experiences` remains the login-gated submission route for later stories.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -367,4 +368,37 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Use `renderScoreCalculatorPage()` for calculator page work; it keeps the school/year picker on published guide cards and resolves the selected formula through `getSchoolDetail()`.
   - `public/calculator.js` is the dependency-free browser workflow for score pages: it validates configured input ranges before posting to `/api/score/calculate` and renders the API response into the result panel.
   - South China University of Technology 2025 remains the stable no-formula browser fixture; South China University of Technology 2024 is useful for a complete two-input calculator flow.
+---
+
+## Thu Jun  4 02:48:46 PM CST 2026 - Ralph runner
+- Iteration: 3
+- Story: US-011
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-3
+---
+
+## Thu Jun  4 03:08:23 PM CST 2026 - US-012
+- What was implemented
+  - Added public experience browsing on `/experiences` and `/api/experiences` with school, year, stage, assessment type, verified status, and sort filters.
+  - Added newest, useful count, and verified-first sorting to `listExperiences()`, plus a published pending-verification fixture so verified filtering and sort behavior are testable.
+  - Built mobile-first experience cards showing school, year, stage, assessment format, summary, verified label, useful count, and historical reference notices for older cycles.
+- Files changed
+  - `AGENTS.md`, `public/styles.css`
+  - `src/app.js`, `src/app.test.js`, `src/pages.js`, `src/lib/product.js`
+  - `src/db/data-access.js`, `src/db/data-access.test.js`, `src/db/seed-data.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for `/experiences?year=2024&assessmentType=machine_test&sort=newest` at 375px, 390px, 430px, and 1280px; filters, structured card content, historical notice, hidden review-only fixture, and no horizontal overflow were verified.
+  - Playwright Chromium verification passed for `/experiences?sort=verified` at 390px; the pending-verification label was visible, review-only content stayed hidden, and no horizontal overflow was present.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-141724/iteration-4/experience-list-default-390.png` and `experience-list-historical-375.png`, `experience-list-historical-390.png`, `experience-list-historical-430.png`, and `experience-list-historical-1280.png`.
+- **Learnings for future iterations:**
+  - `/experiences` follows the existing content-negotiation pattern: browser requests with `Accept: text/html` receive HTML, while `/api/experiences`, API-style accepts, or `format=json` receive JSON.
+  - `listExperiences()` is the shared public helper for experience browsing; use sort values `newest`, `useful`, and `verified` for UI state, with `useful_count` and `verified_first` accepted as aliases.
+  - The stable historical notice browser fixture is Southern University of Science and Technology 2024; the stable pending-verification fixture is Sun Yat-sen University 2026 pending verification.
 ---

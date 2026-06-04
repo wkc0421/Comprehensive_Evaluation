@@ -218,6 +218,30 @@ describe("student-facing data access helpers", () => {
     })), [seedIds.experiences.scut2025]);
   });
 
+  it("filters and sorts public experience browsing records", () => {
+    assert.deepEqual(ids(listExperiences({ verified: false })), [
+      seedIds.experiences.sysu2026PendingVerification
+    ]);
+    assert.deepEqual(ids(listExperiences({ assessmentType: "machine_test" })), [
+      seedIds.experiences.sustech2024
+    ]);
+    assert.deepEqual(ids(listExperiences({ sort: "newest" })).slice(0, 2), [
+      seedIds.experiences.sysu2026PendingVerification,
+      seedIds.experiences.sysu2026
+    ]);
+    assert.deepEqual(ids(listExperiences({ sort: "useful" })).slice(0, 3), [
+      seedIds.experiences.sysu2026PendingVerification,
+      seedIds.experiences.sysu2026,
+      seedIds.experiences.sustech2024
+    ]);
+    assert.deepEqual(ids(listExperiences({ sort: "verified" })), [
+      seedIds.experiences.sysu2026,
+      seedIds.experiences.scut2025,
+      seedIds.experiences.sustech2024,
+      seedIds.experiences.sysu2026PendingVerification
+    ]);
+  });
+
   it("calculates 60/30/10 weighted formula scores with normalized input scales", () => {
     const result = calculateScore({
       schoolId: seedIds.schools.sysu,

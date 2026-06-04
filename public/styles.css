@@ -545,7 +545,21 @@ h1 {
   gap: 12px;
 }
 
+.experience-list {
+  display: grid;
+  gap: 12px;
+}
+
 .timeline-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.experience-card {
   display: grid;
   gap: 12px;
   border: 1px solid var(--border);
@@ -557,6 +571,17 @@ h1 {
 .timeline-card h3 {
   font-size: 1.05rem;
   line-height: 1.3;
+}
+
+.experience-card h3 {
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.experience-card p {
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
 }
 
 .status-badge,
@@ -590,6 +615,16 @@ h1 {
 .site-badge {
   background: #eff6ff;
   color: var(--support-blue);
+}
+
+.reference-notice {
+  border-radius: 8px;
+  background: #fff7ed;
+  color: var(--support-amber);
+  font-size: 0.88rem;
+  font-weight: 750;
+  line-height: 1.45;
+  padding: 11px;
 }
 
 .split-details {
@@ -967,6 +1002,10 @@ h1 {
   }
 
   .timeline-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .experience-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

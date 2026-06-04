@@ -11,12 +11,14 @@ import {
   getSchoolById,
   getSchoolDetail,
   listGuides,
+  listExperiences,
   listSchoolGuideCards,
   listTimelineNodes
 } from "./db/data-access.js";
 import { interactionStore as defaultInteractionStore } from "./interactions.js";
 import {
   renderAdminPage,
+  renderExperienceListPage,
   renderNotFound,
   renderSchoolDetailPage,
   renderSchoolListPage,
@@ -37,6 +39,13 @@ const contentTypes = new Map([
 ]);
 const guideStatuses = new Set(["draft", "pending_review", "published", "archived"]);
 const schoolSorts = new Set(["deadline", "updated", "name"]);
+const experienceSortAliases = new Map([
+  ["newest", "newest"],
+  ["useful", "useful"],
+  ["useful_count", "useful"],
+  ["verified", "verified"],
+  ["verified_first", "verified"]
+]);
 const favoriteTargetTypes = new Set(["school"]);
 
 function sendHtml(response, statusCode, html) {
@@ -191,6 +200,24 @@ function optionalBooleanParam(url, name) {
   throw new RequestError("invalid_boolean", `${name} must be true or false.`);
 }
 
+function optionalBooleanFilterParam(url, name) {
+  const value = optionalStringParam(url, name);
+
+  if (!value) {
+    return undefined;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  throw new RequestError("invalid_boolean", `${name} must be true or false.`);
+}
+
 function parseSchoolIdsParam(url) {
   return url.searchParams
     .getAll("schoolIds")
@@ -214,6 +241,24 @@ function parseCalculatorFilters(url) {
   };
 }
 
+function parseExperienceFilters(url) {
+  const requestedSort = optionalStringParam(url, "sort") ?? "newest";
+  const sort = experienceSortAliases.get(requestedSort);
+
+  if (!sort) {
+    throw new RequestError("invalid_sort", "Experience list sort is not supported.");
+  }
+
+  return {
+    schoolId: optionalStringParam(url, "schoolId"),
+    year: optionalYearParam(url),
+    stage: optionalStringParam(url, "stage"),
+    assessmentType: optionalStringParam(url, "assessmentType"),
+    verified: optionalBooleanFilterParam(url, "verified"),
+    sort
+  };
+}
+
 function shouldSendSchoolListJson(request, url) {
   if (url.pathname === "/api/schools" || url.searchParams.get("format") === "json") {
     return true;
@@ -230,6 +275,20 @@ function shouldSendSchoolListJson(request, url) {
 
 function shouldSendTimelineJson(request, url) {
   if (url.pathname === "/api/timeline" || url.searchParams.get("format") === "json") {
+    return true;
+  }
+
+  const accept = headerValue(request.headers, "accept") ?? "";
+
+  if (accept.includes("text/html")) {
+    return false;
+  }
+
+  return accept.length === 0 || accept.includes("*/*") || accept.includes("application/json");
+}
+
+function shouldSendExperienceListJson(request, url) {
+  if (url.pathname === "/api/experiences" || url.searchParams.get("format") === "json") {
     return true;
   }
 
@@ -451,6 +510,30 @@ function timelineStatusLabel(status) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function humanizeToken(value) {
+  return String(value)
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function latestPublishedAdmissionYear() {
+  const years = listGuides().map((guide) => guide.admissionYear);
+
+  return Math.max(new Date().getUTCFullYear(), ...years);
+}
+
+function experienceVerifiedLabel(experience) {
+  return experience.verificationStatus === "verified" ? "Verified experience" : "Verification pending";
+}
+
+function experienceHistoricalReferenceNotice(experience) {
+  if (latestPublishedAdmissionYear() - experience.admissionYear < 2) {
+    return null;
+  }
+
+  return `Historical reference: this ${experience.admissionYear} experience may not reflect current assessment rules.`;
+}
+
 function timelineNodeJson(node) {
   return {
     id: node.id,
@@ -479,6 +562,37 @@ function timelineNodeJson(node) {
       applicationStatus: node.guide.applicationStatus,
       officialSourceUrl: node.guide.officialSourceUrl
     }
+  };
+}
+
+function experienceListItemJson(experience) {
+  const school = getSchoolById(experience.schoolId);
+
+  return {
+    id: experience.id,
+    schoolId: experience.schoolId,
+    school: school
+      ? {
+          id: school.id,
+          name: school.name,
+          provinceScope: school.provinceScope,
+          city: school.city,
+          schoolType: school.schoolType
+        }
+      : null,
+    year: experience.admissionYear,
+    provinceScope: experience.provinceScope,
+    stage: experience.stage,
+    stageLabel: humanizeToken(experience.stage),
+    assessmentTypes: experience.assessmentTypes,
+    assessmentFormat: experience.assessmentTypes.map(humanizeToken).join(", "),
+    summary: experience.summary,
+    verificationStatus: experience.verificationStatus,
+    verified: experience.verificationStatus === "verified",
+    verifiedLabel: experienceVerifiedLabel(experience),
+    usefulCount: experience.usefulCount,
+    historicalReferenceNotice: experienceHistoricalReferenceNotice(experience),
+    createdAt: experience.createdAt
   };
 }
 
@@ -570,6 +684,16 @@ function sendTimelineJson(response, timeline) {
     count: timeline.count,
     events: timeline.events.map(timelineNodeJson),
     reminders: timeline.reminders
+  });
+}
+
+function sendExperienceListJson(response, filters) {
+  const experiences = listExperiences(filters).map(experienceListItemJson);
+
+  sendJson(response, 200, {
+    filters,
+    count: experiences.length,
+    experiences
   });
 }
 
@@ -789,6 +913,23 @@ export async function handleRequest(request, response, context = {}) {
       sendHtml(response, 200, renderScoreCalculatorPage(parseCalculatorFilters(url)));
     } catch (error) {
       sendError(response, errorStatus(error), error.code ?? "calculator_error", error.message);
+    }
+
+    return;
+  }
+
+  if ((url.pathname === "/experiences" || url.pathname === "/api/experiences") && request.method === "GET") {
+    try {
+      const filters = parseExperienceFilters(url);
+
+      if (shouldSendExperienceListJson(request, url)) {
+        sendExperienceListJson(response, filters);
+        return;
+      }
+
+      sendHtml(response, 200, renderExperienceListPage(filters));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "experience_list_error", error.message);
     }
 
     return;

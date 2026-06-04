@@ -428,6 +428,72 @@ describe("web routes", () => {
     assert.doesNotMatch(body, /name="scores\[gaokao\]"/);
   });
 
+  it("returns the public experience API with filters, labels, and published-only visibility", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/experiences?schoolId=${seedIds.schools.sysu}&year=2026&stage=school_assessment&assessmentType=structured_interview&verified=false&sort=useful`
+    );
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.count, 1);
+    assert.equal(body.filters.schoolId, seedIds.schools.sysu);
+    assert.equal(body.filters.year, 2026);
+    assert.equal(body.filters.stage, "school_assessment");
+    assert.equal(body.filters.assessmentType, "structured_interview");
+    assert.equal(body.filters.verified, false);
+    assert.equal(body.filters.sort, "useful");
+    assert.equal(body.experiences[0].id, seedIds.experiences.sysu2026PendingVerification);
+    assert.equal(body.experiences[0].school.name, "Sun Yat-sen University");
+    assert.equal(body.experiences[0].stageLabel, "School Assessment");
+    assert.equal(body.experiences[0].assessmentFormat, "Structured Interview");
+    assert.equal(body.experiences[0].verified, false);
+    assert.equal(body.experiences[0].verifiedLabel, "Verification pending");
+    assert.equal(body.experiences[0].historicalReferenceNotice, null);
+    assert.doesNotMatch(serialized, /Pending review experience that must remain hidden/);
+  });
+
+  it("sorts the public experience API by newest, useful count, and verified first", async () => {
+    const newestResponse = await fetch(`${baseUrl}/api/experiences?sort=newest`);
+    const usefulResponse = await fetch(`${baseUrl}/api/experiences?sort=useful`);
+    const verifiedResponse = await fetch(`${baseUrl}/api/experiences?sort=verified`);
+
+    const newestBody = await newestResponse.json();
+    const usefulBody = await usefulResponse.json();
+    const verifiedBody = await verifiedResponse.json();
+
+    assert.equal(newestResponse.status, 200);
+    assert.equal(usefulResponse.status, 200);
+    assert.equal(verifiedResponse.status, 200);
+    assert.equal(newestBody.experiences[0].id, seedIds.experiences.sysu2026PendingVerification);
+    assert.equal(usefulBody.experiences[0].id, seedIds.experiences.sysu2026PendingVerification);
+    assert.equal(verifiedBody.experiences[0].id, seedIds.experiences.sysu2026);
+    assert.equal(verifiedBody.experiences.at(-1).id, seedIds.experiences.sysu2026PendingVerification);
+  });
+
+  it("renders the experience list page with filters, structured cards, and historical notices", async () => {
+    const response = await fetch(`${baseUrl}/experiences?year=2024&assessmentType=machine_test&sort=newest`, {
+      headers: { accept: "text/html" }
+    });
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /Experience list/);
+    assert.match(body, /School/);
+    assert.match(body, /Year/);
+    assert.match(body, /Stage/);
+    assert.match(body, /Assessment format/);
+    assert.match(body, /Verified status/);
+    assert.match(body, /Sort/);
+    assert.match(body, /Southern University of Science and Technology/);
+    assert.match(body, /2024/);
+    assert.match(body, /Machine Test/);
+    assert.match(body, /Verified experience/);
+    assert.match(body, /Useful count/);
+    assert.match(body, /Historical reference/);
+    assert.doesNotMatch(body, /Pending review experience that must remain hidden/);
+  });
+
   it("returns the full Guangdong timeline with generated nodes, statuses, and site-only reminders", async () => {
     const response = await fetch(
       `${baseUrl}/api/timeline?year=2026&schoolIds=${seedIds.schools.sysu},${seedIds.schools.scut}`

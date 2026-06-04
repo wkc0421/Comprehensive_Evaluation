@@ -856,6 +856,177 @@ export function renderTimelinePage(timeline) {
   });
 }
 
+function renderExperienceFilters(filters, allExperiences) {
+  const years = uniqueSorted(allExperiences.map((experience) => experience.admissionYear))
+    .sort((left, right) => right - left);
+  const stages = uniqueSorted(allExperiences.map((experience) => experience.stage));
+  const assessmentTypes = uniqueSorted(allExperiences.flatMap((experience) => experience.assessmentTypes));
+  const schoolsById = new Map(
+    listSchoolGuideCards({ sort: "name" }).map((card) => [card.school.id, card.school])
+  );
+  const yearOptions = [
+    renderOption("", "All years", filters.year ?? ""),
+    ...years.map((year) => renderOption(year, year, filters.year))
+  ].join("");
+  const schoolOptions = [
+    renderOption("", "All schools", filters.schoolId ?? ""),
+    ...[...schoolsById.values()].map((school) => renderOption(school.id, school.name, filters.schoolId))
+  ].join("");
+  const stageOptions = [
+    renderOption("", "All stages", filters.stage ?? ""),
+    ...stages.map((stage) => renderOption(stage, humanizeToken(stage), filters.stage))
+  ].join("");
+  const assessmentOptions = [
+    renderOption("", "All assessment formats", filters.assessmentType ?? ""),
+    ...assessmentTypes.map((type) => renderOption(type, humanizeToken(type), filters.assessmentType))
+  ].join("");
+  const verifiedOptions = [
+    renderOption("", "Any verification", filters.verified ?? ""),
+    renderOption("true", "Verified", filters.verified === true ? "true" : ""),
+    renderOption("false", "Verification pending", filters.verified === false ? "false" : "")
+  ].join("");
+  const sortOptions = [
+    renderOption("newest", "Newest", filters.sort ?? "newest"),
+    renderOption("useful", "Useful count", filters.sort),
+    renderOption("verified", "Verified first", filters.sort)
+  ].join("");
+
+  return `<form class="filter-panel experience-filter-panel" method="get" action="/experiences" aria-label="Experience filters">
+    <label class="filter-field wide-field">
+      <span>School</span>
+      <select name="schoolId">${schoolOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>Year</span>
+      <select name="year">${yearOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>Stage</span>
+      <select name="stage">${stageOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>Assessment format</span>
+      <select name="assessmentType">${assessmentOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>Verified status</span>
+      <select name="verified">${verifiedOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>Sort</span>
+      <select name="sort">${sortOptions}</select>
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/experiences">Reset</a>
+    </div>
+  </form>`;
+}
+
+function latestExperienceReferenceYear() {
+  return currentAdmissionYear(listGuides());
+}
+
+function experienceVerifiedLabel(experience) {
+  return experience.verificationStatus === "verified" ? "Verified experience" : "Verification pending";
+}
+
+function experienceHistoricalReferenceNotice(experience) {
+  if (latestExperienceReferenceYear() - experience.admissionYear < 2) {
+    return "";
+  }
+
+  return `Historical reference: this ${experience.admissionYear} experience may not reflect current assessment rules.`;
+}
+
+function renderExperienceReferenceNotice(experience) {
+  const notice = experienceHistoricalReferenceNotice(experience);
+
+  return notice ? `<p class="reference-notice">${escapeHtml(notice)}</p>` : "";
+}
+
+function renderExperienceListCards(experiences) {
+  if (experiences.length === 0) {
+    return `<p class="empty-state">No published experiences match these filters.</p>`;
+  }
+
+  return experiences
+    .map((experience) => {
+      const school = getSchoolById(experience.schoolId);
+
+      return `<article class="experience-card">
+        <div class="badge-row">
+          <span class="badge">${escapeHtml(experience.admissionYear)}</span>
+          <span class="soft-badge">${escapeHtml(experienceVerifiedLabel(experience))}</span>
+          <span class="muted-badge">${escapeHtml(humanizeToken(experience.stage))}</span>
+        </div>
+        <h3><a href="/schools/${escapeHtml(encodeURIComponent(experience.schoolId))}?year=${escapeHtml(experience.admissionYear)}">${escapeHtml(school?.name ?? "Published school")}</a></h3>
+        <p>${escapeHtml(experience.summary)}</p>
+        <dl class="detail-list split-details">
+          <div>
+            <dt>School</dt>
+            <dd>${escapeHtml(school?.name ?? "Published school")}</dd>
+          </div>
+          <div>
+            <dt>Year</dt>
+            <dd>${escapeHtml(experience.admissionYear)}</dd>
+          </div>
+          <div>
+            <dt>Stage</dt>
+            <dd>${escapeHtml(humanizeToken(experience.stage))}</dd>
+          </div>
+          <div>
+            <dt>Assessment format</dt>
+            <dd>${escapeHtml(experience.assessmentTypes.map(humanizeToken).join(", "))}</dd>
+          </div>
+          <div>
+            <dt>Useful count</dt>
+            <dd>${escapeHtml(experience.usefulCount)}</dd>
+          </div>
+        </dl>
+        ${renderExperienceReferenceNotice(experience)}
+      </article>`;
+    })
+    .join("");
+}
+
+export function renderExperienceListPage(filters = {}) {
+  const allExperiences = listExperiences();
+  const experiences = listExperiences(filters);
+
+  return htmlPage({
+    title: `Experiences | ${productName}`,
+    body: `    <main class="app-shell">
+      <header class="top-bar">
+        <a class="brand" href="/">
+          <span class="brand-mark">Guangdong MVP</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
+        <a class="admin-link" href="/admin">Admin</a>
+      </header>
+
+      <section class="page-heading" aria-labelledby="experience-list-title">
+        <p class="eyebrow">Published assessment experiences</p>
+        <h1 id="experience-list-title">Experience list</h1>
+        <p class="lead">Browse structured interview and assessment references by school, year, stage, verification, and useful count.</p>
+      </section>
+
+      <section class="section" aria-label="Experience filters">
+        ${renderExperienceFilters(filters, allExperiences)}
+      </section>
+
+      <section class="section" aria-labelledby="experience-results-title">
+        <div class="section-heading">
+          <h2 id="experience-results-title">${escapeHtml(experiences.length)} published ${escapeHtml(pluralize(experiences.length, "experience"))}</h2>
+          <p class="section-kicker">Review-only submissions are hidden from visitors</p>
+        </div>
+        <div class="experience-list">${renderExperienceListCards(experiences)}</div>
+      </section>
+    </main>`
+  });
+}
+
 function calculatorSchoolEntries(cards) {
   const entriesById = new Map();
 

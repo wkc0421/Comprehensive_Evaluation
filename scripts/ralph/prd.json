@@ -190,8 +190,8 @@
         "Tests cover API parameters, filtering, sorting, published-only visibility, verified labels, and historical reference notices."
       ],
       "priority": 12,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented public experience browsing on /experiences and /api/experiences with filters, newest/useful/verified sorting, published-only cards, verified labels, historical reference notices, route tests, data-access tests, and browser verification."
     },
     {
       "id": "US-013",

@@ -7,7 +7,8 @@ export const studentNavigation = [
   { href: "/", label: "Home" },
   { href: "/schools", label: "Schools" },
   { href: "/timeline", label: "Timeline" },
-  { href: "/calculator", label: "Calculator" }
+  { href: "/calculator", label: "Calculator" },
+  { href: "/experiences", label: "Experiences" }
 ];
 
 export const adminNavigation = [
