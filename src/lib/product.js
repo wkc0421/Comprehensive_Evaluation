@@ -4,12 +4,10 @@ export const productDescription =
   "Mobile-first admissions guide, timeline, calculator, and structured experience platform for Guangdong high school students.";
 
 export const studentNavigation = [
-  { href: "/", label: "Home" },
-  { href: "/schools", label: "Schools" },
-  { href: "/timeline", label: "Timeline" },
-  { href: "/calculator", label: "Calculator" },
-  { href: "/experiences", label: "Experiences" },
-  { href: "/me", label: "Me" }
+  { href: "/", label: "Home", key: "home", icon: "home" },
+  { href: "/schools", label: "Schools", key: "schools", icon: "school" },
+  { href: "/experiences", label: "Experiences", key: "experiences", icon: "experience" },
+  { href: "/me", label: "My", key: "me", icon: "user" }
 ];
 
 export const adminNavigation = [

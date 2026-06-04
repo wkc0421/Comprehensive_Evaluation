@@ -181,10 +181,103 @@ ${body}
 </html>`;
 }
 
-function renderStudentNav() {
+function renderIcon(name) {
+  const icons = {
+    back: `<path d="M15 18l-6-6 6-6"></path>`,
+    filter: `<path d="M4 6h16"></path><path d="M7 12h10"></path><path d="M10 18h4"></path>`,
+    heart: `<path d="M12 21s-7-4.4-9-8.4C1.3 9.1 3.4 5 7.2 5c2 0 3.5 1.1 4.8 2.7C13.3 6.1 14.8 5 16.8 5c3.8 0 5.9 4.1 4.2 7.6C19 16.6 12 21 12 21z"></path>`,
+    home: `<path d="M4 10.5 12 4l8 6.5"></path><path d="M6.5 10v9h11v-9"></path><path d="M10 19v-5h4v5"></path>`,
+    school: `<path d="M4 6h16v13H4z"></path><path d="M8 10h8"></path><path d="M8 14h5"></path>`,
+    experience: `<path d="M5 5h14v12H8l-3 3z"></path><path d="M8.5 9h7"></path><path d="M8.5 13h5"></path>`,
+    user: `<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path>`
+  };
+
+  return `<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">${icons[name] ?? icons.home}</svg>`;
+}
+
+function renderStudentNav(currentKey = "") {
   return studentNavigation
-    .map((item) => `<a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a>`)
+    .map((item) => {
+      const isCurrent = item.key === currentKey;
+      const current = isCurrent ? ` aria-current="page"` : "";
+
+      return `<a class="student-nav-item${isCurrent ? " active" : ""}" href="${escapeHtml(item.href)}"${current}>
+        ${renderIcon(item.icon)}
+        <span>${escapeHtml(item.label)}</span>
+      </a>`;
+    })
     .join("");
+}
+
+function renderStudentBottomNav(currentKey = "") {
+  return `<nav class="student-bottom-nav" aria-label="Student bottom navigation" data-student-bottom-nav="true">${renderStudentNav(currentKey)}</nav>`;
+}
+
+function renderGradeSwitch() {
+  return `<div class="grade-switch" aria-label="Grade switch" role="group">
+    <a href="/?grade=high_school_g1">G1</a>
+    <a href="/?grade=high_school_g2">G2</a>
+    <a href="/?grade=high_school_g3">G3</a>
+  </div>`;
+}
+
+function renderIconLink({ href, label, icon }) {
+  return `<a class="icon-button" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">${renderIcon(icon)}</a>`;
+}
+
+function renderFavoriteSchoolAction(schoolId) {
+  return `<form class="top-action-form" method="post" action="/favorites" aria-label="Favorite school action">
+    <input type="hidden" name="targetType" value="school">
+    <input type="hidden" name="targetId" value="${escapeHtml(schoolId)}">
+    <button class="icon-button" type="submit" aria-label="Favorite school">${renderIcon("heart")}</button>
+  </form>`;
+}
+
+function renderStudentTopBar({
+  type = "list",
+  title,
+  backHref = "",
+  backLabel = "Go back",
+  actionHtml = "",
+  filterHref = "",
+  filterLabel = "Open filters",
+  submitState = ""
+}) {
+  const backEntry = backHref ? renderIconLink({ href: backHref, label: backLabel, icon: "back" }) : "";
+  const actions = actionHtml ||
+    (filterHref ? renderIconLink({ href: filterHref, label: filterLabel, icon: "filter" }) : "") ||
+    (submitState ? `<span class="top-state">${escapeHtml(submitState)}</span>` : "");
+
+  return `<header class="student-top-bar student-top-bar-${escapeHtml(type)}" data-student-top-bar="${escapeHtml(type)}">
+    <div class="student-top-leading">
+      ${backEntry}
+      <div class="student-title-copy">
+        ${type === "home" ? `<span class="top-kicker">Guangdong CE</span>` : ""}
+        <span class="student-top-title">${escapeHtml(title)}</span>
+      </div>
+    </div>
+    <div class="student-top-actions">${actions}</div>
+  </header>`;
+}
+
+function renderStudentPage({
+  title,
+  currentKey = "",
+  topBar,
+  content,
+  hideBottomNav = false,
+  mainClass = ""
+}) {
+  return htmlPage({
+    title,
+    body: `    <div class="student-frame${hideBottomNav ? " student-task-frame" : ""}">
+      ${topBar}
+      <main class="app-shell student-main${mainClass ? ` ${escapeHtml(mainClass)}` : ""}">
+${content}
+      </main>
+      ${hideBottomNav ? "" : renderStudentBottomNav(currentKey)}
+    </div>`
+  });
 }
 
 function renderAdminNav() {
@@ -681,18 +774,17 @@ export function renderSchoolDetailPage(detail) {
   const applicationWindow =
     `${formatDate(guide.applicationStartAt)} to ${formatDate(guide.applicationDeadlineAt)}`;
 
-  return htmlPage({
+  return renderStudentPage({
     title: `${detail.school.name} ${detail.selectedYear} | ${productName}`,
-    body: `    <main class="app-shell">
-      <header class="top-bar">
-        <a class="brand" href="/">
-          <span class="brand-mark">Guangdong MVP</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
-        <a class="admin-link" href="/admin">Admin</a>
-      </header>
-
+    currentKey: "schools",
+    topBar: renderStudentTopBar({
+      type: "detail",
+      title: detail.school.name,
+      backHref: "/schools",
+      backLabel: "Back to schools",
+      actionHtml: renderFavoriteSchoolAction(detail.school.id)
+    }),
+    content: `
       <section class="page-heading detail-heading" aria-labelledby="school-detail-title">
         <p class="eyebrow">${escapeHtml(detail.selectedYear)} published guide</p>
         <h1 id="school-detail-title">${escapeHtml(detail.school.name)}</h1>
@@ -784,8 +876,7 @@ export function renderSchoolDetailPage(detail) {
           <p class="section-kicker">Published structured assessment references</p>
         </div>
         <div class="card-grid">${renderExperienceDetailCards(detail.featuredExperiences)}</div>
-      </section>
-    </main>`
+      </section>`
   });
 }
 
@@ -793,25 +884,23 @@ export function renderSchoolListPage(filters = {}) {
   const allCards = listSchoolGuideCards({ sort: "name" });
   const cards = listSchoolGuideCards(filters);
 
-  return htmlPage({
+  return renderStudentPage({
     title: `Schools | ${productName}`,
-    body: `    <main class="app-shell">
-      <header class="top-bar">
-        <a class="brand" href="/">
-          <span class="brand-mark">Guangdong MVP</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
-        <a class="admin-link" href="/admin">Admin</a>
-      </header>
-
+    currentKey: "schools",
+    topBar: renderStudentTopBar({
+      type: "list",
+      title: "Schools",
+      filterHref: "#school-filters",
+      filterLabel: "Open school filters"
+    }),
+    content: `
       <section class="page-heading" aria-labelledby="school-list-title">
         <p class="eyebrow">Published school guides</p>
         <h1 id="school-list-title">School list</h1>
         <p class="lead">Browse Guangdong comprehensive evaluation schools with current guide cards, timeline nodes, formula availability, and published experience signals.</p>
       </section>
 
-      <section class="section" aria-label="School list filters">
+      <section class="section" id="school-filters" aria-label="School list filters">
         ${renderSchoolFilters(filters, allCards)}
       </section>
 
@@ -821,31 +910,28 @@ export function renderSchoolListPage(filters = {}) {
           <p class="section-kicker">Draft and review-only guide data is hidden from visitors</p>
         </div>
         <div class="school-list">${renderSchoolCards(cards)}</div>
-      </section>
-    </main>`
+      </section>`
   });
 }
 
 export function renderTimelinePage(timeline) {
-  return htmlPage({
+  return renderStudentPage({
     title: `Timeline | ${productName}`,
-    body: `    <main class="app-shell">
-      <header class="top-bar">
-        <a class="brand" href="/">
-          <span class="brand-mark">Guangdong MVP</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
-        <a class="admin-link" href="/admin">Admin</a>
-      </header>
-
+    currentKey: "",
+    topBar: renderStudentTopBar({
+      type: "list",
+      title: "Timeline",
+      filterHref: "#timeline-filters",
+      filterLabel: "Open timeline filters"
+    }),
+    content: `
       <section class="page-heading" aria-labelledby="timeline-title">
         <p class="eyebrow">Published admissions dates</p>
         <h1 id="timeline-title">${timeline.mine ? "My timeline" : "Guangdong timeline"}</h1>
         <p class="lead">Track official comprehensive evaluation guide publication, application windows, review nodes, assessments, volunteer application, and admission result publication.</p>
       </section>
 
-      <section class="section" aria-label="Timeline filters">
+      <section class="section" id="timeline-filters" aria-label="Timeline filters">
         ${renderTimelineFilters(timeline.filters)}
       </section>
 
@@ -855,8 +941,7 @@ export function renderTimelinePage(timeline) {
           <p class="section-kicker">${escapeHtml(timeline.reminders.length)} site-only ${escapeHtml(pluralize(timeline.reminders.length, "reminder"))}</p>
         </div>
         <div class="timeline-list">${renderTimelineNodeCards(timeline.events, timeline.reminders)}</div>
-      </section>
-    </main>`
+      </section>`
   });
 }
 
@@ -1098,18 +1183,18 @@ export function renderExperienceSubmissionPage({ user, submission = null, error 
     renderOption("false", "Show nickname", anonymousDefault)
   ].join("");
 
-  return htmlPage({
+  return renderStudentPage({
     title: `Submit experience | ${productName}`,
-    body: `    <main class="app-shell">
-      <header class="top-bar">
-        <a class="brand" href="/">
-          <span class="brand-mark">Guangdong MVP</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
-        <a class="admin-link" href="/admin">Admin</a>
-      </header>
-
+    currentKey: "experiences",
+    hideBottomNav: true,
+    topBar: renderStudentTopBar({
+      type: "form",
+      title: "Submit",
+      backHref: "/experiences",
+      backLabel: "Back to experiences",
+      submitState: "Review after submit"
+    }),
+    content: `
       <section class="page-heading" aria-labelledby="experience-submit-title">
         <p class="eyebrow">Structured submission</p>
         <h1 id="experience-submit-title">Submit experience</h1>
@@ -1247,7 +1332,7 @@ export function renderExperienceSubmissionPage({ user, submission = null, error 
           <a class="secondary-action" href="/experiences">Cancel</a>
         </div>
       </form>
-    </main>`
+`
   });
 }
 
@@ -1255,18 +1340,16 @@ export function renderExperienceListPage(filters = {}) {
   const allExperiences = listExperiences();
   const experiences = listExperiences(filters);
 
-  return htmlPage({
+  return renderStudentPage({
     title: `Experiences | ${productName}`,
-    body: `    <main class="app-shell">
-      <header class="top-bar">
-        <a class="brand" href="/">
-          <span class="brand-mark">Guangdong MVP</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
-        <a class="admin-link" href="/admin">Admin</a>
-      </header>
-
+    currentKey: "experiences",
+    topBar: renderStudentTopBar({
+      type: "list",
+      title: "Experiences",
+      filterHref: "#experience-filters",
+      filterLabel: "Open experience filters"
+    }),
+    content: `
       <section class="page-heading" aria-labelledby="experience-list-title">
         <p class="eyebrow">Published assessment experiences</p>
         <h1 id="experience-list-title">Experience list</h1>
@@ -1276,7 +1359,7 @@ export function renderExperienceListPage(filters = {}) {
         </div>
       </section>
 
-      <section class="section" aria-label="Experience filters">
+      <section class="section" id="experience-filters" aria-label="Experience filters">
         ${renderExperienceFilters(filters, allExperiences)}
       </section>
 
@@ -1286,8 +1369,7 @@ export function renderExperienceListPage(filters = {}) {
           <p class="section-kicker">Review-only submissions are hidden from visitors</p>
         </div>
         <div class="experience-list">${renderExperienceListCards(experiences)}</div>
-      </section>
-    </main>`
+      </section>`
   });
 }
 
@@ -1456,18 +1538,17 @@ export function renderScoreCalculatorPage(filters = {}) {
     ? getSchoolDetail({ schoolId: selection.schoolId, year: selection.year })
     : null;
 
-  return htmlPage({
+  return renderStudentPage({
     title: `Score Calculator | ${productName}`,
-    body: `    <main class="app-shell">
-      <header class="top-bar">
-        <a class="brand" href="/">
-          <span class="brand-mark">Guangdong MVP</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
-        <a class="admin-link" href="/admin">Admin</a>
-      </header>
-
+    hideBottomNav: true,
+    topBar: renderStudentTopBar({
+      type: "form",
+      title: "Calculator",
+      backHref: "/schools",
+      backLabel: "Back to schools",
+      submitState: "Source backed"
+    }),
+    content: `
       <section class="page-heading" aria-labelledby="calculator-title">
         <p class="eyebrow">Published formula calculator</p>
         <h1 id="calculator-title">Score calculator</h1>
@@ -1498,7 +1579,7 @@ export function renderScoreCalculatorPage(filters = {}) {
 
       <script type="application/json" id="calculator-options">${calculatorOptionsJson(entries)}</script>
       <script src="/calculator.js" defer></script>
-    </main>`
+`
   });
 }
 
@@ -2849,18 +2930,14 @@ function renderPreferenceForm(personalCenter, feedback) {
 }
 
 export function renderPersonalCenterPage({ personalCenter, notice = "", error = "" }) {
-  return htmlPage({
+  return renderStudentPage({
     title: `Personal Center | ${productName}`,
-    body: `    <main class="app-shell">
-      <header class="top-bar">
-        <a class="brand" href="/">
-          <span class="brand-mark">Guangdong MVP</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
-        <a class="admin-link" href="/admin">Admin</a>
-      </header>
-
+    currentKey: "me",
+    topBar: renderStudentTopBar({
+      type: "list",
+      title: "My"
+    }),
+    content: `
       <section class="page-heading" aria-labelledby="personal-center-title">
         <p class="eyebrow">Logged-in workspace</p>
         <h1 id="personal-center-title">Personal center</h1>
@@ -2913,8 +2990,7 @@ export function renderPersonalCenterPage({ personalCenter, notice = "", error = 
           <p class="section-kicker">${escapeHtml(personalCenter.submittedExperiences.length)} user-owned ${escapeHtml(pluralize(personalCenter.submittedExperiences.length, "submission"))}</p>
         </div>
         <div class="personal-list submitted-list">${renderSubmittedExperienceCards(personalCenter.submittedExperiences)}</div>
-      </section>
-    </main>`
+      </section>`
   });
 }
 
@@ -2936,18 +3012,15 @@ export function renderStudentHome() {
     annualExperienceCount: annualExperiences.length
   });
 
-  return htmlPage({
+  return renderStudentPage({
     title: productName,
-    body: `    <main class="app-shell">
-      <header class="top-bar">
-        <a class="brand" href="/">
-          <span class="brand-mark">Guangdong MVP</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <nav class="nav-pills" aria-label="Student navigation">${renderStudentNav()}</nav>
-        <a class="admin-link" href="/admin">Admin</a>
-      </header>
-
+    currentKey: "home",
+    topBar: renderStudentTopBar({
+      type: "home",
+      title: productName,
+      actionHtml: renderGradeSwitch()
+    }),
+    content: `
       <section class="hero" aria-labelledby="home-title">
         <div class="hero-copy">
           <p class="eyebrow">Mobile-first student home</p>
@@ -2997,7 +3070,7 @@ export function renderStudentHome() {
           <div class="card-grid">${renderExperienceCards(featuredExperiences)}</div>
         </div>
       </section>
-    </main>`
+`
   });
 }
 
@@ -3038,15 +3111,21 @@ export function renderAdminPage({ user } = {}) {
 }
 
 export function renderNotFound() {
-  return htmlPage({
+  return renderStudentPage({
     title: `Not Found | ${productName}`,
-    body: `    <main class="app-shell">
+    hideBottomNav: true,
+    topBar: renderStudentTopBar({
+      type: "detail",
+      title: "Not found",
+      backHref: "/",
+      backLabel: "Back to home"
+    }),
+    content: `
       <section class="hero-copy">
         <p class="eyebrow">404</p>
         <h1>Route not found</h1>
         <p class="lead">This scaffold currently exposes the student home route, admin placeholder, and health API.</p>
         <div class="actions"><a class="primary-action" href="/">Return home</a></div>
-      </section>
-    </main>`
+      </section>`
   });
 }

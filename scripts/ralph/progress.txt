@@ -5,6 +5,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 ## Codebase Patterns
 - The app scaffold is dependency-free Node.js ESM; keep routing in `src/app.js` and server startup in `src/server.js`.
 - Server-rendered HTML is composed in `src/pages.js`, shared product metadata is in `src/lib/product.js`, and global mobile-first CSS is in `public/styles.css`.
+- Student-facing HTML should use the shared student shell helpers in `src/pages.js`; keep the four-tab Home/Schools/Experiences/My bottom nav in `src/lib/product.js`, use page-type top bars, and hide the bottom nav only on task pages with a clear back entry.
 - Quality scripts live in `scripts/` and intentionally avoid scanning Ralph run logs or source PRD docs.
 - MVP-wide quality gates live in `src/e2e.test.js`, `scripts/data-quality.mjs`, and `scripts/browser-core-pages.mjs`; run `npm test`, `npm run data-quality`, and `npm run browser-test` for end-to-end acceptance.
 - `npm run build` creates `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`, and `dist/` is generated and ignored.
@@ -665,4 +666,42 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Keep MVP-wide user journeys in `src/e2e.test.js` so cross-feature regressions are separated from lower-level route tests in `src/app.test.js`.
   - `scripts/data-quality.mjs` is import-safe for tests and executable as `npm run data-quality`; it reports both annual guide coverage and school-year fixture coverage while failing on missing required fields or hidden student-visible data.
   - `scripts/browser-core-pages.mjs` starts an injected `handleRequest()` server and must run Playwright through async `spawn` so the Node HTTP server event loop can answer browser requests.
+---
+
+## Thu Jun  4 11:30:15 PM CST 2026 - US-021
+- What was implemented
+  - Added the frontend PRD token foundation, fixed system typography guardrails, shallow card/status styling, and student desktop column constraints.
+  - Replaced the old student pill nav with a shared student shell, page-type top bars, accessible inline SVG icon controls, and a stable four-tab Home/Schools/Experiences/My bottom navigation.
+  - Kept calculator and experience submission as task pages with hidden bottom navigation and clear back entries; school detail keeps a back entry and favorite action.
+  - Extended route and browser checks for student shell behavior, top-bar rules, 44px bottom-nav targets, mobile overflow, bottom-nav obstruction, long-name wrapping/truncation, and desktop frame width.
+- Files changed
+  - `AGENTS.md`
+  - `public/styles.css`
+  - `src/pages.js`, `src/lib/product.js`, `src/app.test.js`
+  - `scripts/browser-core-pages.mjs`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `node --test src/app.test.js` passed
+  - `npm test` passed
+  - `npm run data-quality` passed and reported annual guide coverage 3/3, 100.00% against the 95.00% target, with school-year guide coverage 6/9 for the seed fixture
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `npm run browser-test` passed with `BROWSER_SCREENSHOT_DIR=scripts/ralph/runs/20260604-231401/iteration-1`
+  - `git diff --check` passed
+- Acceptance matrix summary
+  - Design tokens, typography, radius, shadow, no gradient, and no viewport-scaled text map to `public/styles.css` and are verified by route/static tests.
+  - Four-tab bottom nav, active state, accessible icons, safe-area padding, and touch target rules map to `src/lib/product.js`, `src/pages.js`, `public/styles.css`, route tests, and browser checks.
+  - Page-type top bars and task-page back entries map to shared helpers in `src/pages.js` and are verified on home, list, detail, calculator, submission, and personal-center pages.
+  - Student desktop 430-520px centering maps to student-frame CSS and is verified in the browser script at 1280px; admin pages remain outside the student shell.
+  - Negative checks cover no extra Timeline/Calculator bottom tabs, no hidden review text, no horizontal scroll, no bottom-nav primary-action obstruction, no clipped long school names without ellipsis, no gradient backgrounds, and no card/control radius above 8px.
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for `/`, `/schools?year=2025&sort=name`, `/schools/00000000-0000-4000-8000-000000000001?year=2026`, `/timeline?year=2026`, `/calculator?schoolId=00000000-0000-4000-8000-000000000001&year=2026`, and `/experiences?year=2024&assessmentType=machine_test&sort=newest` at 375px, 390px, and 430px.
+  - The same browser run verified the student desktop frame is centered and 430-520px wide at 1280px.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-231401/iteration-1/home-390.png`, `schools-390.png`, `school-detail-390.png`, `timeline-390.png`, `calculator-390.png`, and `experiences-390.png`.
+- **Learnings for future iterations:**
+  - Student renderers should use `renderStudentPage()` and `renderStudentTopBar()` so top bars, task-page back entries, bottom-nav padding, and desktop column constraints stay consistent.
+  - Keep `studentNavigation` to the four PRD tabs only; Timeline and Calculator should remain task entries rather than bottom-tab items unless a later PRD explicitly changes the shell.
+  - The fixed bottom nav needs `student-main` bottom padding and browser obstruction checks; the first implementation exposed a 375px home top-bar overflow until the title group was allowed to shrink before the grade switch.
+  - Student-specific media overrides must come after the legacy 720px desktop grid query, otherwise the 520px desktop student frame inherits multi-column card layouts intended for admin or full-width pages.
 ---

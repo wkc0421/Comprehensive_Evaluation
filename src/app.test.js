@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { after, before, describe, it } from "node:test";
 
@@ -28,6 +29,23 @@ function assertNoPhoneFields(payload) {
 
   assert.doesNotMatch(serialized, /13812345678/);
   assert.doesNotMatch(serialized, /phone(Hash|Ciphertext|Number)?/i);
+}
+
+function studentBottomNav(body) {
+  const match = body.match(/<nav class="student-bottom-nav"[\s\S]*?<\/nav>/);
+
+  assert.ok(match, "Expected student bottom navigation");
+  return match[0];
+}
+
+function assertStudentBottomNav(body, currentHref) {
+  const nav = studentBottomNav(body);
+  const labels = [...nav.matchAll(/<span>(Home|Schools|Experiences|My)<\/span>/g)]
+    .map((match) => match[1]);
+
+  assert.deepEqual(labels, ["Home", "Schools", "Experiences", "My"]);
+  assert.doesNotMatch(nav, />Timeline<|>Calculator</);
+  assert.match(nav, new RegExp(`href="${currentHref}" aria-current="page"`));
 }
 
 function schoolNames(payload) {
@@ -143,6 +161,107 @@ describe("web routes", () => {
     assert.doesNotMatch(body, /Working Draft/);
     assert.doesNotMatch(body, /Pending review experience/);
     assert.doesNotMatch(body, /admission probability|ranking prediction|paid consulting|open comments|private messaging/i);
+  });
+
+  it("applies the frontend PRD design tokens and typography guardrails", async () => {
+    const css = await readFile(new URL("../public/styles.css", import.meta.url), "utf8");
+
+    for (const token of [
+      "--color-primary: #0F9F9A;",
+      "--color-primary-pressed: #0B7F7C;",
+      "--color-info: #2563EB;",
+      "--color-success: #16A34A;",
+      "--color-warning: #F59E0B;",
+      "--color-danger: #DC2626;",
+      "--color-page-bg: #F6F8FA;",
+      "--color-card-bg: #FFFFFF;",
+      "--color-border: #E5E7EB;",
+      "--color-text-primary: #111827;",
+      "--color-text-secondary: #4B5563;",
+      "--color-text-muted: #9CA3AF;",
+      "--radius-card: 8px;",
+      "--radius-control: 8px;",
+      "--shadow-card: 0 1px 2px rgba(17, 24, 39, 0.06);"
+    ]) {
+      assert.match(css, new RegExp(token.replaceAll("(", "\\(").replaceAll(")", "\\)")));
+    }
+
+    assert.doesNotMatch(css, /clamp\(|letter-spacing:\s*-/);
+    assert.doesNotMatch(css, /linear-gradient|radial-gradient/);
+    assert.doesNotMatch(css, /border-radius:\s*(?:9|[1-9]\d)px/);
+    assert.match(css, /\.student-bottom-nav/);
+    assert.match(css, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);/);
+    assert.match(css, /min-height: 48px;/);
+    assert.match(css, /font-size: 12px;/);
+    assert.match(css, /width: min\(100%, 520px\);/);
+  });
+
+  it("renders the student shell with four-tab bottom navigation and top bar rules", async () => {
+    const homeResponse = await fetch(`${baseUrl}/`, { headers: { accept: "text/html" } });
+    const homeBody = await homeResponse.text();
+    const schoolsResponse = await fetch(`${baseUrl}/schools?year=2025`, { headers: { accept: "text/html" } });
+    const schoolsBody = await schoolsResponse.text();
+    const experiencesResponse = await fetch(`${baseUrl}/experiences`, { headers: { accept: "text/html" } });
+    const experiencesBody = await experiencesResponse.text();
+
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000029",
+      nickname: "Shell student"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(user.id)).split(";")[0];
+    const meResponse = await fetch(`${baseUrl}/me`, {
+      headers: { accept: "text/html", cookie }
+    });
+    const meBody = await meResponse.text();
+
+    assert.equal(homeResponse.status, 200);
+    assert.equal(schoolsResponse.status, 200);
+    assert.equal(experiencesResponse.status, 200);
+    assert.equal(meResponse.status, 200);
+    assertStudentBottomNav(homeBody, "/");
+    assertStudentBottomNav(schoolsBody, "/schools");
+    assertStudentBottomNav(experiencesBody, "/experiences");
+    assertStudentBottomNav(meBody, "/me");
+    assert.match(homeBody, /aria-label="Grade switch"/);
+    assert.match(schoolsBody, /aria-label="Open school filters"/);
+    assert.match(experiencesBody, /aria-label="Open experience filters"/);
+    assert.match(meBody, /data-student-top-bar="list"/);
+  });
+
+  it("renders detail and task page top bars with back entries and accessible icon actions", async () => {
+    const detailResponse = await fetch(`${baseUrl}/schools/${seedIds.schools.sysu}?year=2026`, {
+      headers: { accept: "text/html" }
+    });
+    const detailBody = await detailResponse.text();
+    const calculatorResponse = await fetch(`${baseUrl}/calculator?schoolId=${seedIds.schools.sysu}&year=2026`, {
+      headers: { accept: "text/html" }
+    });
+    const calculatorBody = await calculatorResponse.text();
+
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000031",
+      nickname: "Task shell student"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(user.id)).split(";")[0];
+    const submissionResponse = await fetch(`${baseUrl}/experiences/new`, {
+      headers: {
+        accept: "text/html",
+        cookie
+      }
+    });
+    const submissionBody = await submissionResponse.text();
+
+    assert.equal(detailResponse.status, 200);
+    assert.equal(calculatorResponse.status, 200);
+    assert.equal(submissionResponse.status, 200);
+    assert.match(detailBody, /aria-label="Back to schools"/);
+    assert.match(detailBody, /aria-label="Favorite school"/);
+    assertStudentBottomNav(detailBody, "/schools");
+    assert.match(calculatorBody, /aria-label="Back to schools"/);
+    assert.doesNotMatch(calculatorBody, /Student bottom navigation/);
+    assert.match(submissionBody, /aria-label="Back to experiences"/);
+    assert.match(submissionBody, /Review after submit/);
+    assert.doesNotMatch(submissionBody, /Student bottom navigation/);
   });
 
   it("renders the admin placeholder route", async () => {
@@ -910,7 +1029,7 @@ describe("web routes", () => {
 
     assert.equal(pageResponse.status, 200);
     assert.match(pageBody, /Personal center/);
-    assert.match(pageBody, /Me/);
+    assert.match(pageBody, /My/);
     assert.match(pageBody, /Site notifications/);
     assert.match(pageBody, /Favorited schools/);
     assert.match(pageBody, /Favorited experiences/);

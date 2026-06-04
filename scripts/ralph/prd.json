@@ -330,6 +330,160 @@
       "priority": 20,
       "passes": true,
       "notes": "Added MVP end-to-end route tests, data-quality reporting and validation, package quality scripts, and Playwright-backed mobile browser overflow verification for core pages."
+    },
+    {
+      "id": "US-021",
+      "title": "Apply the frontend PRD design system and student shell",
+      "description": "Refresh the mobile-first student UI foundation to match the frontend PRD visual direction, navigation, layout, and reusable component rules.",
+      "acceptanceCriteria": [
+        "Define and apply the frontend PRD design tokens in public/styles.css, including #0F9F9A primary, #0B7F7C pressed primary, #2563EB info, #16A34A success, #F59E0B warning, #DC2626 danger, #F6F8FA page background, #FFFFFF cards, #E5E7EB borders, text colors, 8px card and control radii, and light card shadow.",
+        "Use fixed system-font typography with concise page titles, card titles, body text, helper text, and 12px status tags; do not use viewport-scaled font sizes or negative letter spacing.",
+        "Student main pages use a stable four-tab bottom navigation for Home, Schools, Experiences, and My, with current state shown by primary color icon and text, safe-area padding, and at least 44px touch targets.",
+        "Student task pages such as login, experience submission, and calculator result detail can hide the bottom navigation but must retain a clear back entry.",
+        "Student top bars follow page type rules: the home page shows product name and grade switch, list pages show page title with search or filter entry, detail pages show back entry, short title, and favorite action where relevant, and form pages show back entry, page title, and save or submit state.",
+        "Student desktop layout above 768px centers the content in a 430px to 520px column while admin pages keep a full desktop layout.",
+        "Implementation keeps the current dependency-free Node.js ESM foundation and does not introduce a frontend framework, build dependency, or external icon package; icons use existing inline HTML, CSS, or SVG patterns with accessible names.",
+        "Shared cards, status tags, empty states, loading states, buttons, toasts, and icon buttons follow the frontend PRD rules: no nested cards, card radius no more than 8px, shallow status colors, accessible icon names, and no decorative large illustrations or gradient backgrounds.",
+        "Browser verification at 375px, 390px, and 430px proves no horizontal scroll, bottom navigation does not cover primary actions, and long school or major names wrap or truncate cleanly."
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": "Implemented the frontend PRD token foundation, fixed student shell with four-tab bottom navigation, page-type top bars, task-page back entries, desktop student column constraints, route tests, and browser shell checks."
+    },
+    {
+      "id": "US-022",
+      "title": "Redesign the student home and login experience",
+      "description": "Implement the frontend PRD home screen and shared phone OTP login flow for student actions.",
+      "acceptanceCriteria": [
+        "Home first screen shows only the grade-aware greeting card, four core task entries, and nearest timeline nodes; latest guides, latest experiences, and grade preparation tips appear below the first screen.",
+        "The four home task entries are Schools, Timeline, Score Calculator, and Experiences, with short mobile-first labels and clear navigation targets.",
+        "Nearest timeline nodes show one to three items, prioritize favorited school nodes for logged-in users, fall back to site-wide nodes for guests or users without favorites, and show the guest prompt for logging in to view a personal timeline.",
+        "Latest guides show three lightweight rows with school, year, status, application deadline, and source status; latest experiences show three rows with school, year, stage, assessment format, and verification label.",
+        "Home empty states use the PRD copy intent for no current guides, no clear nodes, and logged-out personal timeline access without presenting admission probability, rankings, paid consulting, comments, or private messaging.",
+        "Phone OTP login validates mainland China phone numbers, requires agreement consent before enabling login, supports a 60 second verification-code countdown, shows retryable errors for failed sends, and preserves entered values on OTP errors.",
+        "After login, the user returns to the triggering page or action, and login-triggered favorite, useful vote, report, or publish actions continue and show a lightweight toast without exposing system internals.",
+        "Route tests and browser tests cover grade-one, grade-two, grade-three, guest, and logged-in home states plus login-required action continuation."
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+    },
+    {
+      "id": "US-023",
+      "title": "Redesign school browsing and school detail pages",
+      "description": "Update the student school list and detail pages so students can scan official guide status, deadlines, formulas, and experiences from the frontend PRD layout.",
+      "acceptanceCriteria": [
+        "School list includes top search for school name or abbreviation and visible mobile filters for year, guide status, application status, and school type where supported by existing data.",
+        "School filters update the current page without navigating away, keep the selected filters visible, support clearing filters from an empty state, and show retry UI for failed loading.",
+        "School cards show school name and abbreviation, year, guide status tag, application deadline or to-be-announced label, formula tag such as 631, 85/15, custom, or no formula, experience count, and favorite control.",
+        "Favoriting from the school list or detail page requires login; unauthenticated users see the shared login guide and successful login continues the original favorite action.",
+        "School detail header shows school name, location, year switch, favorite control, and guide status tag, followed by quick actions for official guide, application link, score calculation, and experiences with at most one primary action in view.",
+        "School detail renders information cards in PRD order: key timeline, official guide summary, score formula, admission requirements, assessment and admission, fees and consultation, and featured experiences.",
+        "Unknown official fields render as official not specified, to be announced, or pending supplement instead of blank or invented content, and unpublished current-year guides fall back to the latest published guide clearly labeled historical reference.",
+        "Long official text is collapsed by default with an expand control, official links open in a new page, and the lightweight bottom action bar prioritizes application link, score calculator, then experience submission without showing more than one primary button in the viewport.",
+        "When no published formula exists, the detail page does not expose a score calculation entry and explains that the calculation waits for official clarification.",
+        "Mobile and desktop browser verification covers the school list and detail layouts, including 375px, 390px, and 430px widths."
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+    },
+    {
+      "id": "US-024",
+      "title": "Redesign timeline and score calculator pages",
+      "description": "Implement the frontend PRD timeline and score calculator interactions with clear official-source context and no admission prediction language.",
+      "acceptanceCriteria": [
+        "Timeline page provides All Nodes and My Favorites tabs, year and node-type filters, month-grouped timeline sections, and node cards with school, node type, date or to-be-announced label, status tag, and source guide year.",
+        "Timeline node statuses render as not started, active, due soon, ended, or to be announced using both text and color; color is never the only status indicator.",
+        "Clicking a timeline node opens the related school detail page, unauthenticated users selecting My Favorites see the login guide, and logged-in users with no favorites see the collect-schools empty state.",
+        "Score calculator shows the school and year selector, current formula status, formula explanation with weights and max-score notes, official basis link, dynamic score inputs generated from score_formulas.inputs_schema, and the result card.",
+        "Changing school or year clears entered scores, invalid scores show inline errors near the input, required missing inputs disable calculation, and the calculate button shows loading during calculation.",
+        "When no published formula or source-backed formula exists, the calculator shows the unavailable state and hides the calculation form.",
+        "After calculation, the result card scrolls into view and shows total comprehensive score, per-input contribution, formula name, official source link, and the standard disclaimer that the result does not represent admission probability.",
+        "Calculator and timeline UI never output probability, ranking, recommended application decisions, guaranteed admission, or similar anxiety-inducing copy.",
+        "Route tests and browser automation cover all timeline states, no-favorites state, no-formula calculator state, invalid input, valid calculation, result scrolling, and source attribution."
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+    },
+    {
+      "id": "US-025",
+      "title": "Redesign experience browsing, detail, and submission flows",
+      "description": "Implement the frontend PRD structured interview experience pages with privacy-safe cards, detail sections, and local draft behavior.",
+      "acceptanceCriteria": [
+        "Experience list includes top search across school, stage, and keyword plus visible filters for school, year, stage, assessment type, and verified status.",
+        "Experience sorting defaults to recent two years first, verified first, and updated time descending, with optional newest and useful-count sort choices.",
+        "Experience cards show school, year, major or admission group, stage, assessment format, summary, verified label, historical reference label when older than two years, useful count, and favorite control.",
+        "Pending-review experiences never appear in public lists, and empty states guide the user to change filters or publish the first relevant experience.",
+        "Experience detail presents header metadata, basic information, process, question-type categories, preparation and advice, experience ratings, and bottom actions for favorite, useful, and report.",
+        "Experience submission requires login and captures the PRD fields for basic info, result, assessment format, optional location, process, question types, preparation, advice, ratings, anonymous preference, optional verification material metadata, and publish notices.",
+        "Experience submission form shows clear required markers, character-count hints for long text fields, leave-with-unsaved-content confirmation, and verification material purpose plus reviewer-only visibility before upload.",
+        "Submission form drafts are stored locally for up to seven days, restore with a clear prompt, can be cleared in one action, are cleared on logout and successful submission, and never persist verification material files locally.",
+        "Required fields prevent submission when missing, failed submission preserves user input, successful submission goes to an under-review state, and under-review content is visible only in My Submissions.",
+        "Anonymous experience output never exposes phone, real name, source account, verification materials, or other user-identifying information.",
+        "Browser and route tests cover filtering, sorting, public-only visibility, detail actions, draft restore and expiry behavior, anonymous output, and review-pending visibility."
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+    },
+    {
+      "id": "US-026",
+      "title": "Redesign the personal center",
+      "description": "Update the My page to match the frontend PRD logged-out and logged-in personal-center structure.",
+      "acceptanceCriteria": [
+        "Logged-out My page shows a login guide card explaining that login enables school favorites, experience publishing, and review-status tracking.",
+        "Logged-in My page shows user nickname, grade, default anonymous preference, school favorites, experience favorites, submitted experiences, site reminders, and account settings.",
+        "Submitted experience groups show pending review, published, returned, hidden, and rejected states where applicable, with student-safe labels and next actions.",
+        "Site reminders show nearest nodes for favorited schools and submission review status changes without sending SMS, WeChat, email, or other external notifications.",
+        "Account settings allow updating nickname, grade, and default anonymous preference, and provide logout that clears local experience-submission drafts.",
+        "Phone numbers, real names, source accounts, and verification material details never render in My page public-facing sections.",
+        "Browser tests cover logged-out login guide, logged-in navigation, favorites, submissions, reminders, preference updates, logout, and draft clearing."
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+    },
+    {
+      "id": "US-027",
+      "title": "Redesign admin desktop workflows",
+      "description": "Update the admin pages to the frontend PRD desktop-first layout for ingestion, guide review, timeline, formulas, moderation, verification, and reports.",
+      "acceptanceCriteria": [
+        "Admin pages use a desktop-first shell with left navigation, top global status bar, main content region, and drawers or right-side panels for detail and review workflows.",
+        "Admin left navigation includes Data Ingestion, Guide Review, Timeline Management, Formula Management, Experience Review, Verification Review, and Report Handling.",
+        "Data ingestion page supports creating runs with year, school, and keyword, shows run status, source count, extraction confidence, creator and time, and opens a detail drawer with source candidates, extracted fields, confidence, manual-confirmation items, and draft-guide creation.",
+        "Guide review page shows a queue table with school, year, status, source type, missing-field count, and update time, plus a detail review layout with structured fields beside official source preview or link and field-level confirmation state.",
+        "Guide publish, return, supplement, archive, hide, and similar admin actions show a student-visible preview and require or record reasons, operator identity, and operation time.",
+        "Timeline management shows generated nodes with school, year, node type, date, date precision, source, manual override state, and student-side status; manual overrides require a reason and preserve original generated data.",
+        "Formula management provides a formula list, editor, test sample area, and student-side preview; formulas require an official source link and at least one passing sample calculation before publication.",
+        "Experience moderation shows pending queue, sensitive and privacy warnings, student-side preview, and actions to approve, return for rewrite, hide, or limit accounts while blocking ongoing-exam content, undisclosed original questions, sales, ghostwriting, guaranteed admission claims, external traffic scams, and personal sensitive information.",
+        "Verification review keeps raw materials visible only in the backend, exposes only a verification label on the student side, and requires a reason when refusing verification.",
+        "Report handling shows report list, target preview, reason, history, and actions to keep, hide, delete display, limit account, or reject report, with operator and time recorded."
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+    },
+    {
+      "id": "US-028",
+      "title": "Add frontend PRD acceptance gates",
+      "description": "Add automated and manual-quality checks that verify the frontend PRD visual, content, accessibility, privacy, and product-boundary requirements.",
+      "acceptanceCriteria": [
+        "Frontend browser checks cover core student pages at 375px, 390px, and 430px with no horizontal scroll, no overlapping text, no bottom navigation obstruction, and clean wrapping or truncation of long school and major names.",
+        "Checks or tests verify the visual direction uses blue-green primary actions, white cards on shallow gray page background, shallow status tags, no card nesting, no card radius above 8px, no large gradient backgrounds, and no complex decorative illustrations.",
+        "Frontend interaction checks verify list loading skeletons, filter empty states retain selected criteria, clear-filter controls are available, and retry controls appear after loading failures where pages perform client-side loading.",
+        "Accessibility checks verify icon buttons have accessible names, form errors use text near the input, status is expressed with text as well as color, and interactive controls meet the 44px minimum touch target.",
+        "Content checks prevent admission probability, ranking prediction, guaranteed admission, internal-news claims, paid consulting, open comments, private messaging, unpublicized original exam questions, and third-party sources labeled as official.",
+        "Privacy checks verify public and anonymous pages never expose phone numbers, real names, source accounts, verification materials, reviewer-only material URLs, or private reporter data.",
+        "Student acceptance checks verify the home first screen, stable four-tab bottom navigation, school-detail cross-entry actions, no-formula calculator hiding, pending-review experience hiding, and anonymous experience privacy.",
+        "Admin acceptance checks verify draft-only AI ingestion, official-source preview before guide publication, formula source link and sample-test gating, moderation warning and student preview, and backend-only verification materials.",
+        "Frontend PRD completion records a deterministic acceptance matrix that maps each frontend PRD section or story acceptance criterion to committed implementation surfaces, route or browser checks, negative product-boundary checks, and any saved artifacts.",
+        "Run npm test, npm run data-quality, and npm run browser-test before marking the frontend PRD complete."
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
     }
   ]
 }

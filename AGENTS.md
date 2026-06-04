@@ -3,6 +3,7 @@
 - The current scaffold is a dependency-free Node.js ESM app. Keep new foundation work in plain JavaScript modules unless a later story explicitly introduces a framework or package.
 - HTTP routing is centralized in `src/app.js`; `src/server.js` should stay limited to server startup concerns.
 - Server-rendered HTML belongs in `src/pages.js`, shared product metadata belongs in `src/lib/product.js`, and mobile-first styling belongs in `public/styles.css`.
+- Student-facing pages should render through the shared student shell helpers in `src/pages.js`; keep the four-tab bottom navigation data in `src/lib/product.js`, use page-type top bars, and hide bottom navigation only for task pages that retain a clear back entry.
 - `npm run build` writes production files to `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`.
 - Quality scripts in `scripts/` are intentionally dependency-free and should ignore Ralph run logs and PRD source files.
 - MVP-wide quality gates include `src/e2e.test.js`, `scripts/data-quality.mjs`, and `scripts/browser-core-pages.mjs`; run `npm test`, `npm run data-quality`, and `npm run browser-test` before marking end-to-end UI quality complete.

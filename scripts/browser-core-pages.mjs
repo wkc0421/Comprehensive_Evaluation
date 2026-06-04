@@ -48,12 +48,12 @@ screenshot_dir = Path(os.environ["BROWSER_SCREENSHOT_DIR"])
 sysu_school_id = os.environ["SYSU_SCHOOL_ID"]
 
 core_pages = [
-    ("/", "home"),
-    ("/schools?year=2025&sort=name", "schools"),
-    (f"/schools/{sysu_school_id}?year=2026", "school-detail"),
-    ("/timeline?year=2026", "timeline"),
-    (f"/calculator?schoolId={sysu_school_id}&year=2026", "calculator"),
-    ("/experiences?year=2024&assessmentType=machine_test&sort=newest", "experiences"),
+    ("/", "home", True, "/"),
+    ("/schools?year=2025&sort=name", "schools", True, "/schools"),
+    (f"/schools/{sysu_school_id}?year=2026", "school-detail", True, "/schools"),
+    ("/timeline?year=2026", "timeline", True, None),
+    (f"/calculator?schoolId={sysu_school_id}&year=2026", "calculator", False, None),
+    ("/experiences?year=2024&assessmentType=machine_test&sort=newest", "experiences", True, "/experiences"),
 ]
 widths = [375, 390, 430]
 hidden_text = [
@@ -71,14 +71,69 @@ async def main():
         for width in widths:
             page = await browser.new_page(viewport={"width": width, "height": 940})
 
-            for path, label in core_pages:
+            for path, label, requires_nav, current_href in core_pages:
                 await page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
                 await page.locator("body").wait_for()
-                metrics = await page.evaluate("""() => ({
-                    scrollWidth: document.documentElement.scrollWidth,
-                    clientWidth: document.documentElement.clientWidth,
-                    bodyText: document.body.innerText
-                })""")
+                metrics = await page.evaluate("""({ requiresNav, currentHref }) => {
+                    const nav = document.querySelector("[data-student-bottom-nav='true']");
+                    const navLinks = nav ? Array.from(nav.querySelectorAll("a")) : [];
+                    const activeLink = nav ? nav.querySelector("a[aria-current='page']") : null;
+                    const navRect = nav ? nav.getBoundingClientRect() : null;
+                    const visiblePrimaryActions = Array.from(document.querySelectorAll(".primary-action"))
+                        .filter((element) => {
+                            const rect = element.getBoundingClientRect();
+                            const style = window.getComputedStyle(element);
+                            return rect.width > 0 &&
+                                rect.height > 0 &&
+                                rect.bottom > 0 &&
+                                rect.top < window.innerHeight &&
+                                style.visibility !== "hidden" &&
+                                style.display !== "none";
+                        });
+                    const obstructedPrimaryActions = navRect
+                        ? visiblePrimaryActions.filter((element) => {
+                            const rect = element.getBoundingClientRect();
+                            return rect.bottom > navRect.top && rect.top < navRect.bottom;
+                        }).map((element) => element.textContent.trim())
+                        : [];
+                    const smallTargets = navLinks
+                        .map((link) => ({ label: link.textContent.trim(), rect: link.getBoundingClientRect() }))
+                        .filter((item) => item.rect.width < 44 || item.rect.height < 44)
+                        .map((item) => item.label + ":" + Math.round(item.rect.width) + "x" + Math.round(item.rect.height));
+                    const longNames = [
+                        "South China University of Technology",
+                        "Southern University of Science and Technology",
+                    ];
+                    const clippedLongNames = Array.from(document.querySelectorAll("body *"))
+                        .filter((element) => longNames.some((name) => element.textContent.includes(name)))
+                        .filter((element) => element.children.length === 0)
+                        .filter((element) => {
+                            const rect = element.getBoundingClientRect();
+                            const style = window.getComputedStyle(element);
+                            if (rect.width <= 0 || rect.height <= 0) {
+                                return false;
+                            }
+                            const renderedWidth = Math.max(element.clientWidth, Math.ceil(rect.width));
+                            const overflowing = element.scrollWidth > renderedWidth + 1;
+                            const cleanTruncate = style.whiteSpace === "nowrap" && style.textOverflow === "ellipsis";
+                            return overflowing && !cleanTruncate;
+                        })
+                        .map((element) => element.textContent.trim().slice(0, 80));
+
+                    return {
+                        scrollWidth: document.documentElement.scrollWidth,
+                        clientWidth: document.documentElement.clientWidth,
+                        bodyText: document.body.innerText,
+                        navExists: Boolean(nav),
+                        navLabels: navLinks.map((link) => link.textContent.trim()),
+                        activeHref: activeLink ? activeLink.getAttribute("href") : null,
+                        smallTargets,
+                        obstructedPrimaryActions,
+                        clippedLongNames,
+                        requiresNav,
+                        currentHref
+                    };
+                }""", {"requiresNav": requires_nav, "currentHref": current_href})
 
                 if metrics["scrollWidth"] > metrics["clientWidth"]:
                     raise AssertionError(
@@ -90,15 +145,55 @@ async def main():
                     if text in metrics["bodyText"]:
                         raise AssertionError(f"{label} exposed hidden review text: {text}")
 
+                if metrics["requiresNav"]:
+                    if not metrics["navExists"]:
+                        raise AssertionError(f"{label} at {width}px is missing student bottom navigation")
+                    if metrics["navLabels"] != ["Home", "Schools", "Experiences", "My"]:
+                        raise AssertionError(f"{label} at {width}px has unexpected nav labels: {metrics['navLabels']}")
+                    if metrics["currentHref"] and metrics["activeHref"] != metrics["currentHref"]:
+                        raise AssertionError(
+                            f"{label} at {width}px active nav href {metrics['activeHref']} "
+                            f"did not match {metrics['currentHref']}"
+                        )
+                    if metrics["smallTargets"]:
+                        raise AssertionError(f"{label} at {width}px has small nav targets: {metrics['smallTargets']}")
+                    if metrics["obstructedPrimaryActions"]:
+                        raise AssertionError(
+                            f"{label} at {width}px has primary actions under bottom nav: "
+                            f"{metrics['obstructedPrimaryActions']}"
+                        )
+                elif metrics["navExists"]:
+                    raise AssertionError(f"{label} at {width}px should hide student bottom navigation")
+
+                if metrics["clippedLongNames"]:
+                    raise AssertionError(
+                        f"{label} at {width}px clips long school names without ellipsis: "
+                        f"{metrics['clippedLongNames']}"
+                    )
+
                 if width == 390:
                     await page.screenshot(path=screenshot_dir / f"{label}-{width}.png", full_page=True)
 
             await page.close()
 
+        desktop_page = await browser.new_page(viewport={"width": 1280, "height": 940})
+        await desktop_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        desktop_metrics = await desktop_page.evaluate("""() => {
+            const frame = document.querySelector(".student-frame");
+            const rect = frame.getBoundingClientRect();
+            return { width: rect.width, left: rect.left, right: rect.right, viewport: window.innerWidth };
+        }""")
+        if desktop_metrics["width"] < 430 or desktop_metrics["width"] > 520:
+            raise AssertionError(f"Desktop student frame width is outside 430-520px: {desktop_metrics}")
+        centered_delta = abs(desktop_metrics["left"] - (desktop_metrics["viewport"] - desktop_metrics["right"]))
+        if centered_delta > 2:
+            raise AssertionError(f"Desktop student frame is not centered: {desktop_metrics}")
+        await desktop_page.close()
+
         await browser.close()
 
 asyncio.run(main())
-print("Core mobile browser verification passed at 375px, 390px, and 430px")
+print("Core browser verification passed at 375px, 390px, 430px, and desktop student frame width")
 `;
 }
 
