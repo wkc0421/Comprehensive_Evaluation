@@ -109,8 +109,8 @@
         "Verify the page in browser automation on mobile and desktop viewports."
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented published-only school detail JSON and HTML for /schools/:id and /api/schools/:id with current/latest year defaulting, official guide fields, timeline, formula entry or pending supplement state, featured experience ranking, tests, and mobile/desktop Playwright verification."
     },
     {
       "id": "US-008",

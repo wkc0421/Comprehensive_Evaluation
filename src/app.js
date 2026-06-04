@@ -4,8 +4,14 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AuthError, authService as defaultAuthService } from "./auth.js";
-import { listSchoolGuideCards, listTimelineEvents } from "./db/data-access.js";
-import { renderAdminPage, renderNotFound, renderSchoolListPage, renderStudentHome } from "./pages.js";
+import { getSchoolDetail, listSchoolGuideCards, listTimelineEvents } from "./db/data-access.js";
+import {
+  renderAdminPage,
+  renderNotFound,
+  renderSchoolDetailPage,
+  renderSchoolListPage,
+  renderStudentHome
+} from "./pages.js";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const publicDir = join(rootDir, "public");
@@ -158,6 +164,7 @@ function schoolCardJson(card) {
     school: {
       id: card.school.id,
       name: card.school.name,
+      provinceScope: card.school.provinceScope,
       city: card.school.city,
       schoolType: card.school.schoolType,
       officialWebsiteUrl: card.school.officialWebsiteUrl,
@@ -186,6 +193,79 @@ function schoolCardJson(card) {
   };
 }
 
+function formulaJson(formula) {
+  if (!formula) {
+    return null;
+  }
+
+  return {
+    id: formula.id,
+    formulaName: formula.formulaName,
+    formulaType: formula.formulaType,
+    inputs: formula.formulaConfig.inputs,
+    outputMaxScore: formula.formulaConfig.outputMaxScore,
+    explanation: formula.explanation,
+    officialSourceUrl: formula.officialSourceUrl
+  };
+}
+
+function schoolDetailJson(detail) {
+  return {
+    school: {
+      id: detail.school.id,
+      name: detail.school.name,
+      provinceScope: detail.school.provinceScope,
+      city: detail.school.city,
+      schoolType: detail.school.schoolType,
+      officialWebsiteUrl: detail.school.officialWebsiteUrl,
+      updatedAt: detail.school.updatedAt
+    },
+    availableYears: detail.availableYears,
+    selectedYear: detail.selectedYear,
+    guide: {
+      id: detail.guide.id,
+      year: detail.guide.admissionYear,
+      status: detail.guide.status,
+      version: detail.guide.version,
+      applicationStatus: detail.guide.applicationStatus,
+      applicationStartAt: detail.guide.applicationStartAt,
+      applicationDeadlineAt: detail.guide.applicationDeadlineAt,
+      officialSourceUrl: detail.guide.officialSourceUrl,
+      applicationUrl: detail.guide.applicationUrl,
+      guideTitle: detail.guide.guideTitle,
+      summary: detail.guide.summary,
+      majors: detail.guide.majors,
+      subjectRequirements: detail.guide.subjectRequirements,
+      academicTestRequirements: detail.guide.academicTestRequirements,
+      assessmentMethod: detail.guide.assessmentMethod,
+      admissionRule: detail.guide.admissionRule,
+      fees: detail.guide.fees,
+      contact: detail.guide.contact,
+      publishedAt: detail.guide.publishedAt,
+      updatedAt: detail.guide.updatedAt
+    },
+    timeline: detail.timeline.map((node) => ({
+      id: node.id,
+      eventKey: node.eventKey,
+      title: node.title,
+      startsAt: node.startsAt,
+      endsAt: node.endsAt
+    })),
+    formula: formulaJson(detail.formula),
+    featuredExperiences: detail.featuredExperiences.map((experience) => ({
+      id: experience.id,
+      schoolId: experience.schoolId,
+      year: experience.admissionYear,
+      stage: experience.stage,
+      assessmentTypes: experience.assessmentTypes,
+      summary: experience.summary,
+      verificationStatus: experience.verificationStatus,
+      usefulCount: experience.usefulCount,
+      createdAt: experience.createdAt
+    }))
+  };
+}
+
 function sendSchoolListJson(response, filters) {
   const schools = listSchoolGuideCards(filters).map(schoolCardJson);
 
@@ -194,6 +274,34 @@ function sendSchoolListJson(response, filters) {
     count: schools.length,
     schools
   });
+}
+
+function parseSchoolDetailPath(pathname) {
+  const match = pathname.match(/^\/(?:api\/)?schools\/(?<schoolId>[^/]+)$/);
+
+  if (!match?.groups?.schoolId) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match.groups.schoolId);
+  } catch {
+    throw new RequestError("invalid_school_id", "School id must be URL encoded correctly.");
+  }
+}
+
+function shouldSendSchoolDetailJson(request, url) {
+  if (url.pathname.startsWith("/api/") || url.searchParams.get("format") === "json") {
+    return true;
+  }
+
+  const accept = headerValue(request.headers, "accept") ?? "";
+
+  if (accept.includes("text/html")) {
+    return false;
+  }
+
+  return accept.length === 0 || accept.includes("*/*") || accept.includes("application/json");
 }
 
 function sessionTokenFromRequest(request, authService) {
@@ -394,6 +502,45 @@ export async function handleRequest(request, response, context = {}) {
       sendHtml(response, 200, renderSchoolListPage(filters));
     } catch (error) {
       sendError(response, errorStatus(error), error.code ?? "school_list_error", error.message);
+    }
+
+    return;
+  }
+
+  let schoolId;
+
+  try {
+    schoolId = parseSchoolDetailPath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "school_detail_error", error.message);
+    return;
+  }
+
+  if (schoolId && request.method === "GET") {
+    try {
+      const detail = getSchoolDetail({
+        schoolId,
+        year: optionalYearParam(url)
+      });
+
+      if (!detail) {
+        if (shouldSendSchoolDetailJson(request, url)) {
+          sendError(response, 404, "not_found", "No published school guide was found for this school and year.");
+          return;
+        }
+
+        sendHtml(response, 404, renderNotFound());
+        return;
+      }
+
+      if (shouldSendSchoolDetailJson(request, url)) {
+        sendJson(response, 200, schoolDetailJson(detail));
+        return;
+      }
+
+      sendHtml(response, 200, renderSchoolDetailPage(detail));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "school_detail_error", error.message);
     }
 
     return;

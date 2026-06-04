@@ -20,6 +20,11 @@ const publishedStatus = "published";
  * @property {string} [schoolType]
  * @property {"deadline" | "updated" | "name"} [sort]
  *
+ * @typedef {object} SchoolDetailFilters
+ * @property {string} schoolId
+ * @property {number} [year]
+ * @property {number} [currentYear]
+ *
  * @typedef {object} TimelineFilters
  * @property {string} [admissionGuideId]
  * @property {string} [schoolId]
@@ -72,6 +77,35 @@ function compareExperienceRecency(left, right) {
   return right.usefulCount - left.usefulCount;
 }
 
+function compareFeaturedExperiences(left, right, schoolId, year) {
+  const sameSchoolDifference =
+    Number(right.schoolId === schoolId) - Number(left.schoolId === schoolId);
+
+  if (sameSchoolDifference !== 0) {
+    return sameSchoolDifference;
+  }
+
+  const recentDifference =
+    Number(isRecentExperience(right, year)) - Number(isRecentExperience(left, year));
+
+  if (recentDifference !== 0) {
+    return recentDifference;
+  }
+
+  const verifiedDifference =
+    Number(right.verificationStatus === "verified") - Number(left.verificationStatus === "verified");
+
+  if (verifiedDifference !== 0) {
+    return verifiedDifference;
+  }
+
+  if (right.usefulCount !== left.usefulCount) {
+    return right.usefulCount - left.usefulCount;
+  }
+
+  return compareExperienceRecency(left, right);
+}
+
 function compareSchoolCardNames(left, right) {
   const schoolDifference = compareSchoolNames(left.school, right.school);
 
@@ -116,6 +150,10 @@ function normalizeKeyword(keyword) {
 
 function normalizeFilterValue(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function isRecentExperience(experience, year) {
+  return experience.admissionYear <= year && experience.admissionYear >= year - 1;
 }
 
 function getPublishedSchoolById(schoolId) {
@@ -189,6 +227,25 @@ function schoolGuideCardFor(guide) {
       count: experiences.length
     }
   };
+}
+
+function resolveDetailGuide(guides, filters) {
+  if (guides.length === 0) {
+    return null;
+  }
+
+  if (filters.year) {
+    return guides.find((guide) => guide.admissionYear === filters.year) ?? null;
+  }
+
+  const currentYear = filters.currentYear ?? new Date().getUTCFullYear();
+  return guides.find((guide) => guide.admissionYear === currentYear) ?? guides[0];
+}
+
+function featuredExperiencesFor(schoolId, year, limit = 3) {
+  return [...listExperiences()]
+    .sort((left, right) => compareFeaturedExperiences(left, right, schoolId, year))
+    .slice(0, limit);
 }
 
 /**
@@ -276,6 +333,47 @@ export function listSchoolGuideCards(filters = {}) {
   }
 
   return cards.sort(compareSchoolCardsByDeadline);
+}
+
+/**
+ * Reads the public school detail aggregate for one published school and guide
+ * year. When no year is supplied, the current calendar year is preferred if a
+ * published guide exists; otherwise the latest published guide year is used.
+ *
+ * @param {SchoolDetailFilters} filters
+ * @returns {{
+ *   school: import("./seed-data.js").SchoolSeed,
+ *   availableYears: number[],
+ *   selectedYear: number,
+ *   guide: import("./seed-data.js").AdmissionGuideSeed,
+ *   timeline: ReadonlyArray<import("./seed-data.js").TimelineEventSeed>,
+ *   formula: import("./seed-data.js").ScoreFormulaSeed | null,
+ *   featuredExperiences: ReadonlyArray<import("./seed-data.js").ExperienceSeed>
+ * } | null}
+ */
+export function getSchoolDetail(filters) {
+  const school = getPublishedSchoolById(filters.schoolId);
+
+  if (!school) {
+    return null;
+  }
+
+  const guides = listGuides({ schoolId: school.id });
+  const guide = resolveDetailGuide(guides, filters);
+
+  if (!guide) {
+    return null;
+  }
+
+  return {
+    school,
+    availableYears: guides.map((visibleGuide) => visibleGuide.admissionYear),
+    selectedYear: guide.admissionYear,
+    guide,
+    timeline: listTimelineEvents({ admissionGuideId: guide.id }),
+    formula: getScoreFormula({ schoolId: school.id, year: guide.admissionYear }),
+    featuredExperiences: featuredExperiencesFor(school.id, guide.admissionYear)
+  };
 }
 
 /**

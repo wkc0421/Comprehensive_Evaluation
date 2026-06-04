@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   getExperienceById,
   getGuideById,
+  getSchoolDetail,
   getSchoolById,
   getScoreFormula,
   getScoreFormulaById,
@@ -74,6 +75,30 @@ describe("student-facing data access helpers", () => {
     assert.equal(cards[0].formula.available, false);
     assert.equal(cards[0].experiences.exists, true);
     assert.ok(cards[0].keyTimelineNodes.some((node) => node.eventKey === "application_deadline"));
+  });
+
+  it("builds school detail aggregates with current or latest published guides", () => {
+    const sysuDetail = getSchoolDetail({
+      schoolId: seedIds.schools.sysu,
+      currentYear: 2026
+    });
+    const scutDetail = getSchoolDetail({
+      schoolId: seedIds.schools.scut,
+      currentYear: 2026
+    });
+
+    assert.equal(sysuDetail?.selectedYear, 2026);
+    assert.equal(sysuDetail?.guide.id, seedIds.guides.sysu2026);
+    assert.equal(sysuDetail?.formula?.id, seedIds.formulas.sysu2026);
+    assert.ok(sysuDetail?.timeline.some((event) => event.eventKey === "school_assessment"));
+    assert.deepEqual(sysuDetail?.availableYears, [2026, 2025]);
+    assert.equal(sysuDetail?.featuredExperiences[0].schoolId, seedIds.schools.sysu);
+
+    assert.equal(scutDetail?.selectedYear, 2025);
+    assert.equal(scutDetail?.guide.id, seedIds.guides.scut2025);
+    assert.equal(scutDetail?.formula, null);
+    assert.equal(getSchoolDetail({ schoolId: seedIds.schools.scut, year: 2026 }), null);
+    assert.equal(getSchoolDetail({ schoolId: "missing-school", year: 2026 }), null);
   });
 
   it("sorts school guide cards by deadline, update time, and school name", () => {

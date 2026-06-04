@@ -204,6 +204,70 @@ describe("web routes", () => {
     assert.doesNotMatch(body, /Working Draft/);
   });
 
+  it("returns the school detail API for one published school year", async () => {
+    const response = await fetch(`${baseUrl}/schools/${seedIds.schools.sysu}?year=2026`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.school.id, seedIds.schools.sysu);
+    assert.equal(body.school.name, "Sun Yat-sen University");
+    assert.equal(body.school.provinceScope, "guangdong");
+    assert.deepEqual(body.availableYears, [2026, 2025]);
+    assert.equal(body.selectedYear, 2026);
+    assert.equal(body.guide.id, seedIds.guides.sysu2026);
+    assert.equal(body.guide.status, "published");
+    assert.equal(body.guide.officialSourceUrl, "https://example.edu/sysu/2026-comprehensive-evaluation-guide");
+    assert.equal(body.guide.applicationUrl, "https://example.edu/apply");
+    assert.ok(body.timeline.some((node) => node.eventKey === "school_assessment"));
+    assert.equal(body.formula.formulaName, "60/30/10 comprehensive score");
+    assert.equal(body.featuredExperiences[0].schoolId, seedIds.schools.sysu);
+    assert.doesNotMatch(serialized, /Pending review guide|Working Draft|Pending review experience/);
+  });
+
+  it("defaults school detail to current or latest published year and hides unpublished years", async () => {
+    const defaultResponse = await fetch(`${baseUrl}/api/schools/${seedIds.schools.scut}`);
+    const defaultBody = await defaultResponse.json();
+
+    assert.equal(defaultResponse.status, 200);
+    assert.equal(defaultBody.selectedYear, 2025);
+    assert.equal(defaultBody.guide.id, seedIds.guides.scut2025);
+    assert.equal(defaultBody.formula, null);
+
+    const hiddenResponse = await fetch(`${baseUrl}/api/schools/${seedIds.schools.scut}?year=2026`);
+    const hiddenBody = await hiddenResponse.json();
+
+    assert.equal(hiddenResponse.status, 404);
+    assert.equal(hiddenBody.error, "not_found");
+  });
+
+  it("renders the school detail page with official fields and pending supplements", async () => {
+    const response = await fetch(`${baseUrl}/schools/${seedIds.schools.scut}?year=2025`, {
+      headers: { accept: "text/html" }
+    });
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /South China University of Technology/);
+    assert.match(body, /School base information/);
+    assert.match(body, /Guide summary/);
+    assert.match(body, /Official source/);
+    assert.match(body, /Application link/);
+    assert.match(body, /Timeline/);
+    assert.match(body, /Score formula entry/);
+    assert.match(body, /Score formula pending supplement/);
+    assert.match(body, /Majors/);
+    assert.match(body, /Subject requirements/);
+    assert.match(body, /Academic test requirements/);
+    assert.match(body, /Assessment method/);
+    assert.match(body, /Admission rule/);
+    assert.match(body, /Fees and contact/);
+    assert.match(body, /Featured experiences/);
+    assert.match(body, /Questions emphasized engineering interest/);
+    assert.doesNotMatch(body, /Draft Review Guide/);
+    assert.doesNotMatch(body, /Working Draft/);
+  });
+
   it("logs in with a phone OTP session without returning phone data", async () => {
     const otpResponse = await fetch(`${baseUrl}/api/auth/otp`, {
       method: "POST",
