@@ -352,6 +352,11 @@ export function createAuthService(options = {}) {
 
     createSessionForUser,
 
+    getUserById(userId) {
+      const user = usersById.get(userId);
+      return user ? toPublicUser(user) : null;
+    },
+
     getSession(token) {
       if (!token) {
         return null;

@@ -15,3 +15,4 @@
 - Public score calculation should use `calculateScore` from `src/db/data-access.js` so formula visibility, input normalization, validation errors, breakdowns, source links, and disclaimer text stay consistent across APIs and pages.
 - Public experience browsing pages and APIs should use `listExperiences` from `src/db/data-access.js` so published-only visibility, filters, and sort order stay consistent.
 - Structured experience submissions should go through `src/experience-submissions.js`; route tests can inject an `experienceSubmissionStore`, and public or anonymous submission output must not expose verification materials, source accounts, phone fields, or real names.
+- Student interaction state for favorites, useful votes, and reports lives in `src/interactions.js`; route tests can inject an `interactionStore`, and public report or interaction outputs should not expose phone fields or private reporter data.

@@ -19,6 +19,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public score calculator UI should use `renderScoreCalculatorPage()` with `listSchoolGuideCards()` and `getSchoolDetail()` for published school/year/formula loading, while `public/calculator.js` posts final calculations to `/api/score/calculate`; when `detail.formula` is null, hide the score-entry form and show the unavailable state.
 - Public experience browsing should use `listExperiences()` from `src/db/data-access.js`; it keeps `/experiences`, `/api/experiences`, filters, newest/useful/verified sorting, and published-only visibility aligned while pending submissions remain outside public browse results.
 - Structured experience submissions should use `src/experience-submissions.js` for required-field normalization, pending_review defaults, private verification metadata storage, and sanitized public or anonymous output; `handleRequest` accepts an injectable `experienceSubmissionStore` for route tests.
+- Student interaction state should use `src/interactions.js`; `handleRequest` accepts an injectable `interactionStore` for route tests covering school/experience favorites, useful-once experience votes, and pending reports without exposing phone fields or private reporter data.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -434,4 +435,34 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Use `createExperienceSubmissionStore({ now })` and pass it through `handleRequest(..., { experienceSubmissionStore })` for isolated submission route tests.
   - Pending experience submissions are intentionally separate from `listExperiences()` so student-facing browsing remains published-only until moderation stories wire approval into public data.
   - Verification materials can be stored internally through the submission store, but public or anonymous response shapes should expose only status and material count.
+---
+
+## Thu Jun  4 03:24:25 PM CST 2026 - Ralph runner
+- Iteration: 5
+- Story: US-013
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-5
+---
+
+## Thu Jun  4 03:31:09 PM CST 2026 - US-014
+- What was implemented
+  - Expanded the interaction store to persist school and experience favorites, useful-once experience votes, and pending reports.
+  - Implemented authenticated `POST /favorites`, `DELETE /favorites/:id`, `POST /experiences/:id/useful`, and `POST /reports` alongside their `/api` aliases where applicable.
+  - Added target validation for published schools and experiences, user report targets, required report reasons, duplicate useful-vote prevention, and clear login-required responses.
+- Files changed
+  - `AGENTS.md`
+  - `src/app.js`, `src/app.test.js`, `src/auth.js`, `src/interactions.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Not applicable; this story added authenticated interaction APIs and route tests, not a browser UI.
+- **Learnings for future iterations:**
+  - `createInteractionStore({ now })` keeps route tests deterministic and isolated for favorites, useful votes, and reports.
+  - Use published-only data-access readers for interaction target validation: `getSchoolById()` for school favorites and `getExperienceById()` for experience favorites, useful votes, and experience reports.
+  - Report responses should expose pending review status and report metadata but not reporter private data; user report targets can be validated through `authService.getUserById()`.
 ---

@@ -7,6 +7,7 @@ import { AuthError, authService as defaultAuthService } from "./auth.js";
 import {
   buildSiteTimelineReminders,
   calculateScore,
+  getExperienceById,
   getGuideDetail,
   getSchoolById,
   getSchoolDetail,
@@ -50,7 +51,8 @@ const experienceSortAliases = new Map([
   ["verified", "verified"],
   ["verified_first", "verified"]
 ]);
-const favoriteTargetTypes = new Set(["school"]);
+const favoriteTargetTypes = new Set(["school", "experience"]);
+const reportTargetTypes = new Set(["experience", "user"]);
 
 function sendHtml(response, statusCode, html) {
   response.writeHead(statusCode, {
@@ -796,7 +798,7 @@ function parseGuideDetailPath(pathname) {
 }
 
 function parseFavoriteDetailPath(pathname) {
-  const match = pathname.match(/^\/api\/favorites\/(?<favoriteId>[^/]+)$/);
+  const match = pathname.match(/^\/(?:api\/)?favorites\/(?<favoriteId>[^/]+)$/);
 
   if (!match?.groups?.favoriteId) {
     return null;
@@ -806,6 +808,20 @@ function parseFavoriteDetailPath(pathname) {
     return decodeURIComponent(match.groups.favoriteId);
   } catch {
     throw new RequestError("invalid_favorite_id", "Favorite id must be URL encoded correctly.");
+  }
+}
+
+function parseUsefulExperiencePath(pathname) {
+  const match = pathname.match(/^\/(?:api\/)?experiences\/(?<experienceId>[^/]+)\/useful$/);
+
+  if (!match?.groups?.experienceId) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match.groups.experienceId);
+  } catch {
+    throw new RequestError("invalid_experience_id", "Experience id must be URL encoded correctly.");
   }
 }
 
@@ -873,18 +889,77 @@ function assertFavoriteTarget(body) {
   const targetId = typeof body.targetId === "string" ? body.targetId.trim() : "";
 
   if (!favoriteTargetTypes.has(targetType)) {
-    throw new RequestError("invalid_favorite_target", "Only school favorites are supported in this workflow.");
+    throw new RequestError("invalid_favorite_target", "Favorites can target schools or experiences.");
   }
 
   if (!targetId) {
     throw new RequestError("invalid_favorite_target", "Favorite target id is required.");
   }
 
-  if (!getSchoolById(targetId)) {
+  if (targetType === "school" && !getSchoolById(targetId)) {
     throw new RequestError("favorite_target_not_found", "No published school was found for this favorite.", 404);
   }
 
+  if (targetType === "experience" && !getExperienceById(targetId)) {
+    throw new RequestError("favorite_target_not_found", "No published experience was found for this favorite.", 404);
+  }
+
   return { targetType, targetId };
+}
+
+function normalizedReportText(value, label, options = {}) {
+  const maxLength = options.maxLength ?? 2000;
+  const text = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+
+  if (text.length === 0) {
+    if (options.optional) {
+      return null;
+    }
+
+    throw new RequestError("missing_report_field", `${label} is required.`);
+  }
+
+  if (text.length > maxLength) {
+    throw new RequestError("report_field_too_long", `${label} must be ${maxLength} characters or fewer.`);
+  }
+
+  return text;
+}
+
+function assertReportTarget(body, authService) {
+  const targetType = typeof body.targetType === "string" ? body.targetType.trim() : "";
+  const targetId = typeof body.targetId === "string" ? body.targetId.trim() : "";
+
+  if (!reportTargetTypes.has(targetType)) {
+    throw new RequestError("invalid_report_target", "Reports can target experiences or users.");
+  }
+
+  if (!targetId) {
+    throw new RequestError("invalid_report_target", "Report target id is required.");
+  }
+
+  if (targetType === "experience" && !getExperienceById(targetId)) {
+    throw new RequestError("report_target_not_found", "No published experience was found for this report.", 404);
+  }
+
+  if (targetType === "user" && typeof authService.getUserById === "function" && !authService.getUserById(targetId)) {
+    throw new RequestError("report_target_not_found", "No user was found for this report.", 404);
+  }
+
+  return { targetType, targetId };
+}
+
+function assertReportBody(body, authService) {
+  const target = assertReportTarget(body, authService);
+
+  return {
+    ...target,
+    reason: normalizedReportText(body.reason, "Report reason", { maxLength: 120 }),
+    description: normalizedReportText(body.description, "Report description", {
+      maxLength: 2000,
+      optional: true
+    })
+  };
 }
 
 function calculateScoreFromBody(body) {
@@ -1052,7 +1127,7 @@ export async function handleRequest(request, response, context = {}) {
     return;
   }
 
-  if (url.pathname === "/api/favorites" && request.method === "POST") {
+  if ((url.pathname === "/favorites" || url.pathname === "/api/favorites") && request.method === "POST") {
     const user = requireActiveUser(request, response, authService);
 
     if (!user) {
@@ -1109,31 +1184,77 @@ export async function handleRequest(request, response, context = {}) {
     return;
   }
 
-  const usefulRoute = url.pathname.match(/^\/api\/experiences\/(?<experienceId>[^/]+)\/useful$/);
+  let usefulExperienceId;
 
-  if (usefulRoute && request.method === "POST") {
+  try {
+    usefulExperienceId = parseUsefulExperiencePath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "useful_vote_error", error.message);
+    return;
+  }
+
+  if (usefulExperienceId && request.method === "POST") {
     const user = requireActiveUser(request, response, authService);
 
     if (!user) {
       return;
     }
 
-    sendJson(response, 202, {
-      status: "accepted",
-      experienceId: usefulRoute.groups.experienceId,
-      userId: user.id
+    const experience = getExperienceById(usefulExperienceId);
+
+    if (!experience) {
+      sendError(response, 404, "experience_not_found", "No published experience was found.");
+      return;
+    }
+
+    const result = interactionStore.markExperienceUseful({
+      userId: user.id,
+      experienceId: experience.id
+    });
+    const usefulCount = experience.usefulCount + result.voteCount;
+
+    if (!result.created) {
+      sendError(response, 409, "duplicate_useful_vote", "This experience was already marked useful by this user.", {
+        usefulCount
+      });
+      return;
+    }
+
+    sendJson(response, 201, {
+      status: "marked_useful",
+      experienceId: experience.id,
+      usefulCount,
+      usefulVote: result.vote
     });
     return;
   }
 
-  if (url.pathname === "/api/reports" && request.method === "POST") {
+  if ((url.pathname === "/reports" || url.pathname === "/api/reports") && request.method === "POST") {
     const user = requireActiveUser(request, response, authService);
 
     if (!user) {
       return;
     }
 
-    sendJson(response, 202, { status: "pending", reporterId: user.id });
+    try {
+      const body = await readJsonBody(request);
+      const reportBody = assertReportBody(body, authService);
+      const report = interactionStore.createReport({
+        reporterId: user.id,
+        targetType: reportBody.targetType,
+        targetId: reportBody.targetId,
+        reason: reportBody.reason,
+        description: reportBody.description
+      });
+
+      sendJson(response, 201, {
+        status: "pending",
+        report
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "report_error", error.message);
+    }
+
     return;
   }
 

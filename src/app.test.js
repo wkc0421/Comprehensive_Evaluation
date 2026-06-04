@@ -821,14 +821,190 @@ describe("web routes", () => {
     assert.deepEqual(removedMineBody.events, []);
   });
 
+  it("persists experience favorites and removes them through the public favorites route", async () => {
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000016",
+      nickname: "Experience favorite student"
+    });
+    const session = authService.createSessionForUser(user.id);
+    const cookie = authService.serializeSessionCookie(session).split(";")[0];
+
+    const favoriteResponse = await fetch(`${baseUrl}/favorites`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        targetType: "experience",
+        targetId: seedIds.experiences.sysu2026
+      })
+    });
+    const favoriteBody = await favoriteResponse.json();
+
+    assert.equal(favoriteResponse.status, 201);
+    assert.equal(favoriteBody.status, "favorited");
+    assert.equal(favoriteBody.favorite.targetType, "experience");
+    assert.equal(favoriteBody.favorite.targetId, seedIds.experiences.sysu2026);
+    assert.deepEqual(interactionStore.listFavorites({
+      userId: user.id,
+      targetType: "experience"
+    }).map((favorite) => favorite.id), [favoriteBody.favorite.id]);
+
+    const duplicateResponse = await fetch(`${baseUrl}/api/favorites`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        targetType: "experience",
+        targetId: seedIds.experiences.sysu2026
+      })
+    });
+    const duplicateBody = await duplicateResponse.json();
+
+    assert.equal(duplicateResponse.status, 200);
+    assert.equal(duplicateBody.status, "already_favorited");
+    assert.equal(duplicateBody.favorite.id, favoriteBody.favorite.id);
+
+    const removeResponse = await fetch(
+      `${baseUrl}/favorites/${encodeURIComponent(favoriteBody.favorite.id)}`,
+      {
+        method: "DELETE",
+        headers: { cookie }
+      }
+    );
+    const removeBody = await removeResponse.json();
+
+    assert.equal(removeResponse.status, 200);
+    assert.equal(removeBody.status, "unfavorited");
+    assert.equal(removeBody.favorite.id, favoriteBody.favorite.id);
+    assert.deepEqual(interactionStore.listFavorites({
+      userId: user.id,
+      targetType: "experience"
+    }), []);
+  });
+
+  it("prevents duplicate useful votes for the same experience and user", async () => {
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000017",
+      nickname: "Useful voter"
+    });
+    const otherUser = authService.createUserForTesting({
+      phoneNumber: "+8613000000018",
+      nickname: "Second useful voter"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(user.id)).split(";")[0];
+    const otherCookie = authService.serializeSessionCookie(authService.createSessionForUser(otherUser.id)).split(";")[0];
+
+    const firstResponse = await fetch(`${baseUrl}/experiences/${seedIds.experiences.sysu2026}/useful`, {
+      method: "POST",
+      headers: { cookie }
+    });
+    const firstBody = await firstResponse.json();
+
+    assert.equal(firstResponse.status, 201);
+    assert.equal(firstBody.status, "marked_useful");
+    assert.equal(firstBody.experienceId, seedIds.experiences.sysu2026);
+    assert.equal(firstBody.usefulCount, 19);
+    assert.ok(firstBody.usefulVote.id);
+
+    const duplicateResponse = await fetch(`${baseUrl}/api/experiences/${seedIds.experiences.sysu2026}/useful`, {
+      method: "POST",
+      headers: { cookie }
+    });
+    const duplicateBody = await duplicateResponse.json();
+
+    assert.equal(duplicateResponse.status, 409);
+    assert.equal(duplicateBody.error, "duplicate_useful_vote");
+    assert.equal(duplicateBody.usefulCount, 19);
+
+    const secondResponse = await fetch(`${baseUrl}/api/experiences/${seedIds.experiences.sysu2026}/useful`, {
+      method: "POST",
+      headers: { cookie: otherCookie }
+    });
+    const secondBody = await secondResponse.json();
+
+    assert.equal(secondResponse.status, 201);
+    assert.equal(secondBody.usefulCount, 20);
+  });
+
+  it("creates pending reports for experiences and users without leaking phone fields", async () => {
+    const reporter = authService.createUserForTesting({
+      phoneNumber: "+8613000000019",
+      nickname: "Report student"
+    });
+    const reportedUser = authService.createUserForTesting({
+      phoneNumber: "+8613000000020",
+      nickname: "Reported user"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(reporter.id)).split(";")[0];
+
+    const experienceReportResponse = await fetch(`${baseUrl}/api/reports`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        targetType: "experience",
+        targetId: seedIds.experiences.sysu2026,
+        reason: "contains unverifiable claims",
+        description: "The assessment process described here appears inconsistent with the official guide."
+      })
+    });
+    const experienceReportBody = await experienceReportResponse.json();
+
+    assert.equal(experienceReportResponse.status, 201);
+    assert.equal(experienceReportBody.status, "pending");
+    assert.equal(experienceReportBody.report.status, "pending");
+    assert.equal(experienceReportBody.report.targetType, "experience");
+    assert.equal(experienceReportBody.report.targetId, seedIds.experiences.sysu2026);
+    assert.equal(experienceReportBody.report.reason, "contains unverifiable claims");
+    assertNoPhoneFields(experienceReportBody);
+
+    const userReportResponse = await fetch(`${baseUrl}/reports`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        targetType: "user",
+        targetId: reportedUser.id,
+        reason: "unsafe contact request"
+      })
+    });
+    const userReportBody = await userReportResponse.json();
+
+    assert.equal(userReportResponse.status, 201);
+    assert.equal(userReportBody.status, "pending");
+    assert.equal(userReportBody.report.targetType, "user");
+    assert.equal(userReportBody.report.targetId, reportedUser.id);
+    assert.equal(userReportBody.report.description, null);
+    assert.deepEqual(new Set(interactionStore.listReports({
+      reporterId: reporter.id,
+      status: "pending"
+    }).map((report) => report.id)), new Set([
+      experienceReportBody.report.id,
+      userReportBody.report.id
+    ]));
+    assertNoPhoneFields(userReportBody);
+  });
+
   it("blocks unauthenticated users from restricted student and admin APIs", async () => {
     const cases = [
       { method: "GET", path: "/experiences/new" },
       { method: "POST", path: "/experiences", body: { schoolId: seedIds.schools.sysu } },
       { method: "POST", path: "/api/experiences", body: { schoolId: seedIds.schools.sysu } },
+      { method: "POST", path: "/favorites", body: { targetType: "experience", targetId: seedIds.experiences.sysu2026 } },
       { method: "POST", path: "/api/favorites", body: { targetType: "school", targetId: seedIds.schools.sysu } },
       { method: "DELETE", path: "/api/favorites/missing-favorite" },
+      { method: "DELETE", path: "/favorites/missing-favorite" },
+      { method: "POST", path: `/experiences/${seedIds.experiences.sysu2026}/useful`, body: {} },
       { method: "POST", path: `/api/experiences/${seedIds.experiences.sysu2026}/useful`, body: {} },
+      { method: "POST", path: "/reports", body: { targetType: "experience", targetId: seedIds.experiences.sysu2026 } },
       { method: "POST", path: "/api/reports", body: { targetType: "experience", targetId: seedIds.experiences.sysu2026 } },
       { method: "GET", path: "/api/timeline?mine=true" },
       { method: "GET", path: "/api/admin/health" }
