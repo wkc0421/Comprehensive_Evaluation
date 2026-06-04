@@ -145,12 +145,21 @@ describe("web routes", () => {
   });
 
   it("renders the admin placeholder route", async () => {
-    const response = await fetch(`${baseUrl}/admin`);
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000030",
+      nickname: "Admin overview reviewer",
+      role: "data_reviewer"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(reviewer.id)).split(";")[0];
+    const response = await fetch(`${baseUrl}/admin`, {
+      headers: { cookie }
+    });
     const body = await response.text();
 
     assert.equal(response.status, 200);
     assert.match(body, /Admin console placeholder/);
     assert.match(body, /Official guide review/);
+    assert.match(body, /Admin overview reviewer/);
   });
 
   it("returns the health API contract", async () => {
@@ -1239,6 +1248,11 @@ describe("web routes", () => {
       { method: "POST", path: "/me/preferences", body: { nickname: "Blocked student" } },
       { method: "PATCH", path: "/api/me", body: { defaultAnonymous: false } },
       { method: "GET", path: "/api/timeline?mine=true" },
+      { method: "GET", path: "/admin" },
+      { method: "GET", path: "/admin/guides" },
+      { method: "GET", path: "/api/admin/guides" },
+      { method: "POST", path: "/api/admin/guides", body: { schoolId: seedIds.schools.sysu } },
+      { method: "POST", path: `/api/admin/guides/${seedIds.guides.scut2026Pending}/publish`, body: {} },
       { method: "GET", path: "/api/admin/health" }
     ];
 
@@ -1297,11 +1311,21 @@ describe("web routes", () => {
       phoneNumber: "+8613000000003",
       role: "user"
     });
+    const contentReviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000031",
+      role: "content_reviewer"
+    });
+    const dataReviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000032",
+      role: "data_reviewer"
+    });
     const admin = authService.createUserForTesting({
       phoneNumber: "+8613000000004",
       role: "admin"
     });
     const userSession = authService.createSessionForUser(user.id);
+    const contentReviewerSession = authService.createSessionForUser(contentReviewer.id);
+    const dataReviewerSession = authService.createSessionForUser(dataReviewer.id);
     const adminSession = authService.createSessionForUser(admin.id);
 
     const userResponse = await fetch(`${baseUrl}/api/admin/health`, {
@@ -1312,6 +1336,30 @@ describe("web routes", () => {
     assert.equal(userResponse.status, 403);
     assert.equal(userBody.error, "forbidden");
 
+    const userGuideResponse = await fetch(`${baseUrl}/api/admin/guides`, {
+      headers: { cookie: authService.serializeSessionCookie(userSession).split(";")[0] }
+    });
+    const userGuideBody = await userGuideResponse.json();
+
+    assert.equal(userGuideResponse.status, 403);
+    assert.equal(userGuideBody.error, "forbidden");
+
+    const contentGuideResponse = await fetch(`${baseUrl}/api/admin/guides`, {
+      headers: { cookie: authService.serializeSessionCookie(contentReviewerSession).split(";")[0] }
+    });
+    const contentGuideBody = await contentGuideResponse.json();
+
+    assert.equal(contentGuideResponse.status, 403);
+    assert.equal(contentGuideBody.error, "forbidden");
+
+    const dataGuideResponse = await fetch(`${baseUrl}/api/admin/guides`, {
+      headers: { cookie: authService.serializeSessionCookie(dataReviewerSession).split(";")[0] }
+    });
+    const dataGuideBody = await dataGuideResponse.json();
+
+    assert.equal(dataGuideResponse.status, 200);
+    assert.ok(dataGuideBody.guides.some((item) => item.guide.id === seedIds.guides.scut2026Pending));
+
     const adminResponse = await fetch(`${baseUrl}/api/admin/health`, {
       headers: { cookie: authService.serializeSessionCookie(adminSession).split(";")[0] }
     });
@@ -1321,5 +1369,218 @@ describe("web routes", () => {
     assert.equal(adminBody.ok, true);
     assert.equal(adminBody.user.role, "admin");
     assertNoPhoneFields(adminBody);
+  });
+
+  it("renders the admin guide review queue with source attribution and extracted fields", async () => {
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000033",
+      nickname: "Guide reviewer",
+      role: "data_reviewer"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(reviewer.id)).split(";")[0];
+
+    const response = await fetch(`${baseUrl}/admin/guides`, {
+      headers: {
+        accept: "text/html",
+        cookie
+      }
+    });
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /Guide review queue/);
+    assert.match(body, /South China University of Technology 2026 Draft Review Guide/);
+    assert.match(body, /Southern University of Science and Technology 2026 Working Draft/);
+    assert.match(body, /Official source attribution/);
+    assert.match(body, /Extracted fields/);
+    assert.match(body, /Submit review/);
+    assert.match(body, /Publish/);
+    assert.match(body, /Return/);
+    assert.match(body, /Pending supplement/);
+    assert.match(body, /Archive/);
+    assertNoPhoneFields(body);
+  });
+
+  it("reviews guide drafts with audit records and publishes them to student APIs only after approval", async () => {
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000034",
+      nickname: "Official data reviewer",
+      role: "data_reviewer"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(reviewer.id)).split(";")[0];
+    const guidePayload = {
+      schoolId: seedIds.schools.sysu,
+      admissionYear: 2027,
+      officialSourceUrl: "https://example.edu/sysu/2027-comprehensive-evaluation-guide",
+      sourceType: "admission_guide",
+      sourceTitle: "SYSU 2027 official comprehensive evaluation guide",
+      sourcePublishedAt: "2027-03-15T02:00:00.000Z",
+      guideTitle: "Sun Yat-sen University 2027 Guangdong Comprehensive Evaluation Guide",
+      summary: "Draft official guide for 2027 Guangdong candidates awaiting manual data review.",
+      structuredFields: {
+        applicationUrl: "https://example.edu/sysu/2027-apply",
+        applicationStatus: "open",
+        applicationStartAt: "2027-03-18T01:00:00.000Z",
+        applicationDeadlineAt: "2027-04-20T15:59:59.000Z",
+        majors: [
+          { name: "Integrated science program", track: "physics" }
+        ],
+        subjectRequirements: ["Physics track required for integrated science"],
+        academicTestRequirements: "Academic level examination results must meet the official notice.",
+        assessmentMethod: "Materials review plus school assessment.",
+        admissionRule: "Comprehensive score follows the published official formula.",
+        fees: { applicationFeeCny: 0, assessmentFeeCny: 0 },
+        contact: { phone: "020-00000000", email: "admission@example.edu" }
+      }
+    };
+
+    const hiddenBeforeResponse = await fetch(
+      `${baseUrl}/api/guides?schoolId=${seedIds.schools.sysu}&year=2027`
+    );
+    const hiddenBeforeBody = await hiddenBeforeResponse.json();
+
+    assert.equal(hiddenBeforeResponse.status, 200);
+    assert.equal(hiddenBeforeBody.count, 0);
+
+    const createResponse = await fetch(`${baseUrl}/api/admin/guides`, {
+      method: "POST",
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(guidePayload)
+    });
+    const createBody = await createResponse.json();
+    const createdGuideId = createBody.guide.guide.id;
+
+    assert.equal(createResponse.status, 201);
+    assert.equal(createBody.status, "draft");
+    assert.equal(createBody.guide.guide.status, "draft");
+    assert.equal(createBody.guide.source.officialSourceUrl, guidePayload.officialSourceUrl);
+    assert.equal(createBody.guide.structuredFields.applicationDeadlineAt, "2027-04-20T15:59:59.000Z");
+    assert.equal(createBody.guide.reviewAudit.at(-1).operation, "create_draft");
+    assert.equal(createBody.guide.reviewAudit.at(-1).operatorId, reviewer.id);
+
+    const hiddenDraftResponse = await fetch(
+      `${baseUrl}/api/guides?schoolId=${seedIds.schools.sysu}&year=2027`
+    );
+    const hiddenDraftBody = await hiddenDraftResponse.json();
+
+    assert.equal(hiddenDraftResponse.status, 200);
+    assert.equal(hiddenDraftBody.count, 0);
+
+    const submitResponse = await fetch(`${baseUrl}/api/admin/guides/${createdGuideId}/submit-review`, {
+      method: "POST",
+      ...jsonRequest({ note: "Ready for official data review." }),
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      }
+    });
+    const submitBody = await submitResponse.json();
+
+    assert.equal(submitResponse.status, 200);
+    assert.equal(submitBody.status, "pending_review");
+    assert.equal(submitBody.guide.guide.status, "pending_review");
+    assert.equal(submitBody.guide.reviewAudit.at(-1).operation, "submit_review");
+    assert.equal(submitBody.guide.reviewAudit.at(-1).operatedAt, "2026-04-18T00:00:00.000Z");
+
+    const publishResponse = await fetch(`${baseUrl}/api/admin/guides/${createdGuideId}/publish`, {
+      method: "POST",
+      ...jsonRequest({ note: "Official source and extracted fields verified." }),
+      headers: {
+        cookie,
+        "content-type": "application/json"
+      }
+    });
+    const publishBody = await publishResponse.json();
+
+    assert.equal(publishResponse.status, 200);
+    assert.equal(publishBody.status, "published");
+    assert.equal(publishBody.guide.guide.status, "published");
+    assert.equal(publishBody.guide.guide.isCurrent, true);
+    assert.equal(publishBody.guide.reviewAudit.at(-1).operation, "publish");
+    assert.equal(publishBody.guide.reviewAudit.at(-1).operatorId, reviewer.id);
+    assert.equal(publishBody.guide.reviewAudit.at(-1).operatedAt, "2026-04-18T00:00:00.000Z");
+
+    const visibleResponse = await fetch(
+      `${baseUrl}/api/guides?schoolId=${seedIds.schools.sysu}&year=2027`
+    );
+    const visibleBody = await visibleResponse.json();
+
+    assert.equal(visibleResponse.status, 200);
+    assert.equal(visibleBody.count, 1);
+    assert.equal(visibleBody.guides[0].id, createdGuideId);
+    assert.equal(visibleBody.guides[0].status, "published");
+    assert.equal(visibleBody.guides[0].source.officialSourceUrl, guidePayload.officialSourceUrl);
+
+    const supplementResponse = await fetch(
+      `${baseUrl}/api/admin/guides/${seedIds.guides.sustech2026Draft}/pending-supplement`,
+      {
+        method: "POST",
+        ...jsonRequest({ note: "Missing official application dates." }),
+        headers: {
+          cookie,
+          "content-type": "application/json"
+        }
+      }
+    );
+    const supplementBody = await supplementResponse.json();
+
+    assert.equal(supplementResponse.status, 200);
+    assert.equal(supplementBody.status, "pending_supplement");
+    assert.equal(supplementBody.guide.guide.status, "draft");
+    assert.equal(supplementBody.guide.guide.supplementStatus, "pending_supplement");
+    assert.equal(supplementBody.guide.reviewAudit.at(-1).operation, "mark_pending_supplement");
+
+    const returnSubmitResponse = await fetch(
+      `${baseUrl}/api/admin/guides/${seedIds.guides.sustech2026Draft}/submit-review`,
+      {
+        method: "POST",
+        ...jsonRequest({ note: "Supplement added for recheck." }),
+        headers: {
+          cookie,
+          "content-type": "application/json"
+        }
+      }
+    );
+
+    assert.equal(returnSubmitResponse.status, 200);
+
+    const returnResponse = await fetch(
+      `${baseUrl}/api/admin/guides/${seedIds.guides.sustech2026Draft}/return`,
+      {
+        method: "POST",
+        ...jsonRequest({ note: "Source attribution still needs correction." }),
+        headers: {
+          cookie,
+          "content-type": "application/json"
+        }
+      }
+    );
+    const returnBody = await returnResponse.json();
+
+    assert.equal(returnResponse.status, 200);
+    assert.equal(returnBody.status, "returned");
+    assert.equal(returnBody.guide.guide.status, "draft");
+    assert.equal(returnBody.guide.reviewAudit.at(-1).operation, "return");
+
+    const archiveResponse = await fetch(
+      `${baseUrl}/api/admin/guides/${seedIds.guides.sustech2026Draft}/archive`,
+      {
+        method: "POST",
+        ...jsonRequest({ note: "Archived duplicate draft." }),
+        headers: {
+          cookie,
+          "content-type": "application/json"
+        }
+      }
+    );
+    const archiveBody = await archiveResponse.json();
+
+    assert.equal(archiveResponse.status, 200);
+    assert.equal(archiveBody.status, "archived");
+    assert.equal(archiveBody.guide.guide.status, "archived");
+    assert.equal(archiveBody.guide.reviewAudit.at(-1).operation, "archive");
   });
 });

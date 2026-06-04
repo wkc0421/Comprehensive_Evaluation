@@ -5,16 +5,24 @@ import { fileURLToPath } from "node:url";
 
 import { AuthError, authService as defaultAuthService } from "./auth.js";
 import {
+  archiveAdminGuide,
   buildSiteTimelineReminders,
   calculateScore,
+  createAdminGuideDraft,
   getExperienceById,
+  getAdminGuideReviewDetail,
   getGuideDetail,
   getSchoolById,
   getSchoolDetail,
+  listAdminGuideReviews,
   listGuides,
   listExperiences,
   listSchoolGuideCards,
-  listTimelineNodes
+  listTimelineNodes,
+  markAdminGuidePendingSupplement,
+  publishAdminGuide,
+  returnAdminGuide,
+  submitAdminGuideReview
 } from "./db/data-access.js";
 import {
   experienceSubmissionStore as defaultExperienceSubmissionStore
@@ -22,6 +30,7 @@ import {
 import { interactionStore as defaultInteractionStore } from "./interactions.js";
 import {
   renderAdminPage,
+  renderAdminGuideReviewPage,
   renderExperienceListPage,
   renderExperienceSubmissionPage,
   renderNotFound,
@@ -54,6 +63,7 @@ const experienceSortAliases = new Map([
 ]);
 const favoriteTargetTypes = new Set(["school", "experience"]);
 const reportTargetTypes = new Set(["experience", "user"]);
+const officialGuideReviewerRoles = ["data_reviewer", "admin"];
 const submissionStatusLabels = Object.freeze({
   draft: "Draft",
   pending_review: "Pending Review",
@@ -248,6 +258,16 @@ function parseGuideListFilters(url) {
   };
 }
 
+function parseAdminGuideFilters(url) {
+  const status = optionalStringParam(url, "status");
+
+  if (status && !guideStatuses.has(status)) {
+    throw new RequestError("invalid_status", "Guide status is not supported.");
+  }
+
+  return { status };
+}
+
 function optionalBooleanParam(url, name) {
   const value = optionalStringParam(url, name);
 
@@ -382,6 +402,20 @@ function shouldSendExperienceSubmissionJson(request, url) {
 }
 
 function shouldSendPersonalCenterJson(request, url) {
+  if (url.pathname.startsWith("/api/") || url.searchParams.get("format") === "json") {
+    return true;
+  }
+
+  const accept = headerValue(request.headers, "accept") ?? "";
+
+  if (accept.includes("text/html")) {
+    return false;
+  }
+
+  return accept.length === 0 || accept.includes("*/*") || accept.includes("application/json");
+}
+
+function shouldSendAdminJson(request, url) {
   if (url.pathname.startsWith("/api/") || url.searchParams.get("format") === "json") {
     return true;
   }
@@ -585,6 +619,73 @@ function guideDetailJson(detail) {
         updatedAt: guide.updatedAt,
         sourceUpdatedAt: guide.sourceUpdatedAt,
         versionNotes: guide.versionNotes
+      }))
+    }
+  };
+}
+
+function adminGuideJson(detailOrGuide) {
+  const detail = detailOrGuide.school
+    ? detailOrGuide
+    : getAdminGuideReviewDetail({ guideId: detailOrGuide.id });
+
+  if (!detail) {
+    return null;
+  }
+
+  const guide = detail.guide;
+
+  return {
+    school: {
+      id: detail.school.id,
+      name: detail.school.name,
+      provinceScope: detail.school.provinceScope,
+      city: detail.school.city,
+      schoolType: detail.school.schoolType,
+      officialWebsiteUrl: detail.school.officialWebsiteUrl
+    },
+    guide: {
+      id: guide.id,
+      schoolId: guide.schoolId,
+      year: guide.admissionYear,
+      provinceScope: guide.provinceScope,
+      status: guide.status,
+      version: guide.version,
+      isCurrent: guide.isCurrent,
+      reviewStatus: guide.reviewStatus,
+      supplementStatus: guide.supplementStatus,
+      guideTitle: guide.guideTitle,
+      summary: guide.summary,
+      applicationStatus: guide.applicationStatus,
+      publishedAt: guide.publishedAt,
+      updatedAt: guide.updatedAt
+    },
+    source: guideSourceJson(guide),
+    structuredFields: {
+      applicationUrl: guide.applicationUrl,
+      applicationStartAt: guide.applicationStartAt,
+      applicationDeadlineAt: guide.applicationDeadlineAt,
+      majors: guide.majors,
+      subjectRequirements: guide.subjectRequirements,
+      academicTestRequirements: guide.academicTestRequirements,
+      assessmentMethod: guide.assessmentMethod,
+      admissionRule: guide.admissionRule,
+      fees: guide.fees,
+      contact: guide.contact
+    },
+    reviewAudit: guide.reviewAudit ?? [],
+    versionSummary: {
+      currentVersion: guide.version,
+      versions: (detail.versionHistory ?? [guide]).map((version) => ({
+        id: version.id,
+        version: version.version,
+        status: version.status,
+        isCurrent: version.isCurrent,
+        reviewStatus: version.reviewStatus,
+        supplementStatus: version.supplementStatus,
+        publishedAt: version.publishedAt,
+        updatedAt: version.updatedAt,
+        versionNotes: version.versionNotes
       }))
     }
   };
@@ -909,6 +1010,16 @@ function sendGuideListJson(response, filters) {
   });
 }
 
+function sendAdminGuideReviewListJson(response, filters = {}) {
+  const reviews = listAdminGuideReviews(filters).map(adminGuideJson);
+
+  sendJson(response, 200, {
+    filters,
+    count: reviews.length,
+    guides: reviews
+  });
+}
+
 function sendTimelineJson(response, timeline) {
   sendJson(response, 200, {
     mine: timeline.mine,
@@ -953,6 +1064,25 @@ function parseGuideDetailPath(pathname) {
 
   try {
     return decodeURIComponent(match.groups.guideId);
+  } catch {
+    throw new RequestError("invalid_guide_id", "Guide id must be URL encoded correctly.");
+  }
+}
+
+function parseAdminGuideActionPath(pathname) {
+  const match = pathname.match(
+    /^\/(?:api\/)?admin\/guides\/(?<guideId>[^/]+)(?:\/(?<action>submit-review|publish|archive|return|pending-supplement|mark-pending-supplement))?$/
+  );
+
+  if (!match?.groups?.guideId) {
+    return null;
+  }
+
+  try {
+    return {
+      guideId: decodeURIComponent(match.groups.guideId),
+      action: match.groups.action ?? "detail"
+    };
   } catch {
     throw new RequestError("invalid_guide_id", "Guide id must be URL encoded correctly.");
   }
@@ -1043,6 +1173,12 @@ function requireActiveUser(request, response, authService, options = {}) {
   }
 
   return user;
+}
+
+function requireOfficialGuideReviewer(request, response, authService) {
+  return requireActiveUser(request, response, authService, {
+    roles: officialGuideReviewerRoles
+  });
 }
 
 function assertFavoriteTarget(body) {
@@ -1179,6 +1315,57 @@ function calculateScoreFromBody(body) {
     year: body.year,
     scores: body.scores
   });
+}
+
+function adminGuideNoteFromBody(body) {
+  const note = typeof body.note === "string" ? body.note.trim() : "";
+  return note.length > 0 ? note : undefined;
+}
+
+function runAdminGuideAction({ action, guideId, body, user, now }) {
+  const input = {
+    guideId,
+    operator: user,
+    now,
+    note: adminGuideNoteFromBody(body)
+  };
+
+  if (action === "submit-review") {
+    return {
+      status: "pending_review",
+      guide: submitAdminGuideReview(input)
+    };
+  }
+
+  if (action === "publish") {
+    return {
+      status: "published",
+      guide: publishAdminGuide(input)
+    };
+  }
+
+  if (action === "archive") {
+    return {
+      status: "archived",
+      guide: archiveAdminGuide(input)
+    };
+  }
+
+  if (action === "return") {
+    return {
+      status: "returned",
+      guide: returnAdminGuide(input)
+    };
+  }
+
+  if (action === "pending-supplement" || action === "mark-pending-supplement") {
+    return {
+      status: "pending_supplement",
+      guide: markAdminGuidePendingSupplement(input)
+    };
+  }
+
+  throw new RequestError("invalid_admin_guide_action", "Admin guide action is not supported.", 404);
 }
 
 async function sendPublicAsset(requestPath, response) {
@@ -1351,6 +1538,121 @@ export async function handleRequest(request, response, context = {}) {
 
       const statusCode = error instanceof AuthError || error instanceof RequestError ? errorStatus(error) : 500;
       sendError(response, statusCode, error.code ?? "profile_error", error.message);
+    }
+
+    return;
+  }
+
+  if ((url.pathname === "/admin/guides" || url.pathname === "/api/admin/guides") && request.method === "GET") {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const filters = parseAdminGuideFilters(url);
+
+      if (shouldSendAdminJson(request, url)) {
+        sendAdminGuideReviewListJson(response, filters);
+        return;
+      }
+
+      sendHtml(response, 200, renderAdminGuideReviewPage({
+        filters,
+        reviews: listAdminGuideReviews(filters),
+        user
+      }));
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_guide_error", error.message);
+    }
+
+    return;
+  }
+
+  if ((url.pathname === "/admin/guides" || url.pathname === "/api/admin/guides") && request.method === "POST") {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      const body = await readStructuredBody(request);
+      const result = createAdminGuideDraft({
+        body,
+        operator: user,
+        now: context.now
+      });
+      const detail = getAdminGuideReviewDetail({ guideId: result.guide.id });
+
+      sendJson(response, 201, {
+        status: "draft",
+        guide: adminGuideJson(detail)
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_guide_error", error.message);
+    }
+
+    return;
+  }
+
+  let adminGuideActionPath;
+
+  try {
+    adminGuideActionPath = parseAdminGuideActionPath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "admin_guide_error", error.message);
+    return;
+  }
+
+  if (adminGuideActionPath && request.method === "GET") {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    const detail = getAdminGuideReviewDetail({ guideId: adminGuideActionPath.guideId });
+
+    if (!detail) {
+      sendError(response, 404, "not_found", "No guide was found for admin review.");
+      return;
+    }
+
+    sendJson(response, 200, adminGuideJson(detail));
+    return;
+  }
+
+  if (adminGuideActionPath && request.method === "POST") {
+    const user = requireOfficialGuideReviewer(request, response, authService);
+
+    if (!user) {
+      return;
+    }
+
+    if (adminGuideActionPath.action === "detail") {
+      sendError(response, 405, "method_not_allowed", "Admin guide detail does not support POST without an action.");
+      return;
+    }
+
+    try {
+      const body = await readJsonBody(request);
+      const actionResult = runAdminGuideAction({
+        action: adminGuideActionPath.action,
+        guideId: adminGuideActionPath.guideId,
+        body,
+        user,
+        now: context.now
+      });
+      const detail = getAdminGuideReviewDetail({ guideId: actionResult.guide.id });
+
+      sendJson(response, 200, {
+        status: actionResult.status,
+        guide: adminGuideJson(detail)
+      });
+    } catch (error) {
+      sendError(response, errorStatus(error), error.code ?? "admin_guide_error", error.message);
     }
 
     return;
@@ -1720,7 +2022,15 @@ export async function handleRequest(request, response, context = {}) {
   }
 
   if (url.pathname === "/admin") {
-    sendHtml(response, 200, renderAdminPage());
+    const user = requireActiveUser(request, response, authService, {
+      roles: ["content_reviewer", "data_reviewer", "admin"]
+    });
+
+    if (!user) {
+      return;
+    }
+
+    sendHtml(response, 200, renderAdminPage({ user }));
     return;
   }
 

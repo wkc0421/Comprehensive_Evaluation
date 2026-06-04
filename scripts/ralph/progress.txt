@@ -14,6 +14,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public school browsing should use `listSchoolGuideCards()` from `src/db/data-access.js`; it keeps `/schools`, `/api/schools`, and the HTML school list aligned on published-only guides, filters, sort order, key timeline nodes, formula availability, and experience signals.
 - Public school detail pages and APIs should use `getSchoolDetail()` from `src/db/data-access.js`; it keeps `/schools/:id`, `/api/schools/:id`, year defaulting, published-only visibility, timeline/formula aggregation, and featured experience ranking aligned.
 - Public admission guide APIs should use `listGuides()` and `getGuideDetail()` from `src/db/data-access.js`; current guide lists stay published-only while detail responses can include source attribution, structured fields, and published version summaries.
+- Admin official guide review uses `listAdminGuideReviews()`, `getAdminGuideReviewDetail()`, and the admin guide transition helpers in `src/db/data-access.js`; public student APIs still use `listGuides()`/`getGuideDetail()` and only see admin guide records after a transition sets status to `published` and `isCurrent`.
 - Public timelines should use `listTimelineNodes()` and `buildSiteTimelineReminders()` from `src/db/data-access.js`; they keep `/timeline`, `/api/timeline`, status calculation, required generated event keys, unknown-date handling, published-only visibility, and site-only reminder indicators aligned.
 - Public score calculation should use `calculateScore()` from `src/db/data-access.js`; it keeps formula visibility, input normalization, validation errors, contribution breakdowns, source links, and disclaimer text aligned for `/score/calculate`, `/api/score/calculate`, and future calculator pages.
 - Public score calculator UI should use `renderScoreCalculatorPage()` with `listSchoolGuideCards()` and `getSchoolDetail()` for published school/year/formula loading, while `public/calculator.js` posts final calculations to `/api/score/calculate`; when `detail.formula` is null, hide the score-entry form and show the unavailable state.
@@ -497,4 +498,35 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - `authService.updateUserProfile()` validates nickname, grade, and default anonymous preference and returns the same public user shape used by session APIs.
   - Personal center API responses include `statusLabels` for draft, pending_review, published, rejected, and hidden so future moderation statuses can render consistently without exposing reviewer-private fields.
   - On mobile the student nav pills are hidden by design; browser checks that need the `/me` nav link should assert it at desktop width or use page content on mobile.
+---
+
+## Thu Jun  4 03:46:13 PM CST 2026 - Ralph runner
+- Iteration: 7
+- Story: US-015
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-141724/iteration-7
+---
+
+## Thu Jun  4 04:00:40 PM CST 2026 - US-016
+- What was implemented
+  - Added protected admin official guide review APIs and HTML on `/admin/guides` and `/api/admin/guides` for draft creation, submit-review, publish, return, pending supplement, and archive operations.
+  - Added mutable dependency-free guide review helpers with audit entries recording operation, operator identity, note, and operation time.
+  - Kept student guide APIs published-only while allowing approved admin-published guide versions to become visible after publish.
+- Files changed
+  - `public/styles.css`
+  - `src/app.js`, `src/app.test.js`, `src/db/data-access.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `git diff --check` passed
+- Browser verification result, if this was a UI story
+  - Playwright Chromium verification passed for logged-in `/admin/guides` at 390px and 1280px; guide review queue content, source attribution, extracted fields, publish action, and no horizontal overflow were verified.
+  - Screenshots were saved to `scripts/ralph/runs/20260604-141724/iteration-8/admin-guide-review-390.png` and `scripts/ralph/runs/20260604-141724/iteration-8/admin-guide-review-1280.png`.
+- **Learnings for future iterations:**
+  - Official guide admin routes use `data_reviewer` or `admin`; `content_reviewer` remains blocked from `/admin/guides` because publishing official data is a data-review workflow.
+  - Admin guide transitions append `reviewAudit` entries and keep pending supplement as `supplementStatus: "pending_supplement"` while official guide `status` stays within draft, pending_review, published, and archived.
+  - Browser checks for repeated guide titles should use role-based heading locators because the same guide title can appear in both headings and definition rows.
 ---

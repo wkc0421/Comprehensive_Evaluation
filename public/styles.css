@@ -457,6 +457,83 @@ h1 {
   font-weight: 700;
 }
 
+.admin-review-list,
+.admin-review-card,
+.admin-review-columns,
+.admin-review-section,
+.admin-audit-list,
+.admin-action-row {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-review-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.admin-review-card h3 {
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.admin-review-section {
+  align-content: start;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.admin-review-section h4 {
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.admin-audit-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-audit-list li {
+  display: grid;
+  gap: 4px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 11px;
+}
+
+.admin-audit-list span,
+.admin-audit-list em,
+.admin-audit-list p {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.admin-audit-list p {
+  font-weight: 600;
+}
+
+.admin-action-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.admin-action-row form,
+.admin-action-row button {
+  width: 100%;
+}
+
+.admin-action-row button {
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font: inherit;
+}
+
 .filter-panel {
   display: grid;
   gap: 12px;
@@ -1146,6 +1223,18 @@ h1 {
   .admin-main {
     grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
     align-items: start;
+  }
+
+  .admin-review-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-review-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-action-row {
+    grid-template-columns: repeat(5, minmax(0, max-content));
   }
 
   .filter-panel {

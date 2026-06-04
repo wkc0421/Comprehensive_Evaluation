@@ -1521,6 +1521,159 @@ function renderPersonalFeedback({ notice = "", error = "" } = {}) {
   return "";
 }
 
+function renderAdminGuideFilters(filters = {}) {
+  const statusOptions = [
+    renderOption("", "Drafts and pending review", filters.status ?? ""),
+    renderOption("draft", "Draft", filters.status),
+    renderOption("pending_review", "Pending review", filters.status),
+    renderOption("published", "Published", filters.status),
+    renderOption("archived", "Archived", filters.status)
+  ].join("");
+
+  return `<form class="filter-panel admin-filter-panel" method="get" action="/admin/guides" aria-label="Admin guide filters">
+    <label class="filter-field">
+      <span>Status</span>
+      <select name="status">${statusOptions}</select>
+    </label>
+    <div class="filter-actions">
+      <button class="primary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/admin/guides">Reset</a>
+    </div>
+  </form>`;
+}
+
+function renderAdminSourceRows(guide) {
+  return renderDetailRows([
+    { label: "Source title", value: displayValue(guide.sourceTitle) },
+    { label: "Source type", value: humanizeToken(displayValue(guide.sourceType)) },
+    { label: "Official source", html: renderDetailLink(guide.officialSourceUrl, "Open source") },
+    { label: "Source published", value: formatDate(guide.sourcePublishedAt) },
+    { label: "Source updated", value: formatDate(guide.sourceUpdatedAt) }
+  ]);
+}
+
+function renderAdminStructuredRows(guide) {
+  const applicationWindow = `${formatDate(guide.applicationStartAt)} to ${formatDate(guide.applicationDeadlineAt)}`;
+
+  return renderDetailRows([
+    { label: "Application window", value: applicationWindow },
+    { label: "Application status", value: humanizeToken(displayValue(guide.applicationStatus)) },
+    { label: "Application URL", html: renderDetailLink(guide.applicationUrl, "Open application") },
+    { label: "Majors", value: guide.majors.map((major) => `${major.name} (${major.track})`).join("; ") || pendingSupplementText },
+    { label: "Subject requirements", value: displayValue(guide.subjectRequirements, pendingSupplementText) },
+    { label: "Academic test", value: displayValue(guide.academicTestRequirements, pendingSupplementText) },
+    { label: "Assessment method", value: displayValue(guide.assessmentMethod, pendingSupplementText) },
+    { label: "Admission rule", value: displayValue(guide.admissionRule, pendingSupplementText) }
+  ]);
+}
+
+function renderAdminAuditTrail(guide) {
+  const audit = guide.reviewAudit ?? [];
+
+  if (audit.length === 0) {
+    return `<p class="inline-empty">No review operations recorded.</p>`;
+  }
+
+  return `<ol class="admin-audit-list">${audit
+    .map((entry) => `<li>
+      <strong>${escapeHtml(humanizeToken(entry.operation))}</strong>
+      <span>${escapeHtml(entry.operatorNickname)} (${escapeHtml(entry.operatorRole)})</span>
+      <em>${escapeHtml(formatDate(entry.operatedAt))}</em>
+      ${entry.note ? `<p>${escapeHtml(entry.note)}</p>` : ""}
+    </li>`)
+    .join("")}</ol>`;
+}
+
+function renderAdminGuideActions(guide) {
+  const encodedId = escapeHtml(encodeURIComponent(guide.id));
+
+  return `<div class="admin-action-row" aria-label="Guide review actions">
+    <form method="post" action="/admin/guides/${encodedId}/submit-review">
+      <button class="secondary-action" type="submit">Submit review</button>
+    </form>
+    <form method="post" action="/admin/guides/${encodedId}/publish">
+      <button class="primary-action" type="submit">Publish</button>
+    </form>
+    <form method="post" action="/admin/guides/${encodedId}/return">
+      <button class="secondary-action" type="submit">Return</button>
+    </form>
+    <form method="post" action="/admin/guides/${encodedId}/pending-supplement">
+      <button class="secondary-action" type="submit">Pending supplement</button>
+    </form>
+    <form method="post" action="/admin/guides/${encodedId}/archive">
+      <button class="secondary-action" type="submit">Archive</button>
+    </form>
+  </div>`;
+}
+
+function renderAdminGuideCards(reviews) {
+  if (reviews.length === 0) {
+    return `<p class="empty-state">No guide records match this review queue.</p>`;
+  }
+
+  return reviews
+    .map(({ guide, school }) => `<article class="admin-review-card">
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(guide.admissionYear)}</span>
+        <span class="soft-badge">${escapeHtml(humanizeToken(guide.status))}</span>
+        ${guide.supplementStatus ? `<span class="muted-badge">${escapeHtml(humanizeToken(guide.supplementStatus))}</span>` : ""}
+      </div>
+      <div class="section-heading">
+        <div>
+          <h3>${escapeHtml(guide.guideTitle)}</h3>
+          <p class="section-kicker">${escapeHtml(school.name)} - version ${escapeHtml(guide.version)}</p>
+        </div>
+        ${renderAdminGuideActions(guide)}
+      </div>
+      <div class="admin-review-columns">
+        <section class="admin-review-section" aria-label="Official source attribution">
+          <h4>Official source attribution</h4>
+          ${renderAdminSourceRows(guide)}
+        </section>
+        <section class="admin-review-section" aria-label="Extracted structured fields">
+          <h4>Extracted fields</h4>
+          ${renderAdminStructuredRows(guide)}
+        </section>
+      </div>
+      <section class="admin-review-section" aria-label="Review audit trail">
+        <h4>Review audit</h4>
+        ${renderAdminAuditTrail(guide)}
+      </section>
+    </article>`)
+    .join("");
+}
+
+export function renderAdminGuideReviewPage({ reviews, filters = {}, user }) {
+  return htmlPage({
+    title: `Guide Review | ${productName}`,
+    body: `    <main class="app-shell admin-main admin-review-main">
+      <header class="admin-header">
+        <a class="brand" href="/admin">
+          <span class="brand-mark">Admin</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <p class="eyebrow">Official guide review</p>
+        <h1>Guide review queue</h1>
+        <p class="lead">Review draft and pending official guide records before they become visible to students.</p>
+        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
+        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
+      </header>
+
+      <section class="section" aria-label="Admin guide filters">
+        ${renderAdminGuideFilters(filters)}
+      </section>
+
+      <section class="section" aria-labelledby="admin-guide-results-title">
+        <div class="section-heading">
+          <h2 id="admin-guide-results-title">${escapeHtml(reviews.length)} ${escapeHtml(pluralize(reviews.length, "guide"))} in review</h2>
+          <p class="section-kicker">Draft and pending_review official data</p>
+        </div>
+        <div class="admin-review-list">${renderAdminGuideCards(reviews)}</div>
+      </section>
+    </main>`
+  });
+}
+
 function renderPersonalSummary(personalCenter) {
   const items = [
     {
@@ -1839,7 +1992,7 @@ export function renderStudentHome() {
   });
 }
 
-export function renderAdminPage() {
+export function renderAdminPage({ user } = {}) {
   const workflowItems = workflowPlaceholders
     .map(
       (item) => `<li>
@@ -1863,6 +2016,7 @@ export function renderAdminPage() {
           The MVP admin area is reserved for reviewed official data, structured extraction
           tasks, experience moderation, and report handling.
         </p>
+        ${user ? `<p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>` : ""}
       </header>
 
       <section class="admin-panel" aria-labelledby="admin-routes-title">

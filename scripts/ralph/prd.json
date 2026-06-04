@@ -255,8 +255,8 @@
         "Tests prove non-admin users cannot access admin guide APIs and published guides become visible to student APIs only after approval."
       ],
       "priority": 16,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented protected admin guide review APIs and page for draft creation, submit-review, publish, return, pending supplement, and archive operations with audit records; published guide versions become visible through student APIs only after approval."
     },
     {
       "id": "US-017",

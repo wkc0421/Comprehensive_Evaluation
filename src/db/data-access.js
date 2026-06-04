@@ -1,7 +1,19 @@
+import { randomUUID } from "node:crypto";
+
 import { seedData } from "./seed-data.js";
 
 const publishedStatus = "published";
+const reviewQueueStatuses = new Set(["draft", "pending_review"]);
+const officialDataStatuses = new Set(["draft", "pending_review", "published", "archived"]);
+const guideSourceTypes = new Set([
+  "official_notice",
+  "admission_guide",
+  "application_portal",
+  "education_exam_authority",
+  "manual_upload"
+]);
 const dueSoonWindowMs = 7 * 24 * 60 * 60 * 1000;
+let admissionGuideRecords = seedData.admissionGuides.map(cloneAdmissionGuide);
 
 export const timelineEventDefinitions = Object.freeze([
   { eventKey: "guide_publication", title: "Guide published", dateField: "publishedAt" },
@@ -65,6 +77,15 @@ export class ScoreCalculationError extends Error {
   constructor(code, message, statusCode = 400) {
     super(message);
     this.name = "ScoreCalculationError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
+export class AdminGuideReviewError extends Error {
+  constructor(code, message, statusCode = 400) {
+    super(message);
+    this.name = "AdminGuideReviewError";
     this.code = code;
     this.statusCode = statusCode;
   }
@@ -277,6 +298,332 @@ function normalizeFilterValue(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+function cloneAdmissionGuide(guide) {
+  return {
+    ...guide,
+    majors: Array.isArray(guide.majors)
+      ? guide.majors.map((major) => ({ ...major }))
+      : [],
+    subjectRequirements: Array.isArray(guide.subjectRequirements)
+      ? [...guide.subjectRequirements]
+      : [],
+    fees: guide.fees ? { ...guide.fees } : {},
+    contact: guide.contact ? { ...guide.contact } : {},
+    reviewAudit: Array.isArray(guide.reviewAudit)
+      ? guide.reviewAudit.map((entry) => ({ ...entry }))
+      : [],
+    supplementStatus: guide.supplementStatus ?? null,
+    reviewStatus: guide.reviewStatus ?? guide.status
+  };
+}
+
+function admissionGuides() {
+  return admissionGuideRecords;
+}
+
+function currentIsoDate(now) {
+  if (typeof now !== "function") {
+    return new Date().toISOString();
+  }
+
+  const value = now();
+  return (value instanceof Date ? value : new Date(value)).toISOString();
+}
+
+function normalizeAdminText(value, label, options = {}) {
+  const text = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+
+  if (text.length === 0) {
+    if (options.optional) {
+      return options.fallback ?? null;
+    }
+
+    throw new AdminGuideReviewError("missing_guide_field", `${label} is required.`);
+  }
+
+  if (text.length > (options.maxLength ?? 4000)) {
+    throw new AdminGuideReviewError("guide_field_too_long", `${label} is too long.`);
+  }
+
+  return text;
+}
+
+function normalizeAdminDate(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const timestamp = Date.parse(value);
+
+  if (Number.isNaN(timestamp)) {
+    throw new AdminGuideReviewError("invalid_guide_date", "Guide date fields must be valid dates.");
+  }
+
+  return new Date(timestamp).toISOString();
+}
+
+function normalizeAdminYear(value) {
+  const year = Number(value);
+
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    throw new AdminGuideReviewError("invalid_guide_year", "Admission year must be a four-digit year.");
+  }
+
+  return year;
+}
+
+function normalizeAdminArray(value, label) {
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(/\n|,/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  throw new AdminGuideReviewError("invalid_guide_field", `${label} must be a list.`);
+}
+
+function normalizeAdminMajors(value) {
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new AdminGuideReviewError("invalid_guide_field", "Majors must be a list.");
+  }
+
+  return value
+    .map((major) => {
+      if (!major || typeof major !== "object" || Array.isArray(major)) {
+        throw new AdminGuideReviewError("invalid_guide_field", "Each major must be an object.");
+      }
+
+      return {
+        name: normalizeAdminText(major.name, "Major name"),
+        track: normalizeAdminText(major.track, "Major track", {
+          optional: true,
+          fallback: "official not specified"
+        })
+      };
+    });
+}
+
+function normalizeAdminObject(value, label) {
+  if (value === undefined || value === null || value === "") {
+    return {};
+  }
+
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new AdminGuideReviewError("invalid_guide_field", `${label} must be an object.`);
+  }
+
+  return { ...value };
+}
+
+function normalizeSourceType(value) {
+  const sourceType = normalizeAdminText(value ?? "manual_upload", "Source type");
+
+  if (!guideSourceTypes.has(sourceType)) {
+    throw new AdminGuideReviewError("invalid_source_type", "Guide source type is not supported.");
+  }
+
+  return sourceType;
+}
+
+function assertOfficialStatus(status) {
+  if (!officialDataStatuses.has(status)) {
+    throw new AdminGuideReviewError("invalid_guide_status", "Guide status is not supported.");
+  }
+}
+
+function assertPublishedSchoolForAdmin(schoolId) {
+  const school = getPublishedSchoolById(schoolId);
+
+  if (!school) {
+    throw new AdminGuideReviewError("school_not_found", "A published school is required for guide review.", 404);
+  }
+
+  return school;
+}
+
+function operatorAuditFields(operator) {
+  return {
+    operatorId: operator.id,
+    operatorNickname: operator.nickname,
+    operatorRole: operator.role
+  };
+}
+
+function auditEntry({ operation, operator, operatedAt, note }) {
+  return {
+    operation,
+    ...operatorAuditFields(operator),
+    operatedAt,
+    note: note ?? null
+  };
+}
+
+function appendGuideAudit(guide, operation, operator, operatedAt, note) {
+  return {
+    ...guide,
+    reviewAudit: [
+      ...(guide.reviewAudit ?? []),
+      auditEntry({ operation, operator, operatedAt, note })
+    ]
+  };
+}
+
+function guideSeriesFor(guide, guides = admissionGuides()) {
+  return guides.filter((candidate) => sameGuideSeries(candidate, guide));
+}
+
+function nextGuideVersion({ schoolId, admissionYear, provinceScope }) {
+  const versions = admissionGuides()
+    .filter((guide) => {
+      return guide.schoolId === schoolId &&
+        guide.admissionYear === admissionYear &&
+        guide.provinceScope === provinceScope;
+    })
+    .map((guide) => guide.version);
+
+  return versions.length === 0 ? 1 : Math.max(...versions) + 1;
+}
+
+function normalizedGuideDraft(body, operator, now) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new AdminGuideReviewError("invalid_guide_body", "Guide draft payload must be an object.");
+  }
+
+  const structuredFields = body.structuredFields && typeof body.structuredFields === "object"
+    ? body.structuredFields
+    : body;
+  const schoolId = normalizeAdminText(body.schoolId, "School id");
+  const admissionYear = normalizeAdminYear(body.year ?? body.admissionYear);
+  const provinceScope = "guangdong";
+  const createdAt = currentIsoDate(now);
+
+  assertPublishedSchoolForAdmin(schoolId);
+
+  const guide = {
+    id: body.id ? normalizeAdminText(body.id, "Guide id") : randomUUID(),
+    schoolId,
+    admissionYear,
+    provinceScope,
+    status: "draft",
+    version: nextGuideVersion({ schoolId, admissionYear, provinceScope }),
+    isCurrent: false,
+    officialSourceUrl: normalizeAdminText(body.officialSourceUrl, "Official source URL"),
+    sourceType: normalizeSourceType(body.sourceType),
+    sourceTitle: normalizeAdminText(body.sourceTitle ?? body.guideTitle, "Source title"),
+    sourcePublishedAt: normalizeAdminDate(body.sourcePublishedAt),
+    sourceUpdatedAt: normalizeAdminDate(body.sourceUpdatedAt ?? body.updatedAt),
+    applicationUrl: normalizeAdminText(structuredFields.applicationUrl, "Application URL", {
+      optional: true,
+      fallback: ""
+    }),
+    guideTitle: normalizeAdminText(body.guideTitle, "Guide title"),
+    summary: normalizeAdminText(body.summary, "Guide summary"),
+    applicationStatus: normalizeAdminText(structuredFields.applicationStatus ?? "open", "Application status"),
+    applicationStartAt: normalizeAdminDate(structuredFields.applicationStartAt),
+    applicationDeadlineAt: normalizeAdminDate(structuredFields.applicationDeadlineAt),
+    majors: normalizeAdminMajors(structuredFields.majors),
+    subjectRequirements: normalizeAdminArray(structuredFields.subjectRequirements, "Subject requirements"),
+    academicTestRequirements: normalizeAdminText(
+      structuredFields.academicTestRequirements,
+      "Academic test requirements",
+      { optional: true, fallback: "" }
+    ),
+    assessmentMethod: normalizeAdminText(structuredFields.assessmentMethod, "Assessment method", {
+      optional: true,
+      fallback: ""
+    }),
+    admissionRule: normalizeAdminText(structuredFields.admissionRule, "Admission rule", {
+      optional: true,
+      fallback: ""
+    }),
+    fees: normalizeAdminObject(structuredFields.fees, "Fees"),
+    contact: normalizeAdminObject(structuredFields.contact, "Contact"),
+    versionNotes: normalizeAdminText(body.versionNotes, "Version notes", {
+      optional: true,
+      fallback: "Draft created for official guide review."
+    }),
+    publishedAt: null,
+    updatedAt: createdAt,
+    reviewStatus: "draft",
+    supplementStatus: null,
+    reviewAudit: []
+  };
+
+  return appendGuideAudit(guide, "create_draft", operator, createdAt, body.note);
+}
+
+function guideReviewErrorForMissing() {
+  return new AdminGuideReviewError("guide_not_found", "No guide was found for admin review.", 404);
+}
+
+function updateGuideRecord(guideId, updater) {
+  const index = admissionGuideRecords.findIndex((guide) => guide.id === guideId);
+
+  if (index === -1) {
+    throw guideReviewErrorForMissing();
+  }
+
+  const nextGuide = updater(admissionGuideRecords[index]);
+  admissionGuideRecords = admissionGuideRecords.map((guide, currentIndex) => {
+    if (currentIndex === index) {
+      return cloneAdmissionGuide(nextGuide);
+    }
+
+    if (nextGuide.status === publishedStatus && sameGuideSeries(guide, nextGuide)) {
+      return {
+        ...cloneAdmissionGuide(guide),
+        isCurrent: false
+      };
+    }
+
+    return guide;
+  });
+
+  return admissionGuideRecords[index];
+}
+
+function transitionGuideReview({ guideId, operation, status, operator, now, note, supplementStatus = null }) {
+  assertOfficialStatus(status);
+
+  const operatedAt = currentIsoDate(now);
+  return updateGuideRecord(guideId, (guide) => {
+    const nextGuide = {
+      ...guide,
+      status,
+      reviewStatus: operation,
+      supplementStatus,
+      updatedAt: operatedAt
+    };
+
+    if (status === publishedStatus) {
+      nextGuide.isCurrent = true;
+      nextGuide.publishedAt = operatedAt;
+      nextGuide.supplementStatus = null;
+    }
+
+    if (status === "archived") {
+      nextGuide.isCurrent = false;
+    }
+
+    return appendGuideAudit(nextGuide, operation, operator, operatedAt, note);
+  });
+}
+
 function roundScore(value) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
@@ -364,7 +711,7 @@ function getPublishedSchoolById(schoolId) {
 }
 
 function publishedGuides() {
-  return seedData.admissionGuides.filter((guide) => isPublished(guide) && getPublishedSchoolById(guide.schoolId));
+  return admissionGuides().filter((guide) => isPublished(guide) && getPublishedSchoolById(guide.schoolId));
 }
 
 function visibleGuides() {
@@ -657,6 +1004,179 @@ export function getGuideDetail(filters) {
 }
 
 /**
+ * Lists draft and pending-review guide records for the admin review queue.
+ *
+ * @param {{status?: string}} [filters]
+ * @returns {ReadonlyArray<{
+ *   guide: import("./seed-data.js").AdmissionGuideSeed,
+ *   school: import("./seed-data.js").SchoolSeed
+ * }>}
+ */
+export function listAdminGuideReviews(filters = {}) {
+  if (filters.status) {
+    assertOfficialStatus(filters.status);
+  }
+
+  return admissionGuides()
+    .filter((guide) => filters.status ? guide.status === filters.status : reviewQueueStatuses.has(guide.status))
+    .map((guide) => ({
+      guide,
+      school: getPublishedSchoolById(guide.schoolId)
+    }))
+    .filter((item) => item.school)
+    .sort((left, right) => {
+      if (left.guide.status !== right.guide.status) {
+        return left.guide.status === "pending_review" ? -1 : 1;
+      }
+
+      if (right.guide.updatedAt !== left.guide.updatedAt) {
+        return String(right.guide.updatedAt ?? "").localeCompare(String(left.guide.updatedAt ?? ""));
+      }
+
+      return compareSchoolNames(left.school, right.school);
+    });
+}
+
+/**
+ * Reads any guide record for admin review, including draft, pending, and
+ * archived guide versions hidden from student-facing helpers.
+ *
+ * @param {{guideId: string}} filters
+ * @returns {{
+ *   guide: import("./seed-data.js").AdmissionGuideSeed,
+ *   school: import("./seed-data.js").SchoolSeed,
+ *   versionHistory: ReadonlyArray<import("./seed-data.js").AdmissionGuideSeed>
+ * } | null}
+ */
+export function getAdminGuideReviewDetail(filters) {
+  const guide = admissionGuides().find((candidate) => candidate.id === filters.guideId) ?? null;
+
+  if (!guide) {
+    return null;
+  }
+
+  const school = getPublishedSchoolById(guide.schoolId);
+
+  if (!school) {
+    return null;
+  }
+
+  return {
+    school,
+    guide,
+    versionHistory: guideSeriesFor(guide)
+      .sort((left, right) => right.version - left.version)
+  };
+}
+
+/**
+ * Creates a review-only guide draft. The draft is hidden from student-facing
+ * helpers until an admin publishes it.
+ *
+ * @param {{body: object, operator: object, now?: () => Date | string | number}} input
+ * @returns {{guide: import("./seed-data.js").AdmissionGuideSeed, school: import("./seed-data.js").SchoolSeed}}
+ */
+export function createAdminGuideDraft(input) {
+  const guide = normalizedGuideDraft(input.body, input.operator, input.now);
+
+  admissionGuideRecords = [...admissionGuideRecords, cloneAdmissionGuide(guide)];
+
+  return {
+    guide,
+    school: assertPublishedSchoolForAdmin(guide.schoolId)
+  };
+}
+
+/**
+ * Moves a guide draft into official data review.
+ *
+ * @param {{guideId: string, operator: object, now?: () => Date | string | number, note?: string}} input
+ * @returns {import("./seed-data.js").AdmissionGuideSeed}
+ */
+export function submitAdminGuideReview(input) {
+  return transitionGuideReview({
+    guideId: input.guideId,
+    operation: "submit_review",
+    status: "pending_review",
+    operator: input.operator,
+    now: input.now,
+    note: input.note
+  });
+}
+
+/**
+ * Publishes the reviewed guide version and makes it visible to public student
+ * guide APIs.
+ *
+ * @param {{guideId: string, operator: object, now?: () => Date | string | number, note?: string}} input
+ * @returns {import("./seed-data.js").AdmissionGuideSeed}
+ */
+export function publishAdminGuide(input) {
+  return transitionGuideReview({
+    guideId: input.guideId,
+    operation: "publish",
+    status: "published",
+    operator: input.operator,
+    now: input.now,
+    note: input.note
+  });
+}
+
+/**
+ * Returns a guide to draft after manual review.
+ *
+ * @param {{guideId: string, operator: object, now?: () => Date | string | number, note?: string}} input
+ * @returns {import("./seed-data.js").AdmissionGuideSeed}
+ */
+export function returnAdminGuide(input) {
+  return transitionGuideReview({
+    guideId: input.guideId,
+    operation: "return",
+    status: "draft",
+    operator: input.operator,
+    now: input.now,
+    note: input.note
+  });
+}
+
+/**
+ * Marks a guide as requiring official-data supplementation while keeping it in
+ * the review queue.
+ *
+ * @param {{guideId: string, operator: object, now?: () => Date | string | number, note?: string}} input
+ * @returns {import("./seed-data.js").AdmissionGuideSeed}
+ */
+export function markAdminGuidePendingSupplement(input) {
+  return transitionGuideReview({
+    guideId: input.guideId,
+    operation: "mark_pending_supplement",
+    status: "draft",
+    operator: input.operator,
+    now: input.now,
+    note: input.note,
+    supplementStatus: "pending_supplement"
+  });
+}
+
+/**
+ * Archives a guide version so it is removed from review and public current
+ * guide views.
+ *
+ * @param {{guideId: string, operator: object, now?: () => Date | string | number, note?: string}} input
+ * @returns {import("./seed-data.js").AdmissionGuideSeed}
+ */
+export function archiveAdminGuide(input) {
+  return transitionGuideReview({
+    guideId: input.guideId,
+    operation: "archive",
+    status: "archived",
+    operator: input.operator,
+    now: input.now,
+    note: input.note
+  });
+}
+
+/**
  * Creates the next immutable guide version for dependency-free tests and local
  * draft workflows. The input guide is never modified; older records in the same
  * school/year/scope series are returned with `isCurrent: false`.
@@ -675,7 +1195,7 @@ export function getGuideDetail(filters) {
  * } | null}
  */
 export function createGuideVersion(input) {
-  const guides = input.guides ?? seedData.admissionGuides;
+  const guides = input.guides ?? admissionGuides();
   const sourceGuide = guides.find((guide) => guide.id === input.guideId);
 
   if (!sourceGuide) {
