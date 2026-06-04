@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 
+import { accountStatuses, userRoles } from "../auth.js";
 import { coreDataModelTables, coreMigrationFiles, officialDataStatuses } from "./schema.js";
 
 const migrationSql = await readFile(new URL("./migrations/001_core_data_model.sql", import.meta.url), "utf8");
@@ -73,5 +74,27 @@ describe("core data model migration", () => {
       tableDefinition("interactions"),
       /constraint interactions_one_action_per_target unique \(user_id, target_type, target_id, action\)/
     );
+  });
+
+  it("stores authenticated user profile fields, roles, and account statuses", () => {
+    const usersTable = tableDefinition("users");
+    const roleDeclaration = migrationSql.match(/CREATE TYPE user_role AS ENUM \((?<values>[^)]+)\)/i);
+    const roles = [...(roleDeclaration?.groups?.values ?? "").matchAll(/'([^']+)'/g)]
+      .map((match) => match[1]);
+    const statusDeclaration = migrationSql.match(/CREATE TYPE account_status AS ENUM \((?<values>[^)]+)\)/i);
+    const statuses = [...(statusDeclaration?.groups?.values ?? "").matchAll(/'([^']+)'/g)]
+      .map((match) => match[1]);
+
+    assert.deepEqual(roles, userRoles);
+    assert.equal(roles.includes("visitor"), false);
+    assert.deepEqual(statuses, accountStatuses);
+    assert.match(usersTable, /nickname text not null/);
+    assert.match(
+      usersTable,
+      /grade text check \(grade in \('high_school_g1', 'high_school_g2', 'high_school_g3', 'graduated'\)\)/
+    );
+    assert.match(usersTable, /default_anonymous boolean not null default true/);
+    assert.match(usersTable, /role user_role not null default 'user'/);
+    assert.match(usersTable, /account_status account_status not null default 'active'/);
   });
 });

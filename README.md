@@ -45,7 +45,19 @@ Mobile-first Node.js web application for Guangdong comprehensive evaluation admi
 
 - `DATABASE_URL` points to the PostgreSQL database.
 - `OBJECT_STORAGE_*` values are placeholders for source documents and verification materials.
-- `AUTH_*` and `LOCAL_OTP_*` values configure local session and OTP behavior for development.
+- `AUTH_*` values configure session cookies.
+- `PHONE_VERIFICATION_*` values configure production phone OTP provider request and verification endpoints.
+- `LOCAL_OTP_*` values configure the local phone OTP stub. The stub is accepted only when `NODE_ENV` is `development` or `test`; production must use a real phone verification provider.
+
+## Authentication
+
+The MVP exposes dependency-free session endpoints:
+
+- `POST /api/auth/otp` requests a phone verification code.
+- `POST /api/auth/login` verifies the code, creates or reads the user profile, and sets the `AUTH_SESSION_COOKIE_NAME` HTTP-only session cookie.
+- `GET /api/me` returns the current user profile.
+
+In production, the auth service posts to `PHONE_VERIFICATION_REQUEST_URL` to request a code and `PHONE_VERIFICATION_VERIFY_URL` to verify it. Users store nickname, grade, default anonymous preference, role, and account status. Stored roles are limited to `user`, `content_reviewer`, `data_reviewer`, and `admin`; visitors are unauthenticated users and are not stored as a role. Public-facing auth responses return only the public user profile and never return phone number, phone hash, or phone ciphertext fields.
 
 ## Data And Search
 

@@ -9,6 +9,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - `npm run build` creates `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`, and `dist/` is generated and ignored.
 - Core PostgreSQL schema migrations live in `src/db/migrations`; `src/db/schema.test.js` validates migration SQL statically without connecting to `DATABASE_URL`.
 - Seed fixtures and student-facing published-only data access helpers live in `src/db` as plain JavaScript modules; use them before introducing database tooling.
+- Authentication/session helpers live in `src/auth.js`; `handleRequest` accepts an optional `{ authService }` test context, and public auth responses must use the public user shape so phone fields do not leak.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -103,4 +104,35 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - The seed data uses stable string IDs in `seedIds` so later API and UI tests can target exact schools, guides, formulas, and experiences without duplicating literals.
   - Public data access helpers intentionally enforce parent visibility: timeline events and formulas are hidden unless their guide and school are published.
   - Missing formula behavior can be exercised with South China University of Technology 2025 via `getScoreFormula({ schoolId: seedIds.schools.scut, year: 2025 })`.
+---
+
+## Thu Jun  4 11:14:43 AM CST 2026 - Ralph runner
+- Iteration: 3
+- Story: US-003
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260604-104510/iteration-3
+---
+
+## Thu Jun  4 11:22:14 AM CST 2026 - US-004
+- What was implemented
+  - Added dependency-free phone OTP authentication with session cookies, public user profile defaults, local OTP support only for development and tests, and production provider hooks.
+  - Added active-account gates for restricted student actions and reviewer/admin role gates for admin APIs.
+  - Added route and auth tests proving unauthenticated users cannot submit experiences, favorite, mark useful, report, view mine timeline, or access admin APIs.
+- Files changed
+  - `.env.example`, `AGENTS.md`, `README.md`, `package.json`
+  - `src/auth.js`, `src/auth.test.js`
+  - `src/app.js`, `src/app.test.js`
+  - `src/db/schema.test.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `npm test` passed
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+- Browser verification result, if this was a UI story
+  - Not applicable; this story added auth APIs, sessions, RBAC checks, and tests.
+- **Learnings for future iterations:**
+  - Use `createAuthService` for isolated tests and pass it through `handleRequest(request, response, { authService })`.
+  - The local OTP stub is available only when `NODE_ENV` is `development` or `test`; production integrations should configure `PHONE_VERIFICATION_REQUEST_URL` and `PHONE_VERIFICATION_VERIFY_URL` or provide auth service callbacks.
+  - Restricted API routes should call the active-account gate before doing any action-specific work, and admin APIs should also pass reviewer/admin roles.
 ---

@@ -62,8 +62,8 @@
         "Add tests proving unauthenticated users cannot submit experiences, favorite, mark useful, report, view mine timeline, or access admin APIs."
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented dependency-free phone OTP login/session helpers with production provider hooks, local OTP stub limited to development and tests, public user projection without phone fields, active-account gates for restricted student APIs, and reviewer/admin role gates for admin APIs."
     },
     {
       "id": "US-005",
