@@ -16,6 +16,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+scripts/ralph/.last-branch
+scripts/ralph/.last-prd.json
+scripts/ralph/.ralph-state.json
+scripts/ralph/runs/
 
 # system
 .DS_Store
