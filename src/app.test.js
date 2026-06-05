@@ -1643,6 +1643,139 @@ describe("web routes", () => {
     assertNoPhoneFields(experiencesBody);
   });
 
+  it("renders the logged-out My page as a login guide without loading personal data", async () => {
+    const response = await fetch(`${baseUrl}/me`, {
+      headers: { accept: "text/html" }
+    });
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assertStudentBottomNav(body, "/me");
+    assert.match(body, /Log in to use My page/);
+    assert.match(body, /Login enables school favorites, experience publishing, and review-status tracking\./);
+    assert.match(body, /href="\/login\?returnTo=%2Fme"/);
+    assert.doesNotMatch(body, /name="phoneNumber"/);
+    assert.doesNotMatch(body, /Phone OTP/);
+    assert.doesNotMatch(body, /Personal student|Profile student|source-account|Real Name|verificationMaterials|phone/i);
+  });
+
+  it("groups personal center submissions and site-only reminders with student-safe next actions", async () => {
+    const student = authService.createUserForTesting({
+      phoneNumber: "+8613000000061",
+      nickname: "Grouped personal student",
+      grade: "high_school_g3",
+      defaultAnonymous: false
+    });
+    const reviewer = authService.createUserForTesting({
+      phoneNumber: "+8613000000062",
+      nickname: "Grouped content reviewer",
+      role: "content_reviewer"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(student.id)).split(";")[0];
+    const createSubmission = (majorGroup) => experienceSubmissionStore.submitExperience({
+      user: student,
+      body: validExperienceSubmissionPayload({ majorGroup })
+    });
+    const pending = createSubmission("Grouped Pending State");
+    const published = createSubmission("Grouped Published State");
+    const returned = createSubmission("Grouped Returned State");
+    const hidden = createSubmission("Grouped Hidden State");
+    const rejected = createSubmission("Grouped Rejected State");
+
+    interactionStore.addFavorite({
+      userId: student.id,
+      targetType: "school",
+      targetId: seedIds.schools.sysu
+    });
+    interactionStore.addFavorite({
+      userId: student.id,
+      targetType: "experience",
+      targetId: seedIds.experiences.sysu2026
+    });
+    experienceSubmissionStore.reviewExperience({
+      experienceId: published.id,
+      action: "approve",
+      operator: reviewer,
+      note: "Approved for student-safe display."
+    });
+    experienceSubmissionStore.reviewExperience({
+      experienceId: returned.id,
+      action: "return",
+      operator: reviewer,
+      note: "Return for student-safe rewrite."
+    });
+    experienceSubmissionStore.reviewExperience({
+      experienceId: hidden.id,
+      action: "hide",
+      operator: reviewer,
+      note: "Hidden from student side."
+    });
+    experienceSubmissionStore.reviewExperience({
+      experienceId: rejected.id,
+      action: "ban",
+      operator: reviewer,
+      note: "Rejected for student-facing safety."
+    });
+
+    const apiResponse = await fetch(`${baseUrl}/api/me`, {
+      headers: { cookie }
+    });
+    const apiBody = await apiResponse.json();
+    const apiSerialized = JSON.stringify(apiBody);
+    const groupLabels = apiBody.submittedExperienceGroups.map((group) => group.label);
+    const notificationTypes = new Set(apiBody.notifications.map((notification) => notification.type));
+
+    assert.equal(apiResponse.status, 200);
+    assert.deepEqual(groupLabels, ["Pending Review", "Published", "Returned", "Hidden", "Rejected"]);
+    assert.equal(apiBody.submittedExperiences.find((experience) => experience.id === rejected.id).statusLabel, "Rejected");
+    assert.equal(apiBody.favorites.schools[0].school.name, "Sun Yat-sen University");
+    assert.equal(apiBody.favorites.experiences[0].experience.id, seedIds.experiences.sysu2026);
+    assert.equal(notificationTypes.has("timeline_node"), true);
+    assert.equal(notificationTypes.has("submission_review"), true);
+    assert.ok(apiBody.notifications.every((notification) => notification.delivery === "site_only"));
+    assert.doesNotMatch(apiSerialized, /sms|wechat|email|external/i);
+    assert.doesNotMatch(apiSerialized, /source-account|Real Name|private\/submissions|verificationMaterials|phone|realName|sourceAccount|userId/i);
+    assertNoPhoneFields(apiBody);
+
+    const pageResponse = await fetch(`${baseUrl}/me`, {
+      headers: {
+        accept: "text/html",
+        cookie
+      }
+    });
+    const pageBody = await pageResponse.text();
+
+    assert.equal(pageResponse.status, 200);
+    assert.match(pageBody, /Grouped personal student/);
+    assert.match(pageBody, /High school grade three/);
+    assert.match(pageBody, /Default anonymous preference/);
+    assert.match(pageBody, /Show nickname by default/);
+    assert.match(pageBody, /Favorited schools/);
+    assert.match(pageBody, /Favorited experiences/);
+    assert.match(pageBody, /Submitted experiences/);
+    assert.match(pageBody, /Site reminders/);
+    assert.match(pageBody, /Account preferences/);
+    for (const label of ["Pending Review", "Published", "Returned", "Hidden", "Rejected"]) {
+      assert.match(pageBody, new RegExp(escapeRegExp(label)));
+    }
+    assert.match(pageBody, /Next action/);
+    assert.match(pageBody, /No action needed while reviewers check student-safe details\./);
+    assert.match(pageBody, /View the student-safe public detail\./);
+    assert.match(pageBody, /Submit a revised experience with private details removed\./);
+    assert.match(pageBody, /Prepare a new student-safe version before publishing again\./);
+    assert.match(pageBody, /Review status change/);
+    assert.match(pageBody, /Application deadline/);
+    assert.match(pageBody, /Site-only/);
+    assert.doesNotMatch(pageBody, /Banned/);
+    assert.doesNotMatch(pageBody, /source-account|Real Name|private\/submissions|verificationMaterials|phone|realName|sourceAccount|userId/i);
+
+    const pendingPublicResponse = await fetch(`${baseUrl}/api/experiences?keyword=Grouped%20Pending%20State`);
+    const pendingPublicBody = await pendingPublicResponse.json();
+
+    assert.equal(pendingPublicResponse.status, 200);
+    assert.equal(pendingPublicBody.experiences.some((experience) => experience.id === pending.id), false);
+  });
+
   it("renders the personal center page and updates account preferences", async () => {
     const user = authService.createUserForTesting({
       phoneNumber: "+8613000000022",
@@ -1663,7 +1796,9 @@ describe("web routes", () => {
     assert.equal(pageResponse.status, 200);
     assert.match(pageBody, /Personal center/);
     assert.match(pageBody, /My/);
-    assert.match(pageBody, /Site notifications/);
+    assert.match(pageBody, /Site reminders/);
+    assert.match(pageBody, /Default anonymous preference/);
+    assert.match(pageBody, /Anonymous by default/);
     assert.match(pageBody, /Favorited schools/);
     assert.match(pageBody, /Favorited experiences/);
     assert.match(pageBody, /Submitted experiences/);
@@ -1734,11 +1869,11 @@ describe("web routes", () => {
         cookie,
         "content-type": "application/x-www-form-urlencoded"
       },
-      body: new URLSearchParams({ returnTo: "/" }).toString()
+      body: new URLSearchParams({ returnTo: "/me" }).toString()
     });
 
     assert.equal(logoutResponse.status, 303);
-    assert.equal(logoutResponse.headers.get("location"), "/?toast=logged_out");
+    assert.equal(logoutResponse.headers.get("location"), "/me?toast=logged_out");
     assert.match(logoutResponse.headers.get("set-cookie") ?? "", /Max-Age=0/);
 
     const loggedOutResponse = await fetch(`${baseUrl}/api/me`, {

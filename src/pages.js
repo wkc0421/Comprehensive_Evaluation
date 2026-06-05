@@ -3506,19 +3506,29 @@ function renderPersonalSummary(personalCenter) {
       detail: gradeLabel(personalCenter.user.grade)
     },
     {
-      label: "Favorites",
-      value: personalCenter.favorites.count,
-      detail: `${personalCenter.favorites.schools.length} schools, ${personalCenter.favorites.experiences.length} experiences`
+      label: "Default anonymous preference",
+      value: personalCenter.preferences.defaultAnonymous ? "Anonymous by default" : "Show nickname by default",
+      detail: "Used for new experience submissions"
+    },
+    {
+      label: "School favorites",
+      value: personalCenter.favorites.schools.length,
+      detail: "Saved schools"
+    },
+    {
+      label: "Experience favorites",
+      value: personalCenter.favorites.experiences.length,
+      detail: "Saved experiences"
     },
     {
       label: "Submissions",
       value: personalCenter.submittedExperiences.length,
-      detail: "Structured experience records"
+      detail: "Review-status tracking"
     },
     {
-      label: "Site notifications",
+      label: "Site reminders",
       value: personalCenter.notifications.length,
-      detail: "Timeline reminders in personal center"
+      detail: "Personal-center only"
     }
   ];
 
@@ -3590,11 +3600,27 @@ function renderFavoriteExperienceCards(favorites) {
 
 function renderNotificationCards(notifications) {
   if (notifications.length === 0) {
-    return `<p class="empty-state">No site notifications for favorited schools right now.</p>`;
+    return `<p class="empty-state">No site reminders for favorited schools or submitted experiences right now.</p>`;
   }
 
   return notifications
-    .map((notification) => `<article class="personal-card">
+    .map((notification) => {
+      if (notification.type === "submission_review") {
+        return `<article class="personal-card">
+      <div class="badge-row">
+        <span class="site-badge">Site-only</span>
+        <span class="status-badge status-${escapeHtml(notification.status)}">${escapeHtml(notification.statusLabel)}</span>
+      </div>
+      <h3>${escapeHtml(notification.title)}</h3>
+      ${renderDetailRows([
+        { label: "School", value: notification.school?.name ?? "Published school" },
+        { label: "Submission year", value: notification.year },
+        { label: "Next action", value: notification.nextAction?.label ?? "Check the submitted experience group." }
+      ])}
+    </article>`;
+      }
+
+      return `<article class="personal-card">
       <div class="badge-row">
         <span class="site-badge">Site-only</span>
         <span class="status-badge status-${escapeHtml(notification.status)}">${escapeHtml(notification.statusLabel)}</span>
@@ -3605,17 +3631,25 @@ function renderNotificationCards(notifications) {
         { label: "Timeline node", value: humanizeToken(notification.eventKey) },
         { label: "Due", value: formatDate(notification.dueAt) }
       ])}
-    </article>`)
+    </article>`;
+    })
     .join("");
 }
 
-function renderSubmittedExperienceCards(experiences) {
-  if (experiences.length === 0) {
-    return `<p class="empty-state">No submitted experiences yet.</p>`;
+function renderSubmissionAction(action) {
+  if (!action?.label) {
+    return missingOfficialText;
   }
 
-  return experiences
-    .map((experience) => `<article class="personal-card">
+  if (action.href) {
+    return `<a class="text-link" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>`;
+  }
+
+  return escapeHtml(action.label);
+}
+
+function renderSubmittedExperienceCard(experience) {
+  return `<article class="personal-card">
       <div class="badge-row">
         <span class="badge">${escapeHtml(experience.year)}</span>
         <span class="soft-badge">${escapeHtml(experience.statusLabel)}</span>
@@ -3627,9 +3661,41 @@ function renderSubmittedExperienceCards(experiences) {
         { label: "Stage", value: humanizeToken(experience.stage) },
         { label: "Assessment format", value: experience.assessmentTypes.map(humanizeToken).join(", ") },
         { label: "Review status", value: experience.statusLabel },
-        { label: "Display", value: experience.author.displayName ?? experience.author.nickname }
+        { label: "Display", value: experience.author.displayName ?? experience.author.nickname },
+        { label: "Next action", html: renderSubmissionAction(experience.nextAction) }
       ])}
-    </article>`)
+    </article>`;
+}
+
+function renderSubmittedExperienceGroups(personalCenter) {
+  const experiences = personalCenter.submittedExperiences;
+
+  if (experiences.length === 0) {
+    return `<p class="empty-state">No submitted experiences yet.</p>`;
+  }
+
+  const groups = Array.isArray(personalCenter.submittedExperienceGroups) && personalCenter.submittedExperienceGroups.length > 0
+    ? personalCenter.submittedExperienceGroups
+    : [
+        {
+          key: "submitted",
+          label: "Submitted",
+          nextAction: "Check the latest review status.",
+          experiences: personalCenter.submittedExperiences
+        }
+      ];
+
+  return groups
+    .map((group) => `<section class="submission-group" aria-labelledby="submission-group-${escapeHtml(group.key)}">
+      <div class="submission-group-heading">
+        <div>
+          <h3 id="submission-group-${escapeHtml(group.key)}">${escapeHtml(group.label)}</h3>
+          <p>${escapeHtml(group.nextAction)}</p>
+        </div>
+        <span class="muted-badge">${escapeHtml(group.experiences.length)} ${escapeHtml(pluralize(group.experiences.length, "item"))}</span>
+      </div>
+      <div class="personal-list">${group.experiences.map(renderSubmittedExperienceCard).join("")}</div>
+    </section>`)
     .join("");
 }
 
@@ -3663,10 +3729,45 @@ function renderPreferenceForm(personalCenter, feedback) {
     </div>
   </form>
   <form class="preference-form logout-form" method="post" action="/logout" aria-label="Logout">
-    <input type="hidden" name="returnTo" value="/">
+    <input type="hidden" name="returnTo" value="/me">
     <button class="secondary-action" type="submit" data-clear-experience-drafts="true">Logout</button>
   </form>
   </div>`;
+}
+
+export function renderPersonalCenterLoginGuidePage({ returnTo = "/me" } = {}) {
+  return renderStudentPage({
+    title: `My | ${productName}`,
+    currentKey: "me",
+    topBar: renderStudentTopBar({
+      type: "list",
+      title: "My"
+    }),
+    content: `
+      <section class="page-heading" aria-labelledby="personal-login-title">
+        <p class="eyebrow">Personal center</p>
+        <h1 id="personal-login-title">My</h1>
+        <p class="lead">Log in when you are ready to keep student-owned admissions work in one place.</p>
+      </section>
+
+      <section class="section" aria-label="Login guide">
+        <article class="personal-login-guide">
+          <div class="login-heading">
+            <p class="eyebrow">Login guide</p>
+            <h2>Log in to use My page</h2>
+            <p>Login enables school favorites, experience publishing, and review-status tracking.</p>
+          </div>
+          <ul class="tip-list">
+            <li>Save Guangdong comprehensive evaluation schools for a personal timeline.</li>
+            <li>Publish structured experiences after reviewer approval.</li>
+            <li>Check submitted experience review status from this page.</li>
+          </ul>
+          <div class="form-actions">
+            <a class="primary-action" href="/login?returnTo=${escapeHtml(encodeURIComponent(safeReturnHref(returnTo)))}">Login</a>
+          </div>
+        </article>
+      </section>`
+  });
 }
 
 export function renderPersonalCenterPage({ personalCenter, notice = "", error = "" }) {
@@ -3691,7 +3792,7 @@ export function renderPersonalCenterPage({ personalCenter, notice = "", error = 
       <section class="section personal-grid" aria-label="Personal center content">
         <div class="personal-panel">
           <div class="section-heading">
-            <h2>Site notifications</h2>
+            <h2>Site reminders</h2>
             <p class="section-kicker">${escapeHtml(personalCenter.notifications.length)} site-only ${escapeHtml(pluralize(personalCenter.notifications.length, "reminder"))}</p>
           </div>
           <div class="personal-list">${renderNotificationCards(personalCenter.notifications)}</div>
@@ -3729,7 +3830,7 @@ export function renderPersonalCenterPage({ personalCenter, notice = "", error = 
           <h2 id="submitted-experiences-title">Submitted experiences</h2>
           <p class="section-kicker">${escapeHtml(personalCenter.submittedExperiences.length)} user-owned ${escapeHtml(pluralize(personalCenter.submittedExperiences.length, "submission"))}</p>
         </div>
-        <div class="personal-list submitted-list">${renderSubmittedExperienceCards(personalCenter.submittedExperiences)}</div>
+        <div class="personal-list submitted-list">${renderSubmittedExperienceGroups(personalCenter)}</div>
       </section>`
   });
 }

@@ -59,6 +59,7 @@ core_pages = [
     (f"/calculator?schoolId={sysu_school_id}&year=2026", "calculator", False, None),
     ("/experiences?year=2024&assessmentType=machine_test&sort=newest", "experiences", True, "/experiences"),
     (f"/experiences/{sysu_experience_id}", "experience-detail", True, "/experiences"),
+    ("/me", "personal-logged-out", True, "/me"),
 ]
 widths = [375, 390, 430]
 hidden_text = [
@@ -427,10 +428,87 @@ async def verify_experience_submission_drafts(page):
         raise AssertionError("Pending experience was not visible in My Submissions")
 
     await page.locator("form[action='/logout'] button").click()
-    await page.wait_for_url("**/?toast=logged_out")
+    await page.wait_for_url("**/me?toast=logged_out")
     logout_draft = await page.evaluate("() => localStorage.getItem('gce:experience-submission-draft')")
     if logout_draft is not None:
         raise AssertionError("Logout did not clear experience submission drafts")
+
+async def verify_logged_in_personal_center(page, *, exercise_account_actions=False):
+    await page.goto(f"{base_url}/me", wait_until="domcontentloaded")
+    await page.locator("#personal-center-title").wait_for()
+    body_text = await page.locator("body").inner_text()
+    body_lower = body_text.lower()
+    required_text = [
+        "Browser My student",
+        "High school grade two",
+        "Default anonymous preference",
+        "Show nickname by default",
+        "Favorited schools",
+        "Favorited experiences",
+        "Submitted experiences",
+        "Site reminders",
+        "Account preferences",
+        "Pending Review",
+        "Published",
+        "Returned",
+        "Hidden",
+        "Rejected",
+        "Next action",
+        "Review status change",
+        "Application deadline",
+        "Site-only",
+        "Sun Yat-sen University",
+    ]
+    for expected in required_text:
+        if expected.lower() not in body_lower:
+            raise AssertionError(f"Logged-in My page missing {expected}")
+    blocked_text = [
+        "phone",
+        "source-account",
+        "real name",
+        "verificationmaterials",
+        "private/browser",
+        "sms",
+        "wechat",
+        "email",
+        "external",
+        "banned",
+    ]
+    for blocked in blocked_text:
+        if blocked in body_lower:
+            raise AssertionError(f"Logged-in My page exposed blocked text: {blocked}")
+    active_href = await page.locator(".student-bottom-nav a[aria-current='page']").get_attribute("href")
+    if active_href != "/me":
+        raise AssertionError(f"My bottom navigation was not active: {active_href}")
+
+    if not exercise_account_actions:
+        return
+
+    await page.locator("input[name='nickname']").fill("Browser My updated")
+    await page.locator("select[name='grade']").select_option("high_school_g1")
+    await page.locator("select[name='defaultAnonymous']").select_option("true")
+    await page.locator("form[action='/me/preferences'] button[type='submit']").click()
+    await page.locator(".form-success").wait_for()
+    updated_text = await page.locator("body").inner_text()
+    if "Preferences updated" not in updated_text or "High school grade one" not in updated_text:
+        raise AssertionError("Preference update did not render the updated My page")
+    if "Anonymous by default" not in updated_text:
+        raise AssertionError("Default anonymous preference update was not visible")
+
+    await page.evaluate("""() => localStorage.setItem("gce:experience-submission-draft", JSON.stringify({
+        savedAt: Date.now(),
+        values: { majorGroup: "Personal center logout draft" }
+    }))""")
+    await page.locator("form[action='/logout'] button").click()
+    await page.wait_for_url("**/me?toast=logged_out")
+    logout_draft = await page.evaluate("() => localStorage.getItem('gce:experience-submission-draft')")
+    if logout_draft is not None:
+        raise AssertionError("My page logout did not clear experience submission drafts")
+    logged_out_text = await page.locator("body").inner_text()
+    if "Log in to use My page" not in logged_out_text:
+        raise AssertionError("Logout did not return to the logged-out My guide")
+    if "Browser My updated" in logged_out_text:
+        raise AssertionError("Logged-out My page still showed the previous user's nickname")
 
 async def main():
     screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -634,6 +712,20 @@ async def main():
                         if expected.lower() not in body_lower:
                             raise AssertionError(f"Experience detail at {width}px missing {expected}")
 
+                if label == "personal-logged-out":
+                    body_lower = metrics["bodyText"].lower()
+                    required_personal_text = [
+                        "Log in to use My page",
+                        "Login enables school favorites, experience publishing, and review-status tracking.",
+                        "Save Guangdong comprehensive evaluation schools",
+                        "Check submitted experience review status",
+                    ]
+                    for expected in required_personal_text:
+                        if expected.lower() not in body_lower:
+                            raise AssertionError(f"Logged-out My page at {width}px missing {expected}")
+                    if "phone otp" in body_lower or "phoneNumber" in metrics["bodyText"]:
+                        raise AssertionError("Logged-out My guide rendered the phone login form instead of a guide card")
+
                 if width == 390:
                     await page.screenshot(path=screenshot_dir / f"{label}-{width}.png", full_page=True)
 
@@ -662,6 +754,16 @@ async def main():
             if width == 390:
                 await logged_home.screenshot(path=screenshot_dir / f"home-logged-in-{width}.png", full_page=True)
             await logged_context.close()
+
+            personal_context = await browser.new_context(
+                viewport={"width": width, "height": 940},
+                extra_http_headers={"Cookie": logged_in_cookie}
+            )
+            personal_page = await personal_context.new_page()
+            await verify_logged_in_personal_center(personal_page)
+            if width == 390:
+                await personal_page.screenshot(path=screenshot_dir / f"personal-center-logged-in-{width}.png", full_page=True)
+            await personal_context.close()
 
             school_filter_page = await browser.new_page(viewport={"width": width, "height": 940})
             await verify_school_filter_interactions(school_filter_page)
@@ -698,12 +800,21 @@ async def main():
 
         experience_context = await browser.new_context(
             viewport={"width": 390, "height": 940},
-            extra_http_headers={"Cookie": logged_in_cookie}
+            extra_http_headers={"Cookie": no_favorite_cookie}
         )
         experience_flow_page = await experience_context.new_page()
         await verify_experience_submission_drafts(experience_flow_page)
         await experience_flow_page.screenshot(path=screenshot_dir / "experience-submission-under-review-390.png", full_page=True)
         await experience_context.close()
+
+        personal_action_context = await browser.new_context(
+            viewport={"width": 390, "height": 940},
+            extra_http_headers={"Cookie": logged_in_cookie}
+        )
+        personal_action_page = await personal_action_context.new_page()
+        await verify_logged_in_personal_center(personal_action_page, exercise_account_actions=True)
+        await personal_action_page.screenshot(path=screenshot_dir / "personal-center-logout-guide-390.png", full_page=True)
+        await personal_action_context.close()
 
         desktop_page = await browser.new_page(viewport={"width": 1280, "height": 940})
         await desktop_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -747,8 +858,92 @@ async def main():
         await browser.close()
 
 asyncio.run(main())
-print("Core browser verification passed at 375px, 390px, 430px, timeline/calculator/experience flows, school list/detail interactions, home/login states, and desktop student school frames")
+print("Core browser verification passed at 375px, 390px, 430px, timeline/calculator/experience/My flows, school list/detail interactions, home/login states, personal-center actions, and desktop student school frames")
 `;
+}
+
+function browserExperiencePayload(majorGroup) {
+  return {
+    schoolId: seedIds.schools.sysu,
+    year: 2026,
+    majorGroup,
+    candidateTrack: "physics",
+    stage: "school_assessment",
+    shortlistedStatus: true,
+    admittedStatus: null,
+    assessmentTypes: ["structured_interview", "group_discussion"],
+    location: "Browser verification campus",
+    processSummary: `${majorGroup} process used a structured panel and group discussion without private identity details.`,
+    questionTypes: ["motivation", "experiment_design"],
+    preparationSummary: "Browser verification preparation kept examples concise and source-safe.",
+    difficultyScore: 4,
+    pressureScore: 3,
+    differentiationScore: 4,
+    advice: "Browser verification advice focuses on preparation and avoids admission guarantees.",
+    isAnonymous: true,
+    verificationMaterials: [
+      {
+        materialType: "shortlist_notice",
+        objectStorageKey: "private/browser/personal-center-proof.png",
+        metadata: {
+          sourceAccount: "source-account-browser",
+          realName: "Browser Private Name"
+        }
+      }
+    ]
+  };
+}
+
+function seedBrowserPersonalCenterData({ authService, experienceSubmissionStore, interactionStore, user }) {
+  const reviewer = authService.createUserForTesting({
+    phoneNumber: "+8613900001210",
+    nickname: "Browser content reviewer",
+    role: "content_reviewer"
+  });
+  const createSubmission = (majorGroup) => experienceSubmissionStore.submitExperience({
+    user,
+    body: browserExperiencePayload(majorGroup)
+  });
+  const published = createSubmission("Browser Published My group");
+  const returned = createSubmission("Browser Returned My group");
+  const hidden = createSubmission("Browser Hidden My group");
+  const rejected = createSubmission("Browser Rejected My group");
+
+  createSubmission("Browser Pending My group");
+  experienceSubmissionStore.reviewExperience({
+    experienceId: published.id,
+    action: "approve",
+    operator: reviewer,
+    note: "Approved for browser My verification."
+  });
+  experienceSubmissionStore.reviewExperience({
+    experienceId: returned.id,
+    action: "return",
+    operator: reviewer,
+    note: "Returned for browser My rewrite."
+  });
+  experienceSubmissionStore.reviewExperience({
+    experienceId: hidden.id,
+    action: "hide",
+    operator: reviewer,
+    note: "Hidden for browser My verification."
+  });
+  experienceSubmissionStore.reviewExperience({
+    experienceId: rejected.id,
+    action: "ban",
+    operator: reviewer,
+    note: "Rejected for browser My verification."
+  });
+  interactionStore.addFavorite({
+    userId: user.id,
+    targetType: "school",
+    targetId: seedIds.schools.sysu
+  });
+  interactionStore.addFavorite({
+    userId: user.id,
+    targetType: "experience",
+    targetId: seedIds.experiences.sysu2026
+  });
 }
 
 function startServer() {
@@ -767,8 +962,9 @@ function startServer() {
   const interactionStore = createInteractionStore({ now });
   const loggedInUser = authService.createUserForTesting({
     phoneNumber: "+8613900001200",
-    nickname: "Browser home student",
-    grade: "high_school_g2"
+    nickname: "Browser My student",
+    grade: "high_school_g2",
+    defaultAnonymous: false
   });
   const loggedInCookie = authService.serializeSessionCookie(
     authService.createSessionForUser(loggedInUser.id)
@@ -782,10 +978,11 @@ function startServer() {
     authService.createSessionForUser(noFavoriteUser.id)
   ).split(";")[0];
 
-  interactionStore.addFavorite({
-    userId: loggedInUser.id,
-    targetType: "school",
-    targetId: seedIds.schools.sysu
+  seedBrowserPersonalCenterData({
+    authService,
+    experienceSubmissionStore,
+    interactionStore,
+    user: loggedInUser
   });
 
   const server = createServer((request, response) => {

@@ -34,7 +34,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Structured experience submissions should use `src/experience-submissions.js` for required-field normalization, pending_review defaults, private verification metadata storage, and sanitized public or anonymous output; `handleRequest` accepts an injectable `experienceSubmissionStore` for route tests.
 - Experience submission local drafts are handled in `public/student.js` under the `gce:experience-submission-draft` localStorage key with a seven-day TTL; successful submission and `/logout` clear the draft, and hidden UI state depends on the global `[hidden]` CSS rule.
 - Student interaction state should use `src/interactions.js`; `handleRequest` accepts an injectable `interactionStore` for route tests covering school/experience favorites, useful-once experience votes, and pending reports without exposing phone fields or private reporter data.
-- Personal center routes should build user-owned aggregates in `src/app.js` from the public user shape, `interactionStore`, `experienceSubmissionStore`, and site-only timeline reminders; `/me`, `/api/me`, `/me/favorites`, and `/me/experiences` outputs must stay phone-free and omit private verification material details.
+- Personal center routes should build user-owned aggregates in `src/app.js` from the public user shape, `interactionStore`, `experienceSubmissionStore`, site-only timeline reminders, and submission review-status reminders; HTML `/me` renders a logged-out My guide for visitors, while API-style personal endpoints still return JSON `login_required` responses, and `/me`, `/api/me`, `/me/favorites`, and `/me/experiences` outputs must stay phone-free and omit private verification material details.
 - The redesigned student home should render through `renderStudentHome({ user, interactionStore, now, grade })`; it uses published `listGuides()`, `listTimelineNodes()`, and `listExperiences()` by default, while `homeData` is reserved for deterministic empty-state renderer tests.
 - HTML login-required student actions should pass `htmlLogin`, `returnTo`, and a bounded `pendingAction` into `requireActiveUser()`; `/login` POST continues favorite/useful/report/publish actions and redirects with a `toast` query handled by `public/student.js`.
 - Admin moderation queues should use `experienceSubmissionStore` review helpers for pending experiences and verification materials, `interactionStore` report resolution for audit state, `registerPublishedExperience()` for approved submission visibility, and `moderatePublishedExperience()` plus `authService.updateUserAccountStatus()` for report side effects.
@@ -886,4 +886,49 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - `hidden` can be overridden by component display rules unless the global `[hidden] { display: none !important; }` guard is present; keep that rule for JS-controlled prompts and toasts.
   - Browser checks for icon-only controls should query accessible names instead of visible `innerText`.
   - Local draft expiry tests should set expired storage from a non-form page to avoid dirty form listeners re-saving current form values during navigation.
+---
+
+## Fri Jun  5 08:43:03 AM CST 2026 - Ralph runner
+- Iteration: 4
+- Story: US-025
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260605-073123/iteration-4
+---
+
+## Fri Jun  5 08:56:28 AM CST 2026 - US-026
+- What was implemented
+  - Redesigned HTML `/me` so logged-out visitors see a My-page login guide explaining school favorites, experience publishing, and review-status tracking while API-style personal endpoints remain protected.
+  - Expanded logged-in My content with nickname, grade, default anonymous preference, school and experience favorites, grouped submitted experiences, site reminders, and account settings.
+  - Added student-safe submitted-experience groups for pending review, published, returned, hidden, and rejected/banned outcomes with next-action labels and privacy-safe output.
+  - Added site-only submission review-status reminders alongside nearest favorited-school timeline reminders, and changed My-page logout to return to the logged-out My guide while clearing local experience drafts.
+- Files changed
+  - `AGENTS.md`
+  - `public/styles.css`
+  - `scripts/browser-core-pages.mjs`
+  - `src/app.js`, `src/app.test.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `node --check src/app.js`, `node --check src/pages.js`, `node --check scripts/browser-core-pages.mjs`, and `node --check src/app.test.js` passed
+  - `npm test` passed
+  - `npm run data-quality` passed and reported annual guide coverage 3/3, 100.00% against the 95.00% target, with school-year guide coverage 6/9
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `npm run build` passed
+  - `BROWSER_SCREENSHOT_DIR=/home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260605-073123/iteration-5 npm run browser-test` passed
+  - `git diff --check` passed
+- Acceptance matrix summary
+  - Logged-out My guide maps to the `/me` HTML branch in `src/app.js`, `renderPersonalCenterLoginGuidePage()` in `src/pages.js`, route tests, and browser checks for `/me` at 375px, 390px, and 430px.
+  - Logged-in profile, favorites, submissions, reminders, and settings map to `buildPersonalCenterResult()`, `renderPersonalCenterPage()`, route tests for `/api/me` and `/me`, and browser logged-in My checks.
+  - Submission status grouping and next actions map to personal-center submission group helpers in `src/app.js`/`src/pages.js`, with route tests covering pending review, published, returned, hidden, and rejected labels.
+  - Site-only reminder boundaries map to timeline reminder aggregation plus submission review reminders, with negative checks for SMS, WeChat, email, external delivery text, phone fields, real names, source accounts, and verification material details.
+  - Account preference updates and logout draft clearing map to `/me/preferences`, `/logout`, `public/student.js` logout draft cleanup hooks, and Playwright localStorage checks.
+- Browser verification result, if this was a UI story
+  - Playwright Chromium passed for `/me` logged-out at 375px, 390px, and 430px with active My bottom navigation, no horizontal overflow, and the login guide card instead of the phone login form.
+  - Playwright Chromium passed for logged-in `/me` at 375px, 390px, and 430px with favorites, grouped submissions, site reminders, privacy negatives, and active My navigation.
+  - Browser checks verified preference update, default anonymous preference change, My-page logout redirect to `/me?toast=logged_out`, and localStorage removal for `gce:experience-submission-draft`.
+  - Screenshots were saved to `scripts/ralph/runs/20260605-073123/iteration-5/personal-logged-out-390.png`, `personal-center-logged-in-390.png`, and `personal-center-logout-guide-390.png`, along with the core page screenshots in the same directory.
+- **Learnings for future iterations:**
+  - Treat HTML `/me` differently from API-style personal endpoints: browser visitors get the logged-out My guide, while `/api/me`, `/api/me/favorites`, `/api/me/experiences`, and non-HTML `/me` requests should still return JSON `login_required`.
+  - Submitted-experience status values can include `banned` from moderation actions; the student My page groups that outcome under a safer "Rejected" label while preserving reviewer-only details outside student output.
+  - Browser checks that exercise logout should avoid reusing the same session for later logged-in assertions because `authService.destroySession()` invalidates the token even if the Playwright context keeps sending the old Cookie header.
 ---

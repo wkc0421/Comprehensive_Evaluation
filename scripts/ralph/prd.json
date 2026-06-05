@@ -442,8 +442,8 @@
         "Browser tests cover logged-out login guide, logged-in navigation, favorites, submissions, reminders, preference updates, logout, and draft clearing."
       ],
       "priority": 26,
-      "passes": false,
-      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+      "passes": true,
+      "notes": "Redesigned the My page with a logged-out login guide, logged-in user/favorite/submission/reminder/settings structure, grouped student-safe submission statuses, site-only review reminders, privacy checks, and Playwright browser coverage for My-page flows."
     },
     {
       "id": "US-027",

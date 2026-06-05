@@ -54,6 +54,7 @@ import {
   renderLoginPage,
   renderNotFound,
   renderPersonalCenterPage,
+  renderPersonalCenterLoginGuidePage,
   renderSchoolDetailPage,
   renderSchoolListPage,
   renderScoreCalculatorPage,
@@ -113,8 +114,41 @@ const submissionStatusLabels = Object.freeze({
   rejected: "Rejected",
   returned: "Returned",
   hidden: "Hidden",
-  banned: "Banned"
+  banned: "Rejected"
 });
+const submissionGroupDefinitions = Object.freeze([
+  {
+    key: "pending_review",
+    label: "Pending Review",
+    nextAction: "No action needed while reviewers check student-safe details."
+  },
+  {
+    key: "published",
+    label: "Published",
+    nextAction: "View the student-safe public detail."
+  },
+  {
+    key: "returned",
+    label: "Returned",
+    nextAction: "Submit a revised experience with private details removed."
+  },
+  {
+    key: "hidden",
+    label: "Hidden",
+    nextAction: "Prepare a new student-safe version before publishing again."
+  },
+  {
+    key: "rejected",
+    label: "Rejected",
+    nextAction: "Prepare a new student-safe version before publishing again."
+  },
+  {
+    key: "draft",
+    label: "Draft",
+    nextAction: "Finish the required fields before submitting for review."
+  }
+]);
+const submissionGroupKeys = new Set(submissionGroupDefinitions.map((group) => group.key));
 
 function sendHtml(response, statusCode, html) {
   response.writeHead(statusCode, {
@@ -1243,13 +1277,35 @@ function submissionStatusLabel(status) {
   return submissionStatusLabels[status] ?? humanizeToken(status);
 }
 
+function submissionGroupKey(status) {
+  if (status === "banned") {
+    return "rejected";
+  }
+
+  return submissionGroupKeys.has(status) ? status : "pending_review";
+}
+
+function submissionGroupDefinition(status) {
+  const key = submissionGroupKey(status);
+  return submissionGroupDefinitions.find((group) => group.key === key) ?? submissionGroupDefinitions[0];
+}
+
 function submittedExperienceJson(experience) {
   const school = getSchoolById(experience.schoolId);
+  const group = submissionGroupDefinition(experience.status);
 
   return {
     ...experience,
     school: schoolSummaryJson(school),
     statusLabel: submissionStatusLabel(experience.status),
+    groupKey: group.key,
+    groupLabel: group.label,
+    nextAction: {
+      label: group.nextAction,
+      href: group.key === "published" ? `/experiences/${encodeURIComponent(experience.id)}` : (
+        group.key === "returned" ? "/experiences/new" : null
+      )
+    },
     verification: {
       ...experience.verification,
       statusLabel: submissionStatusLabel(experience.verification.status)
@@ -1263,19 +1319,63 @@ function listPersonalSubmissions(user, experienceSubmissionStore) {
     .map(submittedExperienceJson);
 }
 
+function groupPersonalSubmissions(experiences) {
+  return submissionGroupDefinitions
+    .map((definition) => ({
+      ...definition,
+      experiences: experiences.filter((experience) => experience.groupKey === definition.key)
+    }))
+    .filter((group) => group.experiences.length > 0);
+}
+
 function siteNotificationJson(reminder) {
   return {
+    type: "timeline_node",
     ...reminder,
     statusLabel: timelineStatusLabel(reminder.status),
     school: schoolSummaryJson(getSchoolById(reminder.schoolId))
   };
 }
 
-function buildPersonalNotifications(user, interactionStore, now) {
+function submissionNotificationStatus(status) {
+  const groupKey = submissionGroupKey(status);
+
+  if (groupKey === "pending_review") {
+    return "pending_review";
+  }
+
+  if (groupKey === "published") {
+    return "published";
+  }
+
+  return groupKey;
+}
+
+function buildSubmissionReviewNotifications(submittedExperiences) {
+  return submittedExperiences.map((experience) => ({
+    id: `submission:${experience.id}:${experience.status}`,
+    type: "submission_review",
+    delivery: "site_only",
+    channels: ["personal_center"],
+    status: submissionNotificationStatus(experience.status),
+    statusLabel: experience.statusLabel,
+    title: "Review status change",
+    experienceId: experience.id,
+    schoolId: experience.schoolId,
+    school: experience.school,
+    year: experience.year,
+    stage: experience.stage,
+    updatedAt: experience.updatedAt,
+    nextAction: experience.nextAction
+  }));
+}
+
+function buildPersonalNotifications(user, interactionStore, now, submittedExperiences = []) {
   const favoriteSchoolIds = interactionStore.listFavoriteSchoolIds(user.id);
+  const submissionNotifications = buildSubmissionReviewNotifications(submittedExperiences);
 
   if (favoriteSchoolIds.length === 0) {
-    return [];
+    return submissionNotifications;
   }
 
   const events = listTimelineNodes({
@@ -1284,7 +1384,10 @@ function buildPersonalNotifications(user, interactionStore, now) {
     referenceDate: currentReferenceDate(now)
   });
 
-  return buildSiteTimelineReminders(events).map(siteNotificationJson);
+  return [
+    ...buildSiteTimelineReminders(events).map(siteNotificationJson),
+    ...submissionNotifications
+  ];
 }
 
 function personalPreferencesJson(user) {
@@ -1303,7 +1406,8 @@ function buildPersonalCenterResult({ user, interactionStore, experienceSubmissio
     preferences: personalPreferencesJson(user),
     favorites: buildFavoriteGroups(user, interactionStore),
     submittedExperiences,
-    notifications: buildPersonalNotifications(user, interactionStore, now),
+    submittedExperienceGroups: groupPersonalSubmissions(submittedExperiences),
+    notifications: buildPersonalNotifications(user, interactionStore, now, submittedExperiences),
     statusLabels: submissionStatusLabels
   };
 }
@@ -2278,10 +2382,31 @@ export async function handleRequest(request, response, context = {}) {
   }
 
   if ((url.pathname === "/me" || url.pathname === "/api/me") && request.method === "GET") {
-    const user = requireActiveUser(request, response, authService, {
-      htmlLogin: true,
-      returnTo: requestReturnTo(url)
-    });
+    const wantsJson = shouldSendPersonalCenterJson(request, url);
+    let user = null;
+
+    if (!wantsJson && url.pathname === "/me") {
+      user = currentUserFromRequest(request, authService);
+
+      if (!user) {
+        sendHtml(response, 200, renderPersonalCenterLoginGuidePage({
+          returnTo: requestReturnTo(url)
+        }));
+        return;
+      }
+
+      if (user.accountStatus !== "active") {
+        sendError(response, 403, "account_restricted", "This account cannot perform restricted actions.", {
+          accountStatus: user.accountStatus
+        });
+        return;
+      }
+    } else {
+      user = requireActiveUser(request, response, authService, {
+        htmlLogin: true,
+        returnTo: requestReturnTo(url)
+      });
+    }
 
     if (!user) {
       return;
@@ -2294,7 +2419,7 @@ export async function handleRequest(request, response, context = {}) {
       now: context.now
     });
 
-    if (shouldSendPersonalCenterJson(request, url)) {
+    if (wantsJson) {
       sendJson(response, 200, personalCenter);
       return;
     }

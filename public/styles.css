@@ -1628,6 +1628,24 @@ h1 {
   color: #92400e;
 }
 
+.status-pending_review {
+  background: #fff7ed;
+  color: var(--support-amber);
+}
+
+.status-published {
+  background: #dcfce7;
+  color: var(--color-success);
+}
+
+.status-returned,
+.status-hidden,
+.status-rejected,
+.status-banned {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 .site-badge {
   background: #eff6ff;
   color: var(--support-blue);
@@ -1638,6 +1656,8 @@ h1 {
 .personal-panel,
 .personal-list,
 .personal-card,
+.personal-login-guide,
+.submission-group,
 .preference-form {
   display: grid;
   gap: 12px;
@@ -1653,11 +1673,14 @@ h1 {
 
 .personal-panel,
 .personal-card,
+.personal-login-guide,
+.submission-group,
 .preference-form {
   min-width: 0;
 }
 
 .personal-card,
+.personal-login-guide,
 .preference-form {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1683,6 +1706,43 @@ h1 {
 
 .submitted-list {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.personal-login-guide {
+  background: var(--surface);
+  padding: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.submission-group {
+  align-content: start;
+}
+
+.submission-group-heading {
+  display: flex;
+  min-width: 0;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 12px;
+}
+
+.submission-group-heading div {
+  min-width: 0;
+}
+
+.submission-group-heading h3 {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.submission-group-heading p {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 .reference-notice {
