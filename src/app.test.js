@@ -834,22 +834,51 @@ describe("web routes", () => {
     assert.doesNotMatch(serialized, /Pending review experience that must remain hidden/);
   });
 
-  it("sorts the public experience API by newest, useful count, and verified first", async () => {
+  it("sorts the public experience API by PRD default, newest, useful count, and verified first", async () => {
+    const defaultResponse = await fetch(`${baseUrl}/api/experiences`);
     const newestResponse = await fetch(`${baseUrl}/api/experiences?sort=newest`);
     const usefulResponse = await fetch(`${baseUrl}/api/experiences?sort=useful`);
     const verifiedResponse = await fetch(`${baseUrl}/api/experiences?sort=verified`);
 
+    const defaultBody = await defaultResponse.json();
     const newestBody = await newestResponse.json();
     const usefulBody = await usefulResponse.json();
     const verifiedBody = await verifiedResponse.json();
 
+    assert.equal(defaultResponse.status, 200);
     assert.equal(newestResponse.status, 200);
     assert.equal(usefulResponse.status, 200);
     assert.equal(verifiedResponse.status, 200);
+    assert.equal(defaultBody.filters.sort, "default");
+    assert.deepEqual(defaultBody.experiences.slice(0, 3).map((experience) => experience.id), [
+      seedIds.experiences.sysu2026,
+      seedIds.experiences.scut2025,
+      seedIds.experiences.sysu2026PendingVerification
+    ]);
     assert.equal(newestBody.experiences[0].id, seedIds.experiences.sysu2026PendingVerification);
     assert.equal(usefulBody.experiences[0].id, seedIds.experiences.sysu2026PendingVerification);
     assert.equal(verifiedBody.experiences[0].id, seedIds.experiences.sysu2026);
     assert.equal(verifiedBody.experiences.at(-1).id, seedIds.experiences.sysu2026PendingVerification);
+  });
+
+  it("searches public experiences by school, stage, and keyword", async () => {
+    const schoolResponse = await fetch(`${baseUrl}/api/experiences?keyword=Sun%20Yat-sen`);
+    const stageResponse = await fetch(`${baseUrl}/api/experiences?keyword=school%20assessment`);
+    const keywordResponse = await fetch(`${baseUrl}/api/experiences?keyword=experiment%20design`);
+
+    const schoolBody = await schoolResponse.json();
+    const stageBody = await stageResponse.json();
+    const keywordBody = await keywordResponse.json();
+
+    assert.equal(schoolResponse.status, 200);
+    assert.ok(schoolBody.experiences.every((experience) => experience.school.name === "Sun Yat-sen University"));
+    assert.equal(stageResponse.status, 200);
+    assert.ok(stageBody.experiences.length > 1);
+    assert.ok(stageBody.experiences.every((experience) => experience.stage === "school_assessment"));
+    assert.equal(keywordResponse.status, 200);
+    assert.deepEqual(keywordBody.experiences.map((experience) => experience.id), [
+      seedIds.experiences.sysu2026
+    ]);
   });
 
   it("renders the experience list page with filters, structured cards, and historical notices", async () => {
@@ -860,6 +889,8 @@ describe("web routes", () => {
 
     assert.equal(response.status, 200);
     assert.match(body, /Experience list/);
+    assert.match(body, /Experience keyword/);
+    assert.match(body, /Search school, stage, or keyword/);
     assert.match(body, /School/);
     assert.match(body, /Year/);
     assert.match(body, /Stage/);
@@ -868,12 +899,52 @@ describe("web routes", () => {
     assert.match(body, /Sort/);
     assert.match(body, /Southern University of Science and Technology/);
     assert.match(body, /2024/);
+    assert.match(body, /Science innovation group/);
     assert.match(body, /Machine Test/);
     assert.match(body, /Verified experience/);
     assert.match(body, /Useful count/);
     assert.match(body, /Historical reference/);
     assert.match(body, /Submit experience/);
+    assert.match(body, new RegExp(`/experiences/${seedIds.experiences.sustech2024}`));
+    assert.match(body, /aria-label="Favorite experience"/);
     assert.doesNotMatch(body, /Pending review experience that must remain hidden/);
+  });
+
+  it("renders published experience detail without exposing review-only or identity data", async () => {
+    const htmlResponse = await fetch(`${baseUrl}/experiences/${seedIds.experiences.sysu2026}`, {
+      headers: { accept: "text/html" }
+    });
+    const htmlBody = await htmlResponse.text();
+
+    assert.equal(htmlResponse.status, 200);
+    assert.match(htmlBody, /Basic information/);
+    assert.match(htmlBody, /Process/);
+    assert.match(htmlBody, /Question-type categories/);
+    assert.match(htmlBody, /Preparation and advice/);
+    assert.match(htmlBody, /Experience ratings/);
+    assert.match(htmlBody, /Favorite experience/);
+    assert.match(htmlBody, /Useful \(18\)/);
+    assert.match(htmlBody, /Report reason/);
+    assert.match(htmlBody, /Science pilot group/);
+    assert.match(htmlBody, /Experiment Design/);
+    assert.doesNotMatch(htmlBody, /phone|real name|source account|verificationMaterials|objectStorageKey/i);
+
+    const apiResponse = await fetch(`${baseUrl}/api/experiences/${seedIds.experiences.sysu2026}`);
+    const apiBody = await apiResponse.json();
+    const serialized = JSON.stringify(apiBody);
+
+    assert.equal(apiResponse.status, 200);
+    assert.equal(apiBody.experience.id, seedIds.experiences.sysu2026);
+    assert.equal(apiBody.experience.majorGroup, "Science pilot group");
+    assert.equal(apiBody.experience.processSummary.includes("Candidates checked in"), true);
+    assert.deepEqual(apiBody.experience.questionTypeLabels.slice(0, 2), ["Motivation", "Experiment Design"]);
+    assert.doesNotMatch(serialized, /phone|realName|sourceAccount|verificationMaterials|objectStorageKey|userId/i);
+
+    const pendingResponse = await fetch(`${baseUrl}/api/experiences/${seedIds.experiences.pending}`);
+    const pendingBody = await pendingResponse.json();
+
+    assert.equal(pendingResponse.status, 404);
+    assert.equal(pendingBody.error, "experience_not_found");
   });
 
   it("renders the structured experience submission form for logged-in users", async () => {
@@ -896,6 +967,11 @@ describe("web routes", () => {
     assert.equal(response.status, 200);
     assert.match(body, /Submit experience/);
     assert.match(body, /action="\/experiences"/);
+    assert.match(body, /data-experience-submission-form="true"/);
+    assert.match(body, /data-experience-draft-prompt="true"/);
+    assert.match(body, /data-character-count="true"/);
+    assert.match(body, /data-char-count-for="processSummary"/);
+    assert.match(body, /aria-label="required"/);
     assert.match(body, /name="schoolId"/);
     assert.match(body, /name="year"/);
     assert.match(body, /name="majorGroup"/);
@@ -915,6 +991,8 @@ describe("web routes", () => {
     assert.match(body, /name="isAnonymous"/);
     assert.match(body, /name="verificationMaterialType"/);
     assert.match(body, /name="verificationSourceAccount"/);
+    assert.match(body, /stays reviewer-only and is not shown on student pages/);
+    assert.doesNotMatch(body, /type="file"/);
   });
 
   it("validates required fields for structured experience submissions", async () => {
@@ -938,6 +1016,50 @@ describe("web routes", () => {
     assert.equal(response.status, 400);
     assert.equal(body.error, "missing_required_field");
     assert.match(body.message, /Process is required|Year is required|Major group is required/);
+  });
+
+  it("preserves entered values on failed HTML experience submission", async () => {
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613000000026",
+      nickname: "Failed form student"
+    });
+    const session = authService.createSessionForUser(user.id);
+    const cookie = authService.serializeSessionCookie(session).split(";")[0];
+    const formBody = new URLSearchParams({
+      schoolId: seedIds.schools.sysu,
+      year: "2026",
+      majorGroup: "Browser preserved group",
+      candidateTrack: "physics",
+      stage: "school_assessment",
+      shortlistedStatus: "true",
+      assessmentTypes: "structured_interview",
+      location: "Preserved campus",
+      processSummary: "Preserved process text after validation failure.",
+      questionTypes: "motivation",
+      preparationSummary: "Preserved preparation text after validation failure.",
+      difficultyScore: "4",
+      pressureScore: "3",
+      differentiationScore: "4",
+      isAnonymous: "true"
+    });
+
+    const response = await fetch(`${baseUrl}/experiences`, {
+      method: "POST",
+      headers: {
+        accept: "text/html",
+        cookie,
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      body: formBody.toString()
+    });
+    const body = await response.text();
+
+    assert.equal(response.status, 400);
+    assert.match(body, /Advice is required/);
+    assert.match(body, /value="Browser preserved group"/);
+    assert.match(body, /Preserved process text after validation failure\./);
+    assert.match(body, /Preserved preparation text after validation failure\./);
+    assert.match(body, /value="Preserved campus"/);
   });
 
   it("creates pending review structured experiences with anonymous sanitized output", async () => {
@@ -1025,6 +1147,18 @@ describe("web routes", () => {
     assert.equal(publicResponse.status, 200);
     assert.doesNotMatch(publicSerialized, new RegExp(body.experience.id));
     assert.doesNotMatch(publicSerialized, /Panel interview followed a group discussion/);
+
+    const mySubmissionsResponse = await fetch(`${baseUrl}/api/me/experiences`, {
+      headers: { cookie }
+    });
+    const mySubmissionsBody = await mySubmissionsResponse.json();
+
+    assert.equal(mySubmissionsResponse.status, 200);
+    assert.equal(mySubmissionsBody.experiences.some((experience) => experience.id === body.experience.id), true);
+    assert.equal(
+      mySubmissionsBody.experiences.find((experience) => experience.id === body.experience.id).status,
+      "pending_review"
+    );
   });
 
   it("returns the full Guangdong timeline with generated nodes, statuses, and site-only reminders", async () => {
@@ -1537,6 +1671,8 @@ describe("web routes", () => {
     assert.match(pageBody, /name="nickname"/);
     assert.match(pageBody, /name="grade"/);
     assert.match(pageBody, /name="defaultAnonymous"/);
+    assert.match(pageBody, /action="\/logout"/);
+    assert.match(pageBody, />Logout</);
     assert.doesNotMatch(pageBody, /phone/i);
 
     const formBody = new URLSearchParams({
@@ -1589,6 +1725,29 @@ describe("web routes", () => {
     assert.equal(patchBody.preferences.nickname, "Patched profile student");
     assert.equal(patchBody.preferences.defaultAnonymous, true);
     assertNoPhoneFields(patchBody);
+
+    const logoutResponse = await fetch(`${baseUrl}/logout`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        accept: "text/html",
+        cookie,
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({ returnTo: "/" }).toString()
+    });
+
+    assert.equal(logoutResponse.status, 303);
+    assert.equal(logoutResponse.headers.get("location"), "/?toast=logged_out");
+    assert.match(logoutResponse.headers.get("set-cookie") ?? "", /Max-Age=0/);
+
+    const loggedOutResponse = await fetch(`${baseUrl}/api/me`, {
+      headers: { cookie }
+    });
+    const loggedOutBody = await loggedOutResponse.json();
+
+    assert.equal(loggedOutResponse.status, 401);
+    assert.equal(loggedOutBody.error, "login_required");
   });
 
   it("persists school favorites and returns a mine timeline for favorited schools only", async () => {

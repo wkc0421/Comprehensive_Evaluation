@@ -425,8 +425,8 @@
         "Browser and route tests cover filtering, sorting, public-only visibility, detail actions, draft restore and expiry behavior, anonymous output, and review-pending visibility."
       ],
       "priority": 25,
-      "passes": false,
-      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+      "passes": true,
+      "notes": "Redesigned experience browsing, detail, and submission flows with keyword filters, PRD default sorting, privacy-safe cards/detail actions, seven-day local drafts, route tests, and browser verification."
     },
     {
       "id": "US-026",

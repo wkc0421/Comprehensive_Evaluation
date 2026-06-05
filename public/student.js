@@ -4,8 +4,11 @@ const toastMessages = new Map([
   ["already_favorited", "Already in favorites"],
   ["useful_saved", "Marked useful"],
   ["report_submitted", "Report submitted for review"],
-  ["publish_ready", "Continue publishing your experience"]
+  ["publish_ready", "Continue publishing your experience"],
+  ["logged_out", "Logged out"]
 ]);
+const experienceDraftKey = "gce:experience-submission-draft";
+const experienceDraftTtlMs = 7 * 24 * 60 * 60 * 1000;
 
 function showToastFromQuery() {
   const toast = document.querySelector("[data-student-toast='true']");
@@ -172,5 +175,230 @@ function enhanceSchoolFilters() {
   });
 }
 
+function experienceDraftForm() {
+  return document.querySelector("[data-experience-submission-form='true']");
+}
+
+function readExperienceDraft() {
+  try {
+    const draft = JSON.parse(window.localStorage.getItem(experienceDraftKey) || "null");
+
+    if (!draft || typeof draft !== "object" || typeof draft.savedAt !== "number") {
+      return null;
+    }
+
+    if (Date.now() - draft.savedAt > experienceDraftTtlMs) {
+      window.localStorage.removeItem(experienceDraftKey);
+      window.__experienceDraftState = "expired";
+      return null;
+    }
+
+    return draft;
+  } catch {
+    window.localStorage.removeItem(experienceDraftKey);
+    window.__experienceDraftState = "invalid";
+    return null;
+  }
+}
+
+function clearExperienceDraft() {
+  window.localStorage.removeItem(experienceDraftKey);
+  const prompt = document.querySelector("[data-experience-draft-prompt='true']");
+
+  if (prompt) {
+    prompt.hidden = true;
+  }
+
+  window.__experienceDraftState = "cleared";
+}
+
+function draftableField(field) {
+  return field.name &&
+    field.type !== "file" &&
+    field.type !== "submit" &&
+    field.type !== "button" &&
+    !field.disabled;
+}
+
+function formDraftValues(form) {
+  const values = {};
+
+  for (const field of Array.from(form.elements)) {
+    if (!draftableField(field)) {
+      continue;
+    }
+
+    if ((field.type === "checkbox" || field.type === "radio") && !field.checked) {
+      continue;
+    }
+
+    const value = String(field.value ?? "");
+
+    if (field.type !== "checkbox" && value.trim().length === 0) {
+      continue;
+    }
+
+    if (Object.hasOwn(values, field.name)) {
+      values[field.name] = Array.isArray(values[field.name])
+        ? [...values[field.name], value]
+        : [values[field.name], value];
+      continue;
+    }
+
+    values[field.name] = value;
+  }
+
+  return values;
+}
+
+function saveExperienceDraft(form) {
+  const values = formDraftValues(form);
+  const hasValues = Object.values(values).some((value) => {
+    if (Array.isArray(value)) {
+      return value.some((item) => String(item).trim().length > 0);
+    }
+
+    return String(value).trim().length > 0;
+  });
+
+  if (!hasValues) {
+    clearExperienceDraft();
+    return;
+  }
+
+  window.localStorage.setItem(experienceDraftKey, JSON.stringify({
+    savedAt: Date.now(),
+    values
+  }));
+  window.__experienceDraftState = "saved";
+}
+
+function setFieldValue(field, values) {
+  const value = values[field.name];
+  const valueList = Array.isArray(value) ? value.map(String) : [String(value ?? "")];
+
+  if (field.type === "checkbox" || field.type === "radio") {
+    field.checked = valueList.includes(field.value);
+    return;
+  }
+
+  field.value = valueList[0] ?? "";
+}
+
+function restoreExperienceDraft(form, draft) {
+  for (const field of Array.from(form.elements)) {
+    if (draftableField(field) && Object.hasOwn(draft.values ?? {}, field.name)) {
+      setFieldValue(field, draft.values);
+    }
+  }
+
+  updateCharacterCounts(form);
+  window.__experienceDraftState = "restored";
+}
+
+function updateCharacterCounts(scope = document) {
+  for (const textarea of Array.from(scope.querySelectorAll("[data-character-count='true']"))) {
+    const counter = scope.querySelector(`[data-char-count-for="${textarea.name}"]`);
+
+    if (!counter) {
+      continue;
+    }
+
+    const maxLength = textarea.getAttribute("maxlength") || "0";
+    counter.textContent = `${textarea.value.length}/${maxLength}`;
+  }
+}
+
+function bindExperienceDrafts() {
+  const form = experienceDraftForm();
+  const prompt = document.querySelector("[data-experience-draft-prompt='true']");
+
+  updateCharacterCounts();
+
+  if (!form) {
+    document.addEventListener("submit", (event) => {
+      const logoutForm = event.target.closest?.("form[action='/logout']");
+
+      if (logoutForm) {
+        clearExperienceDraft();
+      }
+    });
+    return;
+  }
+
+  if (form.dataset.submissionComplete === "true") {
+    clearExperienceDraft();
+  }
+
+  let draft = readExperienceDraft();
+  let dirty = false;
+  let submitted = false;
+
+  if (draft && prompt && form.dataset.submissionComplete !== "true") {
+    prompt.hidden = false;
+    window.__experienceDraftState = "prompt";
+  } else if (prompt) {
+    prompt.hidden = true;
+  }
+
+  form.addEventListener("input", () => {
+    dirty = true;
+    updateCharacterCounts(form);
+    saveExperienceDraft(form);
+  });
+
+  form.addEventListener("change", () => {
+    dirty = true;
+    updateCharacterCounts(form);
+    saveExperienceDraft(form);
+  });
+
+  form.addEventListener("submit", () => {
+    submitted = true;
+  });
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!dirty || submitted) {
+      return;
+    }
+
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
+  document.addEventListener("click", (event) => {
+    const restoreButton = event.target.closest?.("[data-experience-draft-restore='true']");
+    const clearButton = event.target.closest?.("[data-experience-draft-clear='true']");
+    const logoutButton = event.target.closest?.("[data-clear-experience-drafts='true']");
+
+    if (restoreButton) {
+      event.preventDefault();
+      draft = readExperienceDraft();
+
+      if (draft) {
+        restoreExperienceDraft(form, draft);
+      }
+
+      if (prompt) {
+        prompt.hidden = true;
+      }
+      return;
+    }
+
+    if (clearButton || logoutButton) {
+      clearExperienceDraft();
+    }
+  });
+
+  document.addEventListener("submit", (event) => {
+    const logoutForm = event.target.closest?.("form[action='/logout']");
+
+    if (logoutForm) {
+      clearExperienceDraft();
+    }
+  });
+}
+
 showToastFromQuery();
 enhanceSchoolFilters();
+bindExperienceDrafts();

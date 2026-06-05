@@ -12,6 +12,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Core PostgreSQL schema migrations live in `src/db/migrations`; `src/db/schema.test.js` validates migration SQL statically without connecting to `DATABASE_URL`.
 - Seed fixtures and student-facing published-only data access helpers live in `src/db` as plain JavaScript modules; use them before introducing database tooling.
 - Authentication/session helpers live in `src/auth.js`; `handleRequest` accepts an optional `{ authService }` test context, and public auth responses must use the public user shape so phone fields do not leak.
+- `/logout` and `/api/logout` destroy the current session through `authService.destroySession()` and set a clear-session cookie through `serializeClearSessionCookie()`; client-side student draft cleanup hooks onto the logout form.
 - Student-facing pages should consume published-only helpers from `src/db/data-access.js` instead of importing `seed-data.js` directly.
 - Public school browsing should use `listSchoolGuideCards()` from `src/db/data-access.js`; it keeps `/schools`, `/api/schools`, and the HTML school list aligned on published-only guides, filters, sort order, key timeline nodes, formula availability, and experience signals.
 - Public school detail pages and APIs should use `getSchoolDetail()` from `src/db/data-access.js`; it keeps `/schools/:id`, `/api/schools/:id`, year defaulting, published-only visibility, timeline/formula aggregation, and featured experience ranking aligned.
@@ -28,7 +29,10 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public timeline UI filters expose `nodeType` in URLs/forms, then map it to `listTimelineNodes({ eventKey })`; unknown-date nodes keep the API status contract but render as a text-visible "To be announced" status in HTML.
 - Public calculator disclaimer copy should preserve the standard "not an admission probability" warning without adding ranking-prediction, recommendation, guaranteed-admission, or application-decision language.
 - Public experience browsing should use `listExperiences()` from `src/db/data-access.js`; it keeps `/experiences`, `/api/experiences`, filters, newest/useful/verified sorting, and published-only visibility aligned while pending submissions remain outside public browse results.
+- Experience browsing now supports PRD default ordering through `listExperiences()` with recent two years first, verified first, then updated time; explicit `newest`, `useful`, and `verified` sorts remain available.
+- Public experience detail routes should use `getExperienceById()` and render through `renderExperienceDetailPage()`; `/experiences/:id` and `/api/experiences/:id` must stay published-only and omit verification materials, phone fields, real names, source accounts, and private user ids.
 - Structured experience submissions should use `src/experience-submissions.js` for required-field normalization, pending_review defaults, private verification metadata storage, and sanitized public or anonymous output; `handleRequest` accepts an injectable `experienceSubmissionStore` for route tests.
+- Experience submission local drafts are handled in `public/student.js` under the `gce:experience-submission-draft` localStorage key with a seven-day TTL; successful submission and `/logout` clear the draft, and hidden UI state depends on the global `[hidden]` CSS rule.
 - Student interaction state should use `src/interactions.js`; `handleRequest` accepts an injectable `interactionStore` for route tests covering school/experience favorites, useful-once experience votes, and pending reports without exposing phone fields or private reporter data.
 - Personal center routes should build user-owned aggregates in `src/app.js` from the public user shape, `interactionStore`, `experienceSubmissionStore`, and site-only timeline reminders; `/me`, `/api/me`, `/me/favorites`, and `/me/experiences` outputs must stay phone-free and omit private verification material details.
 - The redesigned student home should render through `renderStudentHome({ user, interactionStore, now, grade })`; it uses published `listGuides()`, `listTimelineNodes()`, and `listExperiences()` by default, while `homeData` is reserved for deterministic empty-state renderer tests.
@@ -838,4 +842,48 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Keep the public timeline URL/form vocabulary as `nodeType`; convert it at the route boundary to the data helper's `eventKey` filter so API/page contracts remain understandable to students.
   - The HTML timeline can render unknown dates as a "To be announced" status label without changing the underlying `not_started` API status used by existing timeline helpers.
   - Calculator result copy comes from `calculateScore()`; update shared disclaimer text there so API, page, e2e, and browser assertions stay aligned.
+---
+
+## Fri Jun  5 08:18:02 AM CST 2026 - Ralph runner
+- Iteration: 3
+- Story: US-024
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260605-073123/iteration-3
+---
+
+## Fri Jun  5 08:41:29 AM CST 2026 - US-025
+- What was implemented
+  - Redesigned public experience browsing with school/stage/keyword search, visible filters, PRD default sorting, privacy-safe cards, favorite controls, historical labels, and guided empty states.
+  - Added published-only experience detail HTML and JSON routes with header metadata, basic information, process, question-type categories, preparation/advice, ratings, and favorite/useful/report actions.
+  - Expanded structured submission UI with required markers, character counters, reviewer-only verification metadata notice, value preservation on failed HTML submit, seven-day local drafts, restore/clear prompts, and cleanup on successful submit or logout.
+  - Added session logout support with server-side session destruction and clear-session cookies.
+- Files changed
+  - `public/student.js`, `public/styles.css`
+  - `scripts/browser-core-pages.mjs`
+  - `src/app.js`, `src/app.test.js`, `src/auth.js`, `src/db/data-access.js`, `src/db/data-access.test.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `node --test src/db/data-access.test.js` passed
+  - `node --test src/app.test.js` passed
+  - `npm test` passed
+  - `npm run data-quality` passed and reported annual guide coverage 3/3, 100.00% against the 95.00% target, with school-year guide coverage 6/9
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `BROWSER_SCREENSHOT_DIR=scripts/ralph/runs/20260605-073123/iteration-4 npm run browser-test` passed
+  - `git diff --check` passed
+- Acceptance matrix summary
+  - Experience filters/search/sort/cards map to `listExperiences()`, `/experiences`, `/api/experiences`, `renderExperienceListPage()`, route tests, and browser overflow/content checks.
+  - Experience detail metadata, sections, favorite/useful/report actions, and privacy boundaries map to `/experiences/:id`, `/api/experiences/:id`, `renderExperienceDetailPage()`, route tests, and browser detail checks.
+  - Submission required fields, failed-submit preservation, pending-review status, anonymous output, My Submissions visibility, and public hiding map to `src/experience-submissions.js`, `renderExperienceSubmissionPage()`, route tests, and browser submission flow checks.
+  - Local draft restore, expiry, clear action, successful-submit cleanup, logout cleanup, and no local file persistence map to `public/student.js`, `[hidden]` CSS behavior, `/logout`, and Playwright localStorage checks.
+  - Negative checks cover pending-review public hiding and no phone fields, real names, source accounts, verification materials, private user ids, admission probability, ranking prediction, paid consulting, open comments, or private messaging in student-visible output.
+- Browser verification result, if this was a UI story
+  - Playwright Chromium passed for core pages at 375px, 390px, and 430px, including `/experiences?year=2024&assessmentType=machine_test&sort=newest` and `/experiences/30000000-0000-4000-8000-000000000001`, with no horizontal overflow or bottom-nav obstruction.
+  - Browser checks verified experience list card content/favorite controls, detail sections/actions, submission draft restore, draft expiry, clear action, successful pending-review submission, public hiding, My Submissions visibility, and logout draft cleanup.
+  - Screenshots were saved to `scripts/ralph/runs/20260605-073123/iteration-4/experiences-390.png`, `experience-detail-390.png`, and `experience-submission-under-review-390.png`, along with the core page screenshots in the same directory.
+- **Learnings for future iterations:**
+  - `hidden` can be overridden by component display rules unless the global `[hidden] { display: none !important; }` guard is present; keep that rule for JS-controlled prompts and toasts.
+  - Browser checks for icon-only controls should query accessible names instead of visible `innerText`.
+  - Local draft expiry tests should set expired storage from a non-form page to avoid dirty form listeners re-saving current form values during navigation.
 ---

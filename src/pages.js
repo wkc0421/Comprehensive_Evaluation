@@ -1163,6 +1163,31 @@ function detailSubmissionHref(detail) {
   return `/experiences/new?schoolId=${encodeURIComponent(detail.school.id)}&year=${detail.selectedYear}`;
 }
 
+function experienceListHref(filters = {}) {
+  return `/experiences${queryStringFromFilters(filters, [
+    "keyword",
+    "schoolId",
+    "year",
+    "stage",
+    "assessmentType",
+    "verified",
+    "sort"
+  ])}`;
+}
+
+function experienceDetailHref(experience) {
+  return `/experiences/${encodeURIComponent(experience.id)}`;
+}
+
+function renderFavoriteExperienceForm(experienceId, returnTo, className = "top-action-form") {
+  return `<form class="${escapeHtml(className)}" method="post" action="/favorites" aria-label="Favorite experience action">
+    <input type="hidden" name="targetType" value="experience">
+    <input type="hidden" name="targetId" value="${escapeHtml(experienceId)}">
+    <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
+    <button class="icon-button" type="submit" aria-label="Favorite experience">${renderIcon("heart")}</button>
+  </form>`;
+}
+
 function renderSchoolQuickActions(detail) {
   const guide = detail.guide;
   const primaryAction = guide.applicationUrl && isApplicationOpen(guide)
@@ -1389,12 +1414,17 @@ function renderExperienceFilters(filters, allExperiences) {
     renderOption("false", "Verification pending", filters.verified === false ? "false" : "")
   ].join("");
   const sortOptions = [
-    renderOption("newest", "Newest", filters.sort ?? "newest"),
+    renderOption("default", "Recent two years first", filters.sort ?? "default"),
+    renderOption("newest", "Newest", filters.sort),
     renderOption("useful", "Useful count", filters.sort),
     renderOption("verified", "Verified first", filters.sort)
   ].join("");
 
   return `<form class="filter-panel experience-filter-panel" method="get" action="/experiences" aria-label="Experience filters">
+    <label class="filter-field wide-field experience-search-field">
+      <span>Experience keyword</span>
+      <input type="search" name="keyword" value="${escapeHtml(filters.keyword ?? "")}" placeholder="Search school, stage, or keyword" autocomplete="off">
+    </label>
     <label class="filter-field wide-field">
       <span>School</span>
       <select name="schoolId">${schoolOptions}</select>
@@ -1420,10 +1450,41 @@ function renderExperienceFilters(filters, allExperiences) {
       <select name="sort">${sortOptions}</select>
     </label>
     <div class="filter-actions">
-      <button class="primary-action" type="submit">Apply</button>
-      <a class="secondary-action" href="/experiences">Reset</a>
+      <button class="secondary-action" type="submit">Apply</button>
+      <a class="secondary-action" href="/experiences">Clear</a>
     </div>
   </form>`;
+}
+
+function selectedExperienceFilterEntries(filters) {
+  const entries = [
+    ["Keyword", filters.keyword],
+    ["School", filters.schoolId && (getSchoolById(filters.schoolId)?.name ?? filters.schoolId)],
+    ["Year", filters.year],
+    ["Stage", filters.stage && humanizeToken(filters.stage)],
+    ["Assessment format", filters.assessmentType && humanizeToken(filters.assessmentType)],
+    ["Verified status", typeof filters.verified === "boolean"
+      ? filters.verified ? "Verified" : "Verification pending"
+      : null],
+    ["Sort", filters.sort && filters.sort !== "default" ? humanizeToken(filters.sort) : null]
+  ];
+
+  return entries.filter(([, value]) => value !== undefined && value !== null && String(value).length > 0);
+}
+
+function renderSelectedExperienceFilters(filters) {
+  const selected = selectedExperienceFilterEntries(filters);
+
+  if (selected.length === 0) {
+    return `<p class="filter-summary">Showing recent published experiences first, then verified status and update time.</p>`;
+  }
+
+  return `<div class="selected-filters" aria-label="Selected experience filters">
+    ${selected
+      .map(([label, value]) => `<span class="filter-chip">${escapeHtml(label)}: ${escapeHtml(value)}</span>`)
+      .join("")}
+    <a class="text-link" href="/experiences">Clear filters</a>
+  </div>`;
 }
 
 function latestExperienceReferenceYear() {
@@ -1448,22 +1509,47 @@ function renderExperienceReferenceNotice(experience) {
   return notice ? `<p class="reference-notice">${escapeHtml(notice)}</p>` : "";
 }
 
-function renderExperienceListCards(experiences) {
+function renderExperienceEmptyState(filters) {
+  const hasFilters = selectedExperienceFilterEntries(filters).length > 0;
+  const clearAction = hasFilters
+    ? `<a class="secondary-action" href="/experiences">Clear filters</a>`
+    : "";
+
+  return `<div class="empty-state experience-empty-state">
+    <strong>No matching published experiences</strong>
+    <p>Try changing filters or publish the first relevant experience for this school, year, or assessment format.</p>
+    <div class="actions">
+      ${clearAction}
+      <a class="primary-action" href="/experiences/new">Submit experience</a>
+    </div>
+  </div>`;
+}
+
+function renderExperienceListCards(experiences, filters = {}) {
   if (experiences.length === 0) {
-    return `<p class="empty-state">No published experiences match these filters.</p>`;
+    return renderExperienceEmptyState(filters);
   }
+
+  const returnTo = experienceListHref(filters);
 
   return experiences
     .map((experience) => {
       const school = getSchoolById(experience.schoolId);
+      const detailHref = experienceDetailHref(experience);
 
       return `<article class="experience-card">
-        <div class="badge-row">
-          <span class="badge">${escapeHtml(experience.admissionYear)}</span>
-          <span class="soft-badge">${escapeHtml(experienceVerifiedLabel(experience))}</span>
-          <span class="muted-badge">${escapeHtml(humanizeToken(experience.stage))}</span>
+        <div class="experience-card-top">
+          <div class="experience-title-group">
+            <div class="badge-row">
+              <span class="badge">${escapeHtml(experience.admissionYear)}</span>
+              <span class="soft-badge">${escapeHtml(experienceVerifiedLabel(experience))}</span>
+              <span class="muted-badge">${escapeHtml(humanizeToken(experience.stage))}</span>
+            </div>
+            <h3><a href="${escapeHtml(detailHref)}">${escapeHtml(school?.name ?? "Published school")}</a></h3>
+            <p class="experience-major">${escapeHtml(displayValue(experience.majorGroup, "Admission group not specified"))}</p>
+          </div>
+          ${renderFavoriteExperienceForm(experience.id, returnTo, "experience-card-favorite")}
         </div>
-        <h3><a href="/schools/${escapeHtml(encodeURIComponent(experience.schoolId))}?year=${escapeHtml(experience.admissionYear)}">${escapeHtml(school?.name ?? "Published school")}</a></h3>
         <p>${escapeHtml(experience.summary)}</p>
         <dl class="detail-list split-details">
           <div>
@@ -1473,6 +1559,10 @@ function renderExperienceListCards(experiences) {
           <div>
             <dt>Year</dt>
             <dd>${escapeHtml(experience.admissionYear)}</dd>
+          </div>
+          <div>
+            <dt>Major or group</dt>
+            <dd>${escapeHtml(displayValue(experience.majorGroup, missingOfficialText))}</dd>
           </div>
           <div>
             <dt>Stage</dt>
@@ -1488,9 +1578,160 @@ function renderExperienceListCards(experiences) {
           </div>
         </dl>
         ${renderExperienceReferenceNotice(experience)}
+        <a class="text-link" href="${escapeHtml(detailHref)}">Read structured detail</a>
       </article>`;
     })
     .join("");
+}
+
+function booleanResultLabel(value, positive, negative) {
+  if (value === true) {
+    return positive;
+  }
+
+  if (value === false) {
+    return negative;
+  }
+
+  return "Not disclosed";
+}
+
+function renderRatingPills(experience) {
+  const ratings = [
+    ["Difficulty", experience.difficultyScore],
+    ["Pressure", experience.pressureScore],
+    ["Differentiation", experience.differentiationScore]
+  ];
+
+  return `<div class="rating-grid" aria-label="Experience ratings">${ratings
+    .map(([label, value]) => `<div class="rating-pill">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}/5</strong>
+    </div>`)
+    .join("")}</div>`;
+}
+
+function renderExperienceActionBar(experience) {
+  const returnTo = experienceDetailHref(experience);
+
+  return `<section class="experience-action-bar" aria-label="Experience actions">
+    ${renderFavoriteExperienceForm(experience.id, returnTo, "experience-detail-favorite")}
+    <form class="experience-action-form" method="post" action="/experiences/${escapeHtml(encodeURIComponent(experience.id))}/useful" aria-label="Mark experience useful">
+      <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
+      <button class="secondary-action" type="submit">Useful (${escapeHtml(experience.usefulCount)})</button>
+    </form>
+    <details class="report-details">
+      <summary>Report</summary>
+      <form class="report-form" method="post" action="/reports" aria-label="Report experience">
+        <input type="hidden" name="targetType" value="experience">
+        <input type="hidden" name="targetId" value="${escapeHtml(experience.id)}">
+        <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
+        <label class="form-field">
+          <span>Report reason</span>
+          <select name="reason" required>
+            <option value="">Select reason</option>
+            <option value="privacy concern">Privacy concern</option>
+            <option value="unverified original question">Unverified original question</option>
+            <option value="external traffic or paid service">External traffic or paid service</option>
+            <option value="other content issue">Other content issue</option>
+          </select>
+        </label>
+        <label class="form-field">
+          <span>Description</span>
+          <textarea name="description" rows="3" maxlength="2000"></textarea>
+        </label>
+        <button class="secondary-action" type="submit">Submit report</button>
+      </form>
+    </details>
+  </section>`;
+}
+
+function renderExperienceHeader(experience) {
+  const school = getSchoolById(experience.schoolId);
+
+  return `<section class="experience-detail-header-card" aria-labelledby="experience-detail-title">
+    <div class="badge-row">
+      <span class="badge">${escapeHtml(experience.admissionYear)}</span>
+      <span class="soft-badge">${escapeHtml(experienceVerifiedLabel(experience))}</span>
+      <span class="muted-badge">${escapeHtml(humanizeToken(experience.stage))}</span>
+    </div>
+    <h1 id="experience-detail-title">${escapeHtml(school?.name ?? "Published school")}</h1>
+    <p>${escapeHtml(displayValue(experience.majorGroup, "Admission group not specified"))} · ${escapeHtml(experience.assessmentTypes.map(humanizeToken).join(", "))}</p>
+    ${renderExperienceReferenceNotice(experience)}
+    ${renderDetailRows([
+      { label: "School", value: school?.name ?? "Published school" },
+      { label: "Year", value: experience.admissionYear },
+      { label: "Stage", value: humanizeToken(experience.stage) },
+      { label: "Useful count", value: experience.usefulCount }
+    ])}
+  </section>`;
+}
+
+function renderQuestionTypeCategories(experience) {
+  if (!experience.questionTypes?.length) {
+    return `<p class="inline-empty">${escapeHtml(missingOfficialText)}</p>`;
+  }
+
+  return `<div class="question-type-grid">${experience.questionTypes
+    .map((questionType) => `<span class="question-type-pill">${escapeHtml(humanizeToken(questionType))}</span>`)
+    .join("")}</div>`;
+}
+
+export function renderExperienceDetailPage(experience) {
+  const school = getSchoolById(experience.schoolId);
+  const detailHref = experienceDetailHref(experience);
+
+  return renderStudentPage({
+    title: `${school?.name ?? "Experience"} ${experience.admissionYear} | ${productName}`,
+    currentKey: "experiences",
+    topBar: renderStudentTopBar({
+      type: "detail",
+      title: "Experience",
+      backHref: "/experiences",
+      backLabel: "Back to experiences",
+      actionHtml: renderFavoriteExperienceForm(experience.id, detailHref)
+    }),
+    content: `
+      ${renderExperienceHeader(experience)}
+      ${renderExperienceActionBar(experience)}
+
+      <section class="section detail-card-stack" aria-label="Experience detail">
+        <article class="detail-panel" data-experience-detail-section="basic-information">
+          <div class="section-heading"><h2>Basic information</h2></div>
+          ${renderDetailRows([
+            { label: "Major or admission group", value: displayValue(experience.majorGroup) },
+            { label: "Candidate track", value: humanizeToken(displayValue(experience.candidateTrack)) },
+            { label: "Shortlisted result", value: booleanResultLabel(experience.shortlistedStatus, "Shortlisted", "Not shortlisted") },
+            { label: "Admitted result", value: booleanResultLabel(experience.admittedStatus, "Admitted", "Not admitted") },
+            { label: "Assessment format", value: experience.assessmentTypes.map(humanizeToken).join(", ") },
+            { label: "Location", value: displayValue(experience.location) }
+          ])}
+        </article>
+
+        <article class="detail-panel" data-experience-detail-section="process">
+          <div class="section-heading"><h2>Process</h2></div>
+          ${renderCollapsibleText(experience.processSummary, "process", pendingSupplementText)}
+        </article>
+
+        <article class="detail-panel" data-experience-detail-section="question-types">
+          <div class="section-heading"><h2>Question-type categories</h2></div>
+          ${renderQuestionTypeCategories(experience)}
+        </article>
+
+        <article class="detail-panel" data-experience-detail-section="preparation-advice">
+          <div class="section-heading"><h2>Preparation and advice</h2></div>
+          ${renderDetailRows([
+            { label: "Preparation", html: renderCollapsibleText(experience.preparationSummary, "preparation", pendingSupplementText) },
+            { label: "Advice", html: renderCollapsibleText(experience.advice, "advice", pendingSupplementText) }
+          ])}
+        </article>
+
+        <article class="detail-panel" data-experience-detail-section="ratings">
+          <div class="section-heading"><h2>Experience ratings</h2></div>
+          ${renderRatingPills(experience)}
+        </article>
+      </section>`
+  });
 }
 
 const assessmentTypeSubmissionOptions = [
@@ -1512,6 +1753,43 @@ const questionTypeSubmissionOptions = [
   ["learning_plan", "Learning plan"]
 ];
 
+function scalarFormValue(formData, name, fallback = "") {
+  if (!formData || typeof formData !== "object") {
+    return fallback;
+  }
+
+  const value = formData[name];
+
+  if (Array.isArray(value)) {
+    const found = value.find((item) => String(item ?? "").length > 0);
+    return found === undefined ? fallback : String(found);
+  }
+
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+
+  return String(value);
+}
+
+function arrayFormValue(formData, name, fallback = []) {
+  if (!formData || typeof formData !== "object") {
+    return fallback;
+  }
+
+  const value = formData[name];
+
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item));
+  }
+
+  if (value === undefined || value === null || String(value).length === 0) {
+    return fallback;
+  }
+
+  return [String(value)];
+}
+
 function checkedAttribute(values, optionValue) {
   return values.includes(optionValue) ? " checked" : "";
 }
@@ -1525,32 +1803,40 @@ function renderCheckboxOptions(name, options, defaults = []) {
     .join("");
 }
 
-function submissionSchoolOptions() {
+function submissionSchoolOptions(currentValue = "") {
   const schoolsById = new Map(
     listSchoolGuideCards({ sort: "name" }).map((card) => [card.school.id, card.school])
   );
 
   return [
-    renderOption("", "Select school", ""),
-    ...[...schoolsById.values()].map((school) => renderOption(school.id, school.name, ""))
+    renderOption("", "Select school", currentValue),
+    ...[...schoolsById.values()].map((school) => renderOption(school.id, school.name, currentValue))
   ].join("");
 }
 
-function submissionYearOptions() {
+function submissionYearOptions(currentValue = "") {
   const years = uniqueSorted(listGuides().map((guide) => guide.admissionYear))
     .sort((left, right) => right - left);
 
   return [
-    renderOption("", "Select year", ""),
-    ...years.map((year) => renderOption(year, year, ""))
+    renderOption("", "Select year", currentValue),
+    ...years.map((year) => renderOption(year, year, currentValue))
   ].join("");
 }
 
-function ratingOptions() {
+function ratingOptions(currentValue = "") {
   return [
-    renderOption("", "Select score", ""),
-    ...[1, 2, 3, 4, 5].map((score) => renderOption(score, String(score), ""))
+    renderOption("", "Select score", currentValue),
+    ...[1, 2, 3, 4, 5].map((score) => renderOption(score, String(score), currentValue))
   ].join("");
+}
+
+function requiredMarker() {
+  return `<span class="required-marker" aria-label="required">*</span>`;
+}
+
+function characterHint(name, maxLength) {
+  return `<span class="char-hint" data-char-count-for="${escapeHtml(name)}">0/${escapeHtml(maxLength)}</span>`;
 }
 
 function renderSubmissionStatus(submission) {
@@ -1590,12 +1876,15 @@ function renderSubmissionError(error) {
   return error ? `<p class="form-error" role="alert">${escapeHtml(error)}</p>` : "";
 }
 
-export function renderExperienceSubmissionPage({ user, submission = null, error = "" }) {
-  const anonymousDefault = user.defaultAnonymous ? "true" : "false";
+export function renderExperienceSubmissionPage({ user, submission = null, error = "", formData = {} }) {
+  const anonymousDefault = scalarFormValue(formData, "isAnonymous", user.defaultAnonymous ? "true" : "false");
   const anonymousOptions = [
     renderOption("true", "Anonymous display", anonymousDefault),
     renderOption("false", "Show nickname", anonymousDefault)
   ].join("");
+  const selectedAssessmentTypes = arrayFormValue(formData, "assessmentTypes", ["structured_interview"]);
+  const selectedQuestionTypes = arrayFormValue(formData, "questionTypes", ["motivation"]);
+  const submissionComplete = submission ? "true" : "false";
 
   return renderStudentPage({
     title: `Submit experience | ${productName}`,
@@ -1617,132 +1906,146 @@ export function renderExperienceSubmissionPage({ user, submission = null, error 
 
       ${renderSubmissionStatus(submission)}
 
-      <form class="submission-form" method="post" action="/experiences" aria-label="Experience submission form">
+      <div class="draft-restore-prompt" hidden data-experience-draft-prompt="true">
+        <p>Saved draft found from this device.</p>
+        <div class="actions">
+          <button class="secondary-action" type="button" data-experience-draft-restore="true">Restore draft</button>
+          <button class="secondary-action" type="button" data-experience-draft-clear="true">Clear draft</button>
+        </div>
+      </div>
+
+      <form class="submission-form" method="post" action="/experiences" aria-label="Experience submission form" data-experience-submission-form="true" data-submission-complete="${submissionComplete}">
         ${renderSubmissionError(error)}
         <fieldset class="form-section">
           <legend>School and result</legend>
           <label class="form-field wide-field">
-            <span>School</span>
-            <select name="schoolId" required>${submissionSchoolOptions()}</select>
+            <span>School ${requiredMarker()}</span>
+            <select name="schoolId" required>${submissionSchoolOptions(scalarFormValue(formData, "schoolId"))}</select>
           </label>
           <label class="form-field">
-            <span>Year</span>
-            <select name="year" required>${submissionYearOptions()}</select>
+            <span>Year ${requiredMarker()}</span>
+            <select name="year" required>${submissionYearOptions(scalarFormValue(formData, "year"))}</select>
           </label>
           <label class="form-field">
-            <span>Major group</span>
-            <input name="majorGroup" autocomplete="off" required>
+            <span>Major group ${requiredMarker()}</span>
+            <input name="majorGroup" value="${escapeHtml(scalarFormValue(formData, "majorGroup"))}" autocomplete="off" maxlength="160" required>
           </label>
           <label class="form-field">
-            <span>Candidate track</span>
+            <span>Candidate track ${requiredMarker()}</span>
             <select name="candidateTrack" required>
-              <option value="">Select track</option>
-              <option value="physics">Physics</option>
-              <option value="history">History</option>
-              <option value="general">General</option>
+              ${renderOption("", "Select track", scalarFormValue(formData, "candidateTrack"))}
+              ${renderOption("physics", "Physics", scalarFormValue(formData, "candidateTrack"))}
+              ${renderOption("history", "History", scalarFormValue(formData, "candidateTrack"))}
+              ${renderOption("general", "General", scalarFormValue(formData, "candidateTrack"))}
             </select>
           </label>
           <label class="form-field">
-            <span>Stage</span>
+            <span>Stage ${requiredMarker()}</span>
             <select name="stage" required>
-              <option value="">Select stage</option>
-              <option value="preliminary_review">Preliminary review</option>
-              <option value="school_assessment">School assessment</option>
-              <option value="admission_result">Admission result</option>
+              ${renderOption("", "Select stage", scalarFormValue(formData, "stage"))}
+              ${renderOption("preliminary_review", "Preliminary review", scalarFormValue(formData, "stage"))}
+              ${renderOption("school_assessment", "School assessment", scalarFormValue(formData, "stage"))}
+              ${renderOption("admission_result", "Admission result", scalarFormValue(formData, "stage"))}
             </select>
           </label>
           <label class="form-field">
-            <span>Shortlisted status</span>
+            <span>Shortlisted status ${requiredMarker()}</span>
             <select name="shortlistedStatus" required>
-              <option value="">Select status</option>
-              <option value="true">Shortlisted</option>
-              <option value="false">Not shortlisted</option>
+              ${renderOption("", "Select status", scalarFormValue(formData, "shortlistedStatus"))}
+              ${renderOption("true", "Shortlisted", scalarFormValue(formData, "shortlistedStatus"))}
+              ${renderOption("false", "Not shortlisted", scalarFormValue(formData, "shortlistedStatus"))}
             </select>
           </label>
           <label class="form-field">
             <span>Admitted status</span>
             <select name="admittedStatus">
-              <option value="">Not disclosed</option>
-              <option value="true">Admitted</option>
-              <option value="false">Not admitted</option>
+              ${renderOption("", "Not disclosed", scalarFormValue(formData, "admittedStatus"))}
+              ${renderOption("true", "Admitted", scalarFormValue(formData, "admittedStatus"))}
+              ${renderOption("false", "Not admitted", scalarFormValue(formData, "admittedStatus"))}
             </select>
           </label>
           <label class="form-field wide-field">
             <span>Location</span>
-            <input name="location" autocomplete="off">
+            <input name="location" value="${escapeHtml(scalarFormValue(formData, "location"))}" autocomplete="off" maxlength="240">
           </label>
         </fieldset>
 
         <fieldset class="form-section">
           <legend>Assessment details</legend>
           <div class="form-field wide-field">
-            <span>Assessment types</span>
-            <div class="choice-grid">${renderCheckboxOptions("assessmentTypes", assessmentTypeSubmissionOptions, ["structured_interview"])}</div>
+            <span>Assessment types ${requiredMarker()}</span>
+            <div class="choice-grid">${renderCheckboxOptions("assessmentTypes", assessmentTypeSubmissionOptions, selectedAssessmentTypes)}</div>
           </div>
           <label class="form-field full-field">
-            <span>Process</span>
-            <textarea name="processSummary" rows="5" required></textarea>
+            <span>Process ${requiredMarker()}</span>
+            <textarea name="processSummary" rows="5" maxlength="5000" data-character-count="true" required>${escapeHtml(scalarFormValue(formData, "processSummary"))}</textarea>
+            ${characterHint("processSummary", 5000)}
           </label>
           <div class="form-field full-field">
-            <span>Question types</span>
-            <div class="choice-grid">${renderCheckboxOptions("questionTypes", questionTypeSubmissionOptions, ["motivation"])}</div>
+            <span>Question types ${requiredMarker()}</span>
+            <div class="choice-grid">${renderCheckboxOptions("questionTypes", questionTypeSubmissionOptions, selectedQuestionTypes)}</div>
           </div>
           <label class="form-field full-field">
-            <span>Preparation</span>
-            <textarea name="preparationSummary" rows="4" required></textarea>
+            <span>Preparation ${requiredMarker()}</span>
+            <textarea name="preparationSummary" rows="4" maxlength="3000" data-character-count="true" required>${escapeHtml(scalarFormValue(formData, "preparationSummary"))}</textarea>
+            ${characterHint("preparationSummary", 3000)}
           </label>
         </fieldset>
 
         <fieldset class="form-section">
           <legend>Scores and advice</legend>
           <label class="form-field">
-            <span>Difficulty score</span>
-            <select name="difficultyScore" required>${ratingOptions()}</select>
+            <span>Difficulty score ${requiredMarker()}</span>
+            <select name="difficultyScore" required>${ratingOptions(scalarFormValue(formData, "difficultyScore"))}</select>
           </label>
           <label class="form-field">
-            <span>Pressure score</span>
-            <select name="pressureScore" required>${ratingOptions()}</select>
+            <span>Pressure score ${requiredMarker()}</span>
+            <select name="pressureScore" required>${ratingOptions(scalarFormValue(formData, "pressureScore"))}</select>
           </label>
           <label class="form-field">
-            <span>Differentiation score</span>
-            <select name="differentiationScore" required>${ratingOptions()}</select>
+            <span>Differentiation score ${requiredMarker()}</span>
+            <select name="differentiationScore" required>${ratingOptions(scalarFormValue(formData, "differentiationScore"))}</select>
           </label>
           <label class="form-field">
-            <span>Anonymous preference</span>
+            <span>Anonymous preference ${requiredMarker()}</span>
             <select name="isAnonymous" required>${anonymousOptions}</select>
           </label>
           <label class="form-field full-field">
-            <span>Advice</span>
-            <textarea name="advice" rows="4" required></textarea>
+            <span>Advice ${requiredMarker()}</span>
+            <textarea name="advice" rows="4" maxlength="3000" data-character-count="true" required>${escapeHtml(scalarFormValue(formData, "advice"))}</textarea>
+            ${characterHint("advice", 3000)}
           </label>
         </fieldset>
 
         <fieldset class="form-section">
           <legend>Verification metadata</legend>
+          <p class="form-help">Verification metadata helps reviewers check authenticity. It stays reviewer-only and is not shown on student pages.</p>
           <label class="form-field">
             <span>Material type</span>
-            <input name="verificationMaterialType" autocomplete="off">
+            <input name="verificationMaterialType" value="${escapeHtml(scalarFormValue(formData, "verificationMaterialType"))}" autocomplete="off" maxlength="80">
           </label>
           <label class="form-field">
             <span>Storage key</span>
-            <input name="verificationObjectStorageKey" autocomplete="off">
+            <input name="verificationObjectStorageKey" value="${escapeHtml(scalarFormValue(formData, "verificationObjectStorageKey"))}" autocomplete="off" maxlength="240">
           </label>
           <label class="form-field">
             <span>Material title</span>
-            <input name="verificationTitle" autocomplete="off">
+            <input name="verificationTitle" value="${escapeHtml(scalarFormValue(formData, "verificationTitle"))}" autocomplete="off" maxlength="160">
           </label>
           <label class="form-field">
             <span>Source account</span>
-            <input name="verificationSourceAccount" autocomplete="off">
+            <input name="verificationSourceAccount" value="${escapeHtml(scalarFormValue(formData, "verificationSourceAccount"))}" autocomplete="off" maxlength="160">
           </label>
           <label class="form-field full-field">
             <span>Verification notes</span>
-            <textarea name="verificationNotes" rows="3"></textarea>
+            <textarea name="verificationNotes" rows="3" maxlength="1000" data-character-count="true">${escapeHtml(scalarFormValue(formData, "verificationNotes"))}</textarea>
+            ${characterHint("verificationNotes", 1000)}
           </label>
         </fieldset>
 
         <div class="form-actions">
           <button class="primary-action" type="submit">Submit</button>
+          <button class="secondary-action" type="button" data-experience-draft-clear="true">Clear draft</button>
           <a class="secondary-action" href="/experiences">Cancel</a>
         </div>
       </form>
@@ -1767,7 +2070,7 @@ export function renderExperienceListPage(filters = {}) {
       <section class="page-heading" aria-labelledby="experience-list-title">
         <p class="eyebrow">Published assessment experiences</p>
         <h1 id="experience-list-title">Experience list</h1>
-        <p class="lead">Browse structured interview and assessment references by school, year, stage, verification, and useful count.</p>
+        <p class="lead">Search school, stage, and assessment keywords, then scan structured references with privacy-safe metadata.</p>
         <div class="actions">
           <a class="primary-action" href="/experiences/new">Submit experience</a>
         </div>
@@ -1775,6 +2078,7 @@ export function renderExperienceListPage(filters = {}) {
 
       <section class="section" id="experience-filters" aria-label="Experience filters">
         ${renderExperienceFilters(filters, allExperiences)}
+        ${renderSelectedExperienceFilters(filters)}
       </section>
 
       <section class="section" aria-labelledby="experience-results-title">
@@ -1782,7 +2086,7 @@ export function renderExperienceListPage(filters = {}) {
           <h2 id="experience-results-title">${escapeHtml(experiences.length)} published ${escapeHtml(pluralize(experiences.length, "experience"))}</h2>
           <p class="section-kicker">Review-only submissions are hidden from visitors</p>
         </div>
-        <div class="experience-list">${renderExperienceListCards(experiences)}</div>
+        <div class="experience-list">${renderExperienceListCards(experiences, filters)}</div>
       </section>`
   });
 }
@@ -3339,7 +3643,8 @@ function renderPreferenceForm(personalCenter, feedback) {
     renderOption("false", "Show nickname by default", preferences.defaultAnonymous ? "true" : "false")
   ].join("");
 
-  return `<form class="preference-form" method="post" action="/me/preferences" aria-label="Account preferences">
+  return `<div class="preference-stack">
+  <form class="preference-form" method="post" action="/me/preferences" aria-label="Account preferences">
     ${renderPersonalFeedback(feedback)}
     <label class="form-field">
       <span>Nickname</span>
@@ -3356,7 +3661,12 @@ function renderPreferenceForm(personalCenter, feedback) {
     <div class="form-actions">
       <button class="primary-action" type="submit">Update preferences</button>
     </div>
-  </form>`;
+  </form>
+  <form class="preference-form logout-form" method="post" action="/logout" aria-label="Logout">
+    <input type="hidden" name="returnTo" value="/">
+    <button class="secondary-action" type="submit" data-clear-experience-drafts="true">Logout</button>
+  </form>
+  </div>`;
 }
 
 export function renderPersonalCenterPage({ personalCenter, notice = "", error = "" }) {

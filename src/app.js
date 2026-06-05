@@ -48,6 +48,7 @@ import {
   renderAdminReportReviewPage,
   renderAdminTimelineManagementPage,
   renderAdminVerificationReviewPage,
+  renderExperienceDetailPage,
   renderExperienceListPage,
   renderExperienceSubmissionPage,
   renderLoginPage,
@@ -73,6 +74,9 @@ const contentTypes = new Map([
 const guideStatuses = new Set(["draft", "pending_review", "published", "archived"]);
 const schoolSorts = new Set(["deadline", "updated", "name"]);
 const experienceSortAliases = new Map([
+  ["default", "default"],
+  ["recommended", "default"],
+  ["recent", "default"],
   ["newest", "newest"],
   ["useful", "useful"],
   ["useful_count", "useful"],
@@ -447,7 +451,7 @@ function parseCalculatorFilters(url) {
 }
 
 function parseExperienceFilters(url) {
-  const requestedSort = optionalStringParam(url, "sort") ?? "newest";
+  const requestedSort = optionalStringParam(url, "sort") ?? "default";
   const sort = experienceSortAliases.get(requestedSort);
 
   if (!sort) {
@@ -460,6 +464,7 @@ function parseExperienceFilters(url) {
     stage: optionalStringParam(url, "stage"),
     assessmentType: optionalStringParam(url, "assessmentType"),
     verified: optionalBooleanFilterParam(url, "verified"),
+    keyword: optionalStringParam(url, "keyword"),
     sort
   };
 }
@@ -1119,6 +1124,8 @@ function experienceListItemJson(experience) {
       : null,
     year: experience.admissionYear,
     provinceScope: experience.provinceScope,
+    majorGroup: experience.majorGroup,
+    candidateTrack: experience.candidateTrack,
     stage: experience.stage,
     stageLabel: humanizeToken(experience.stage),
     assessmentTypes: experience.assessmentTypes,
@@ -1129,7 +1136,26 @@ function experienceListItemJson(experience) {
     verifiedLabel: experienceVerifiedLabel(experience),
     usefulCount: experience.usefulCount,
     historicalReferenceNotice: experienceHistoricalReferenceNotice(experience),
-    createdAt: experience.createdAt
+    createdAt: experience.createdAt,
+    updatedAt: experience.updatedAt ?? experience.createdAt
+  };
+}
+
+function experienceDetailJson(experience) {
+  return {
+    ...experienceListItemJson(experience),
+    location: experience.location,
+    shortlistedStatus: experience.shortlistedStatus ?? null,
+    admittedStatus: experience.admittedStatus ?? null,
+    processSummary: experience.processSummary,
+    questionTypes: experience.questionTypes ?? [],
+    questionTypeLabels: (experience.questionTypes ?? []).map(humanizeToken),
+    preparationSummary: experience.preparationSummary,
+    difficultyScore: experience.difficultyScore,
+    pressureScore: experience.pressureScore,
+    differentiationScore: experience.differentiationScore,
+    advice: experience.advice,
+    anonymous: experience.isAnonymous === true
   };
 }
 
@@ -1452,6 +1478,12 @@ function sendExperienceListJson(response, filters) {
   });
 }
 
+function sendExperienceDetailJson(response, experience) {
+  sendJson(response, 200, {
+    experience: experienceDetailJson(experience)
+  });
+}
+
 function parseSchoolDetailPath(pathname) {
   const match = pathname.match(/^\/(?:api\/)?schools\/(?<schoolId>[^/]+)$/);
 
@@ -1463,6 +1495,20 @@ function parseSchoolDetailPath(pathname) {
     return decodeURIComponent(match.groups.schoolId);
   } catch {
     throw new RequestError("invalid_school_id", "School id must be URL encoded correctly.");
+  }
+}
+
+function parseExperienceDetailPath(pathname) {
+  const match = pathname.match(/^\/(?:api\/)?experiences\/(?<experienceId>[^/]+)$/);
+
+  if (!match?.groups?.experienceId) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match.groups.experienceId);
+  } catch {
+    throw new RequestError("invalid_experience_id", "Experience id must be URL encoded correctly.");
   }
 }
 
@@ -2206,6 +2252,28 @@ export async function handleRequest(request, response, context = {}) {
       }));
     }
 
+    return;
+  }
+
+  if ((url.pathname === "/logout" || url.pathname === "/api/logout") && request.method === "POST") {
+    const token = sessionTokenFromRequest(request, authService);
+    authService.destroySession?.(token);
+
+    if (url.pathname === "/api/logout" || !acceptsHtml(request)) {
+      sendJson(response, 200, {
+        status: "logged_out"
+      }, {
+        "set-cookie": authService.serializeClearSessionCookie()
+      });
+      return;
+    }
+
+    const body = await readStructuredBody(request);
+    const returnTo = safeReturnTo(scalarBodyValue(body.returnTo), "/");
+
+    redirect(response, withToast(returnTo, "logged_out"), {
+      "set-cookie": authService.serializeClearSessionCookie()
+    });
     return;
   }
 
@@ -2962,7 +3030,13 @@ export async function handleRequest(request, response, context = {}) {
       return;
     }
 
-    sendHtml(response, 200, renderExperienceSubmissionPage({ user }));
+    sendHtml(response, 200, renderExperienceSubmissionPage({
+      user,
+      formData: {
+        schoolId: optionalStringParam(url, "schoolId") ?? "",
+        year: optionalStringParam(url, "year") ?? ""
+      }
+    }));
     return;
   }
 
@@ -2980,8 +3054,10 @@ export async function handleRequest(request, response, context = {}) {
       return;
     }
 
+    let body = {};
+
     try {
-      const body = await readStructuredBody(request);
+      body = await readStructuredBody(request);
       const experience = experienceSubmissionStore.submitExperience({ user, body });
 
       if (shouldSendExperienceSubmissionJson(request, url)) {
@@ -2997,7 +3073,8 @@ export async function handleRequest(request, response, context = {}) {
       if (!shouldSendExperienceSubmissionJson(request, url)) {
         sendHtml(response, errorStatus(error), renderExperienceSubmissionPage({
           user,
-          error: error.message
+          error: error.message,
+          formData: body
         }));
         return;
       }
@@ -3005,6 +3082,38 @@ export async function handleRequest(request, response, context = {}) {
       sendError(response, errorStatus(error), error.code ?? "experience_submission_error", error.message);
     }
 
+    return;
+  }
+
+  let experienceDetailId;
+
+  try {
+    experienceDetailId = parseExperienceDetailPath(url.pathname);
+  } catch (error) {
+    sendError(response, errorStatus(error), error.code ?? "experience_detail_error", error.message);
+    return;
+  }
+
+  if (experienceDetailId && request.method === "GET") {
+    const wantsJson = url.pathname.startsWith("/api/") || shouldSendExperienceListJson(request, url);
+    const experience = getExperienceById(experienceDetailId);
+
+    if (!experience) {
+      if (wantsJson) {
+        sendError(response, 404, "experience_not_found", "No published experience was found.");
+        return;
+      }
+
+      sendHtml(response, 404, renderNotFound());
+      return;
+    }
+
+    if (wantsJson) {
+      sendExperienceDetailJson(response, experience);
+      return;
+    }
+
+    sendHtml(response, 200, renderExperienceDetailPage(experience));
     return;
   }
 

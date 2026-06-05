@@ -459,6 +459,14 @@ describe("student-facing data access helpers", () => {
     assert.deepEqual(ids(listExperiences({ assessmentType: "machine_test" })), [
       seedIds.experiences.sustech2024
     ]);
+    assert.deepEqual(ids(listExperiences({ keyword: "experiment design" })), [
+      seedIds.experiences.sysu2026
+    ]);
+    assert.deepEqual(ids(listExperiences()).slice(0, 3), [
+      seedIds.experiences.sysu2026,
+      seedIds.experiences.scut2025,
+      seedIds.experiences.sysu2026PendingVerification
+    ]);
     assert.deepEqual(ids(listExperiences({ sort: "newest" })).slice(0, 2), [
       seedIds.experiences.sysu2026PendingVerification,
       seedIds.experiences.sysu2026

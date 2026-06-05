@@ -47,6 +47,10 @@ body {
   font-size: 16px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -1110,7 +1114,9 @@ h1 {
 .form-section,
 .choice-grid,
 .form-actions,
-.submission-status {
+.submission-status,
+.draft-restore-prompt,
+.preference-stack {
   display: grid;
   gap: 12px;
 }
@@ -1151,6 +1157,11 @@ h1 {
   font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.required-marker {
+  color: var(--color-danger);
+  font-weight: 900;
 }
 
 .form-field input,
@@ -1220,6 +1231,37 @@ h1 {
   font-weight: 750;
   line-height: 1.45;
   padding: 11px;
+}
+
+.form-help,
+.char-hint {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.form-help {
+  margin: 0;
+}
+
+.char-hint {
+  justify-self: end;
+  font-weight: 700;
+}
+
+.draft-restore-prompt {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #eff6ff;
+  color: var(--support-blue);
+  padding: 12px;
+}
+
+.draft-restore-prompt p {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 750;
+  line-height: 1.45;
 }
 
 .form-success {
@@ -1374,7 +1416,15 @@ h1 {
   line-height: 1.35;
 }
 
-.experience-list {
+.experience-list,
+.experience-card-top,
+.experience-title-group,
+.experience-detail-header-card,
+.experience-action-bar,
+.experience-action-form,
+.report-form,
+.question-type-grid,
+.rating-grid {
   display: grid;
   gap: 12px;
 }
@@ -1397,6 +1447,22 @@ h1 {
   background: var(--surface);
   padding: 16px;
   box-shadow: var(--shadow-card);
+}
+
+.experience-card-top {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.experience-card-favorite,
+.experience-detail-favorite {
+  justify-self: end;
+}
+
+.experience-major {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .timeline-card h4 {
@@ -1435,10 +1501,98 @@ h1 {
   line-height: 1.3;
 }
 
+.experience-card h3 a {
+  color: var(--text);
+  text-decoration: none;
+}
+
 .experience-card p {
   color: var(--muted);
   font-size: 0.94rem;
   line-height: 1.55;
+}
+
+.experience-empty-state .actions {
+  justify-content: start;
+}
+
+.experience-detail-header-card,
+.experience-action-bar {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.experience-detail-header-card h1 {
+  max-width: none;
+  font-size: 1.35rem;
+  line-height: 1.18;
+}
+
+.experience-detail-header-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.experience-action-bar {
+  position: sticky;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  z-index: 11;
+  grid-template-columns: minmax(0, 1fr);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.experience-action-bar .secondary-action,
+.experience-action-bar .icon-button {
+  width: 100%;
+}
+
+.report-details {
+  display: grid;
+  gap: 10px;
+}
+
+.report-details summary {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 800;
+  padding: 11px 12px;
+}
+
+.question-type-grid,
+.rating-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.question-type-pill,
+.rating-pill {
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.35;
+  padding: 10px 12px;
+}
+
+.rating-pill {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rating-pill span {
+  color: var(--muted);
 }
 
 .status-badge,
@@ -2096,6 +2250,16 @@ h1 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .experience-action-bar {
+    grid-template-columns: auto minmax(0, max-content) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .question-type-grid,
+  .rating-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .personal-summary {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -2144,6 +2308,9 @@ h1 {
   .student-frame .school-list,
   .student-frame .timeline-list,
   .student-frame .experience-list,
+  .student-frame .experience-action-bar,
+  .student-frame .question-type-grid,
+  .student-frame .rating-grid,
   .student-frame .personal-summary,
   .student-frame .personal-grid,
   .student-frame .submitted-list,

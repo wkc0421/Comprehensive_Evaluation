@@ -424,6 +424,14 @@ export function createAuthService(options = {}) {
       return user ? { session, user: toPublicUser(user) } : null;
     },
 
+    destroySession(token) {
+      if (!token) {
+        return false;
+      }
+
+      return sessionsByToken.delete(token);
+    },
+
     serializeSessionCookie(session) {
       const attributes = [
         `${sessionCookieName}=${session.token}`,
@@ -431,6 +439,22 @@ export function createAuthService(options = {}) {
         "HttpOnly",
         "SameSite=Lax",
         `Max-Age=${Math.floor(sessionTtlMs / 1000)}`
+      ];
+
+      if (env.NODE_ENV === "production") {
+        attributes.push("Secure");
+      }
+
+      return attributes.join("; ");
+    },
+
+    serializeClearSessionCookie() {
+      const attributes = [
+        `${sessionCookieName}=`,
+        "Path=/",
+        "HttpOnly",
+        "SameSite=Lax",
+        "Max-Age=0"
       ];
 
       if (env.NODE_ENV === "production") {

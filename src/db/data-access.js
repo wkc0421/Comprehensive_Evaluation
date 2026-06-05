@@ -80,7 +80,8 @@ const timelineEventDefinitionOrder = new Map(
  * @property {string} [stage]
  * @property {string} [assessmentType]
  * @property {boolean} [verified]
- * @property {"newest" | "useful" | "useful_count" | "verified" | "verified_first"} [sort]
+ * @property {string} [keyword]
+ * @property {"default" | "newest" | "useful" | "useful_count" | "verified" | "verified_first"} [sort]
  */
 
 export class ScoreCalculationError extends Error {
@@ -163,11 +164,39 @@ function compareEventTime(left, right) {
 }
 
 function compareExperienceRecency(left, right) {
-  if (right.createdAt !== left.createdAt) {
-    return right.createdAt.localeCompare(left.createdAt);
+  const leftTime = left.updatedAt ?? left.createdAt ?? "";
+  const rightTime = right.updatedAt ?? right.createdAt ?? "";
+
+  if (rightTime !== leftTime) {
+    return rightTime.localeCompare(leftTime);
   }
 
   return right.usefulCount - left.usefulCount;
+}
+
+function latestExperienceAdmissionYear(experiences) {
+  return experiences.reduce((latestYear, experience) => (
+    Math.max(latestYear, experience.admissionYear)
+  ), 0);
+}
+
+function compareExperienceDefault(left, right, latestYear) {
+  const leftRecent = left.admissionYear >= latestYear - 1;
+  const rightRecent = right.admissionYear >= latestYear - 1;
+  const recentDifference = Number(rightRecent) - Number(leftRecent);
+
+  if (recentDifference !== 0) {
+    return recentDifference;
+  }
+
+  const verifiedDifference =
+    Number(right.verificationStatus === "verified") - Number(left.verificationStatus === "verified");
+
+  if (verifiedDifference !== 0) {
+    return verifiedDifference;
+  }
+
+  return compareExperienceRecency(left, right);
 }
 
 function compareExperienceUsefulCount(left, right) {
@@ -187,6 +216,37 @@ function compareExperienceVerifiedFirst(left, right) {
   }
 
   return compareExperienceRecency(left, right);
+}
+
+function experienceKeywordMatches(experience, keyword) {
+  if (!keyword) {
+    return true;
+  }
+
+  const normalizedKeyword = keyword.toLowerCase();
+  const school = getPublishedSchoolById(experience.schoolId);
+  const haystack = [
+    school?.name,
+    school?.abbreviation,
+    experience.stage,
+    experience.stage?.replaceAll("_", " "),
+    experience.majorGroup,
+    experience.candidateTrack,
+    experience.candidateTrack?.replaceAll("_", " "),
+    experience.summary,
+    experience.processSummary,
+    experience.preparationSummary,
+    experience.advice,
+    ...(experience.assessmentTypes ?? []),
+    ...(experience.assessmentTypes ?? []).map((value) => value.replaceAll("_", " ")),
+    ...(experience.questionTypes ?? []),
+    ...(experience.questionTypes ?? []).map((value) => value.replaceAll("_", " "))
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(normalizedKeyword);
 }
 
 function compareFeaturedExperiences(left, right, schoolId, year) {
@@ -3141,7 +3201,8 @@ export function calculateScore(input = {}) {
  * @returns {ReadonlyArray<import("./seed-data.js").ExperienceSeed>}
  */
 export function listExperiences(filters = {}) {
-  const sort = filters.sort ?? "newest";
+  const sort = filters.sort ?? "default";
+  const keyword = typeof filters.keyword === "string" ? filters.keyword.trim() : "";
   const experiences = publishedExperiences()
     .filter((experience) => experience.status === publishedStatus)
     .filter((experience) => !moderatedExperienceActions.has(experience.id))
@@ -3150,14 +3211,14 @@ export function listExperiences(filters = {}) {
     .filter((experience) => !filters.year || experience.admissionYear === filters.year)
     .filter((experience) => !filters.stage || experience.stage === filters.stage)
     .filter((experience) => !filters.assessmentType || experience.assessmentTypes.includes(filters.assessmentType))
+    .filter((experience) => experienceKeywordMatches(experience, keyword))
     .filter((experience) => {
       if (typeof filters.verified !== "boolean") {
         return true;
       }
 
       return (experience.verificationStatus === "verified") === filters.verified;
-    })
-    .sort(compareExperienceRecency);
+    });
 
   if (sort === "useful" || sort === "useful_count") {
     return experiences.sort(compareExperienceUsefulCount);
@@ -3167,7 +3228,12 @@ export function listExperiences(filters = {}) {
     return experiences.sort(compareExperienceVerifiedFirst);
   }
 
-  return experiences;
+  if (sort === "newest") {
+    return experiences.sort(compareExperienceRecency);
+  }
+
+  const latestYear = latestExperienceAdmissionYear(experiences);
+  return experiences.sort((left, right) => compareExperienceDefault(left, right, latestYear));
 }
 
 /**

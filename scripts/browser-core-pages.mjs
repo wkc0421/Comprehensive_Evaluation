@@ -47,6 +47,7 @@ base_url = os.environ["BASE_URL"].rstrip("/")
 screenshot_dir = Path(os.environ["BROWSER_SCREENSHOT_DIR"])
 sysu_school_id = os.environ["SYSU_SCHOOL_ID"]
 scut_school_id = os.environ["SCUT_SCHOOL_ID"]
+sysu_experience_id = os.environ["SYSU_EXPERIENCE_ID"]
 logged_in_cookie = os.environ["LOGGED_IN_COOKIE"]
 no_favorite_cookie = os.environ["NO_FAVORITE_COOKIE"]
 
@@ -57,6 +58,7 @@ core_pages = [
     ("/timeline?year=2026", "timeline", True, None),
     (f"/calculator?schoolId={sysu_school_id}&year=2026", "calculator", False, None),
     ("/experiences?year=2024&assessmentType=machine_test&sort=newest", "experiences", True, "/experiences"),
+    (f"/experiences/{sysu_experience_id}", "experience-detail", True, "/experiences"),
 ]
 widths = [375, 390, 430]
 hidden_text = [
@@ -329,6 +331,107 @@ async def verify_calculator_unavailable(page):
     if await page.locator("#score-input-form").count() != 0:
         raise AssertionError("No-formula calculator exposed the score entry form")
 
+async def fill_experience_submission_form(page, major_group):
+    await page.locator("select[name='schoolId']").select_option(sysu_school_id)
+    await page.locator("select[name='year']").select_option("2026")
+    await page.locator("input[name='majorGroup']").fill(major_group)
+    await page.locator("select[name='candidateTrack']").select_option("physics")
+    await page.locator("select[name='stage']").select_option("school_assessment")
+    await page.locator("select[name='shortlistedStatus']").select_option("true")
+    await page.locator("select[name='admittedStatus']").select_option("")
+    await page.locator("input[name='location']").fill("Browser verification campus")
+    await page.locator("textarea[name='processSummary']").fill(
+        f"{major_group} process used a structured panel and group discussion without private identity details."
+    )
+    await page.locator("textarea[name='preparationSummary']").fill(
+        "Browser verification preparation kept examples concise and source-safe."
+    )
+    await page.locator("select[name='difficultyScore']").select_option("4")
+    await page.locator("select[name='pressureScore']").select_option("3")
+    await page.locator("select[name='differentiationScore']").select_option("4")
+    await page.locator("textarea[name='advice']").fill(
+        "Browser verification advice focuses on preparation and avoids admission guarantees."
+    )
+
+async def verify_experience_submission_drafts(page):
+    await page.goto(f"{base_url}/experiences/new", wait_until="domcontentloaded")
+    await page.locator("[data-experience-submission-form='true']").wait_for()
+    body_text = await page.locator("body").inner_text()
+    body_lower = body_text.lower()
+    for expected in ["reviewer-only", "Process", "Advice"]:
+        if expected.lower() not in body_lower:
+            raise AssertionError(f"Experience submission page missing {expected}")
+    if await page.locator("[data-experience-draft-prompt='true']").count() != 1:
+        raise AssertionError("Experience submission draft prompt hook is missing")
+    if await page.locator("input[type='file']").count() != 0:
+        raise AssertionError("Experience submission should not persist or expose local file inputs")
+
+    await page.locator("input[name='majorGroup']").fill("Draft restore group")
+    await page.locator("textarea[name='processSummary']").fill("Draft process text")
+    await page.wait_for_function("""() => {
+        const draft = JSON.parse(localStorage.getItem("gce:experience-submission-draft") || "null");
+        return draft && draft.values && draft.values.majorGroup === "Draft restore group";
+    }""")
+    await page.reload(wait_until="domcontentloaded")
+    await page.locator("[data-experience-draft-prompt='true']").wait_for(state="visible")
+    await page.locator("[data-experience-draft-restore='true']").click()
+    restored_major_group = await page.locator("input[name='majorGroup']").input_value()
+    restored_process = await page.locator("textarea[name='processSummary']").input_value()
+    process_counter = await page.locator("[data-char-count-for='processSummary']").inner_text()
+    if restored_major_group != "Draft restore group" or restored_process != "Draft process text":
+        raise AssertionError("Experience draft restore did not restore saved values")
+    if not process_counter.startswith(str(len("Draft process text"))):
+        raise AssertionError(f"Process character counter did not update after restore: {process_counter}")
+
+    await page.locator(".submission-form [data-experience-draft-clear='true']").click()
+    draft_after_clear = await page.evaluate("() => localStorage.getItem('gce:experience-submission-draft')")
+    if draft_after_clear is not None:
+        raise AssertionError("Experience draft clear did not remove local storage")
+
+    await page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    await page.evaluate("""() => localStorage.setItem("gce:experience-submission-draft", JSON.stringify({
+        savedAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
+        values: { majorGroup: "Expired draft group" }
+    }))""")
+    await page.goto(f"{base_url}/experiences/new?draftExpiryCheck=1", wait_until="domcontentloaded")
+    await page.wait_for_function("""() => window.__experienceDraftState === "expired" ||
+        localStorage.getItem("gce:experience-submission-draft") === null""")
+    expired_prompt_visible = await page.locator("[data-experience-draft-prompt='true']").is_visible()
+    expired_draft = await page.evaluate("() => localStorage.getItem('gce:experience-submission-draft')")
+    expired_state = await page.evaluate("() => window.__experienceDraftState || ''")
+    if expired_prompt_visible or expired_draft is not None:
+        raise AssertionError(
+            f"Expired experience draft was not removed: state={expired_state}, draft={str(expired_draft)[:120]}"
+        )
+
+    await fill_experience_submission_form(page, "Browser pending draft group")
+    await page.locator(".submission-form button[type='submit']").click()
+    await page.locator("#submission-status-title").wait_for()
+    status_text = await page.locator(".submission-status").inner_text()
+    if "Pending review" not in status_text or "Browser pending draft group" in status_text:
+        raise AssertionError(f"Submission status did not show a safe under-review state: {status_text}")
+    draft_after_submit = await page.evaluate("() => localStorage.getItem('gce:experience-submission-draft')")
+    if draft_after_submit is not None:
+        raise AssertionError("Successful experience submission did not clear the local draft")
+
+    await page.goto(f"{base_url}/experiences?keyword=Browser%20pending%20draft", wait_until="domcontentloaded")
+    public_text = await page.locator("body").inner_text()
+    if "Browser pending draft group" in public_text:
+        raise AssertionError("Pending-review experience appeared in public experience browsing")
+    if "publish the first relevant experience" not in public_text:
+        raise AssertionError("Experience empty state did not guide filter changes or first publication")
+
+    await page.goto(f"{base_url}/me", wait_until="domcontentloaded")
+    my_text = await page.locator("body").inner_text()
+    if "Browser pending draft group" not in my_text or "Pending Review" not in my_text:
+        raise AssertionError("Pending experience was not visible in My Submissions")
+
+    await page.locator("form[action='/logout'] button").click()
+    await page.wait_for_url("**/?toast=logged_out")
+    logout_draft = await page.evaluate("() => localStorage.getItem('gce:experience-submission-draft')")
+    if logout_draft is not None:
+        raise AssertionError("Logout did not clear experience submission drafts")
+
 async def main():
     screenshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -501,6 +604,36 @@ async def main():
                         if expected.lower() not in body_lower:
                             raise AssertionError(f"Calculator at {width}px missing {expected}")
 
+                if label == "experiences":
+                    body_lower = metrics["bodyText"].lower()
+                    required_experience_text = [
+                        "Experience keyword",
+                        "Verified status",
+                        "Major or group",
+                        "Historical reference",
+                        "Read structured detail",
+                    ]
+                    for expected in required_experience_text:
+                        if expected.lower() not in body_lower:
+                            raise AssertionError(f"Experiences at {width}px missing {expected}")
+                    if await page.locator("button[aria-label='Favorite experience']").count() == 0:
+                        raise AssertionError(f"Experiences at {width}px missing favorite control")
+
+                if label == "experience-detail":
+                    body_lower = metrics["bodyText"].lower()
+                    required_experience_detail_text = [
+                        "Basic information",
+                        "Process",
+                        "Question-type categories",
+                        "Preparation and advice",
+                        "Experience ratings",
+                        "Useful (18)",
+                        "Report",
+                    ]
+                    for expected in required_experience_detail_text:
+                        if expected.lower() not in body_lower:
+                            raise AssertionError(f"Experience detail at {width}px missing {expected}")
+
                 if width == 390:
                     await page.screenshot(path=screenshot_dir / f"{label}-{width}.png", full_page=True)
 
@@ -563,6 +696,15 @@ async def main():
         await calculator_unavailable_page.screenshot(path=screenshot_dir / "calculator-unavailable-390.png", full_page=True)
         await calculator_unavailable_page.close()
 
+        experience_context = await browser.new_context(
+            viewport={"width": 390, "height": 940},
+            extra_http_headers={"Cookie": logged_in_cookie}
+        )
+        experience_flow_page = await experience_context.new_page()
+        await verify_experience_submission_drafts(experience_flow_page)
+        await experience_flow_page.screenshot(path=screenshot_dir / "experience-submission-under-review-390.png", full_page=True)
+        await experience_context.close()
+
         desktop_page = await browser.new_page(viewport={"width": 1280, "height": 940})
         await desktop_page.goto(f"{base_url}/", wait_until="domcontentloaded")
         desktop_metrics = await desktop_page.evaluate("""() => {
@@ -605,7 +747,7 @@ async def main():
         await browser.close()
 
 asyncio.run(main())
-print("Core browser verification passed at 375px, 390px, 430px, timeline/calculator flows, school list/detail interactions, home/login states, and desktop student school frames")
+print("Core browser verification passed at 375px, 390px, 430px, timeline/calculator/experience flows, school list/detail interactions, home/login states, and desktop student school frames")
 `;
 }
 
@@ -693,6 +835,7 @@ async function runBrowserVerification({ python, baseUrl, loggedInCookie, noFavor
         BROWSER_SCREENSHOT_DIR: screenshotDir,
         SYSU_SCHOOL_ID: seedIds.schools.sysu,
         SCUT_SCHOOL_ID: seedIds.schools.scut,
+        SYSU_EXPERIENCE_ID: seedIds.experiences.sysu2026,
         LOGGED_IN_COOKIE: loggedInCookie,
         NO_FAVORITE_COOKIE: noFavoriteCookie
       },
