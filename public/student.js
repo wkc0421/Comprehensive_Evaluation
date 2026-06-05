@@ -38,6 +38,10 @@ function schoolListStatus() {
   return document.querySelector("[data-school-list-status='true']");
 }
 
+function schoolListSkeleton() {
+  return document.querySelector("[data-list-skeleton='school']");
+}
+
 function setSchoolListStatus(message, options = {}) {
   const status = schoolListStatus();
 
@@ -60,6 +64,26 @@ function setSchoolListStatus(message, options = {}) {
   }
 
   status.textContent = message;
+}
+
+function setSchoolListLoading(isLoading) {
+  const skeleton = schoolListSkeleton();
+  const results = document.querySelector("[data-school-results='true']");
+
+  if (skeleton) {
+    skeleton.hidden = !isLoading;
+  }
+
+  if (!results) {
+    return;
+  }
+
+  if (isLoading) {
+    results.setAttribute("aria-busy", "true");
+    return;
+  }
+
+  results.removeAttribute("aria-busy");
 }
 
 function schoolFilterUrlFromForm(form) {
@@ -96,6 +120,7 @@ function replaceSchoolListSections(html) {
 async function loadSchoolFilters(url, options = {}) {
   lastSchoolFilterUrl = url.toString();
   setSchoolListStatus("Loading schools...", { state: "loading" });
+  setSchoolListLoading(true);
 
   try {
     const response = await fetch(url, {
@@ -116,8 +141,10 @@ async function loadSchoolFilters(url, options = {}) {
 
     window.__schoolFilterAjaxCount = (window.__schoolFilterAjaxCount || 0) + 1;
     setSchoolListStatus("");
+    setSchoolListLoading(false);
   } catch {
     setSchoolListStatus("Could not load schools.", { state: "error", retry: true });
+    setSchoolListLoading(false);
 
     if (options.throwOnError) {
       throw new Error("Could not load schools.");

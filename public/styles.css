@@ -1247,6 +1247,35 @@ h1 {
   padding: 7px 10px;
 }
 
+.list-loading-skeleton {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px;
+  box-shadow: var(--shadow-card);
+}
+
+.list-loading-skeleton span {
+  display: block;
+  height: 14px;
+  border-radius: 8px;
+  background: #E5E7EB;
+}
+
+.list-loading-skeleton span:nth-child(1) {
+  width: 62%;
+}
+
+.list-loading-skeleton span:nth-child(2) {
+  width: 86%;
+}
+
+.list-loading-skeleton span:nth-child(3) {
+  width: 44%;
+}
+
 .filter-field {
   display: grid;
   gap: 6px;

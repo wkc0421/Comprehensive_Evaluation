@@ -39,6 +39,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - The redesigned student home should render through `renderStudentHome({ user, interactionStore, now, grade })`; it uses published `listGuides()`, `listTimelineNodes()`, and `listExperiences()` by default, while `homeData` is reserved for deterministic empty-state renderer tests.
 - HTML login-required student actions should pass `htmlLogin`, `returnTo`, and a bounded `pendingAction` into `requireActiveUser()`; `/login` POST continues favorite/useful/report/publish actions and redirects with a `toast` query handled by `public/student.js`.
 - Admin moderation queues should use `experienceSubmissionStore` review helpers for pending experiences and verification materials, `interactionStore` report resolution for audit state, `registerPublishedExperience()` for approved submission visibility, and `moderatePublishedExperience()` plus `authService.updateUserAccountStatus()` for report side effects.
+- Frontend PRD acceptance gates live in `src/frontend-acceptance.test.js` with the committed traceability matrix in `docs/frontend-acceptance-matrix.md`; keep rendered browser layout gates in `scripts/browser-core-pages.mjs`.
 ---
 
 ## Thu Jun  4 08:23:44 AM CST 2026 - Ralph runner
@@ -976,4 +977,47 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Admin pages now have a shared `renderAdminShell()` in `src/pages.js`; new admin HTML should plug queue/list content into the main region and detail/review content into the side panel instead of recreating headers.
   - `scripts/browser-core-pages.mjs` seeds both data-reviewer and content-reviewer sessions, plus ingestion/report/moderation fixtures, so admin browser checks can verify protected desktop pages without external services.
   - Report handling accepts audited `reject` resolutions with no target side effect; keep/hide/delete/limit-account continue to drive the existing side-effect paths.
+---
+
+## Fri Jun  5 09:18:57 AM CST 2026 - Ralph runner
+- Iteration: 6
+- Story: US-027
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260605-073123/iteration-6
+---
+
+## Fri Jun  5 09:31:04 AM CST 2026 - US-028
+- What was implemented
+  - Added a committed frontend PRD acceptance matrix mapping each US-028 criterion to implementation surfaces, verification commands, negative checks, and artifacts.
+  - Added `src/frontend-acceptance.test.js` to enforce static visual rules, student/public product boundaries, privacy checks, accessibility hooks, and admin acceptance gates.
+  - Added a school-list loading skeleton hook for client-side filter loads and extended browser checks for skeleton visibility, rendered text overlap, long-name handling, no horizontal scroll, and bottom-nav obstruction.
+- Files changed
+  - `docs/frontend-acceptance-matrix.md`
+  - `package.json`
+  - `public/student.js`, `public/styles.css`
+  - `scripts/browser-core-pages.mjs`
+  - `src/frontend-acceptance.test.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `node --test src/frontend-acceptance.test.js` passed
+  - `npm test` passed
+  - `npm run data-quality` passed and reported annual guide coverage 3/3, 100.00% against the 95.00% target, with school-year guide coverage 6/9
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `BROWSER_SCREENSHOT_DIR=/home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260605-073123/iteration-7 npm run browser-test` passed
+  - `git diff --check` passed
+- Acceptance matrix summary
+  - Mobile rendering, overflow, overlap, bottom-navigation obstruction, and long-name handling map to `scripts/browser-core-pages.mjs` browser checks at 375px, 390px, and 430px.
+  - Visual direction, card/radius/gradient/typography rules, list loading skeletons, accessible icon controls, inline error hooks, text-visible statuses, product-boundary copy, and privacy boundaries map to `src/frontend-acceptance.test.js`, `public/styles.css`, `public/student.js`, and `src/pages.js`.
+  - Student gates cover home first screen, stable four-tab nav, school detail cross-entry actions, no-formula calculator hiding, pending-review experience hiding, and anonymous submission privacy.
+  - Admin gates cover draft-only ingestion, third-party final-authority rejection, guide source preview, formula sample-test gating, moderation warnings with student preview, and backend-only verification material handling.
+- Browser verification result, if this was a UI story
+  - Playwright Chromium passed core student pages at 375px, 390px, and 430px, including no horizontal overflow, content text-overlap checks, bottom-nav primary-action obstruction checks, long-name wrapping/truncation checks, school filter skeleton/retry checks, and student task flows.
+  - Playwright Chromium passed admin desktop checks at 1280px for `/admin`, ingestion, guide review, timeline, formulas, experiences, verifications, and reports.
+  - Screenshots were saved to `scripts/ralph/runs/20260605-073123/iteration-7`, including `home-390.png`, `schools-390.png`, `schools-filter-retry-390.png`, `school-detail-390.png`, `timeline-390.png`, `calculator-flow-390.png`, `experience-detail-390.png`, `personal-center-logged-in-390.png`, and admin desktop screenshots.
+- **Learnings for future iterations:**
+  - Keep US-028 traceability in `docs/frontend-acceptance-matrix.md`; the matrix test intentionally fails if a criterion row or required column disappears.
+  - Browser text-overlap gates should ignore intentional fixed bottom navigation labels, then check content leaf text with a threshold large enough to avoid adjacent line-box false positives.
+  - For client-side school filter loading checks, deliberately delay one Playwright-routed request so the skeleton state is deterministic before the final response replaces the results section.
 ---

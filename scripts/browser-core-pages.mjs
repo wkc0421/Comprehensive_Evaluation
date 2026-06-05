@@ -239,8 +239,18 @@ async def verify_school_filter_interactions(page):
 
     await page.evaluate("() => { window.__schoolFilterMarker = 'kept'; }")
     previous_count = await ajax_count(page)
+
+    async def slow_school_request(route):
+        await asyncio.sleep(0.15)
+        await route.continue_()
+
+    await page.route("**/schools?*year=2026*", slow_school_request)
     await page.locator("select[name='year']").select_option("2026")
+    await page.locator("[data-list-skeleton='school']").wait_for(state="visible")
     await wait_for_ajax_count(page, previous_count)
+    await page.unroute("**/schools?*year=2026*", slow_school_request)
+    if await page.locator("[data-list-skeleton='school']").is_visible():
+        raise AssertionError("School loading skeleton stayed visible after results loaded")
     marker = await page.evaluate("() => window.__schoolFilterMarker")
     if marker != "kept":
         raise AssertionError("School filter change caused a full page navigation")
@@ -625,6 +635,30 @@ async def main():
                             return overflowing && !cleanTruncate;
                         })
                         .map((element) => element.textContent.trim().slice(0, 80));
+                    const textRects = Array.from(document.querySelectorAll("body *"))
+                        .filter((element) => element.children.length === 0 && element.innerText && element.innerText.trim())
+                        .filter((element) => !element.closest("[data-student-bottom-nav='true']"))
+                        .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+                        .filter((item) => item.rect.width > 2 && item.rect.height > 8)
+                        .slice(0, 180);
+                    const overlappingText = [];
+                    for (let index = 0; index < textRects.length; index += 1) {
+                        for (let otherIndex = index + 1; otherIndex < textRects.length; otherIndex += 1) {
+                            const left = textRects[index];
+                            const right = textRects[otherIndex];
+                            const horizontalOverlap = Math.min(left.rect.right, right.rect.right) -
+                                Math.max(left.rect.left, right.rect.left);
+                            const verticalOverlap = Math.min(left.rect.bottom, right.rect.bottom) -
+                                Math.max(left.rect.top, right.rect.top);
+
+                            if (horizontalOverlap > 4 && verticalOverlap > 6) {
+                                overlappingText.push(
+                                    left.element.innerText.trim().slice(0, 36) + " / " +
+                                    right.element.innerText.trim().slice(0, 36)
+                                );
+                            }
+                        }
+                    }
 
                     return {
                         scrollWidth: document.documentElement.scrollWidth,
@@ -637,6 +671,7 @@ async def main():
                         obstructedPrimaryActions,
                         visiblePrimaryActionTexts: visiblePrimaryActions.map((element) => element.textContent.trim()),
                         clippedLongNames,
+                        overlappingText,
                         requiresNav,
                         currentHref
                     };
@@ -676,6 +711,12 @@ async def main():
                     raise AssertionError(
                         f"{label} at {width}px clips long school names without ellipsis: "
                         f"{metrics['clippedLongNames']}"
+                    )
+
+                if metrics["overlappingText"]:
+                    raise AssertionError(
+                        f"{label} at {width}px has overlapping text: "
+                        f"{metrics['overlappingText'][:5]}"
                     )
 
                 if label == "schools":

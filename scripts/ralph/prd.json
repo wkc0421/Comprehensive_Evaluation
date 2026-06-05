@@ -482,8 +482,8 @@
         "Run npm test, npm run data-quality, and npm run browser-test before marking the frontend PRD complete."
       ],
       "priority": 28,
-      "passes": false,
-      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+      "passes": true,
+      "notes": "Added deterministic frontend PRD acceptance gates covering visual, interaction, accessibility, content, privacy, student, and admin requirements, plus a committed acceptance matrix and browser artifacts."
     }
   ]
 }

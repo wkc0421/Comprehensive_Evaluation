@@ -1430,6 +1430,11 @@ export function renderSchoolListPage(filters = {}) {
           <h2 id="school-results-title">${escapeHtml(cards.length)} ${escapeHtml(pluralize(cards.length, "school"))}</h2>
           <p class="section-kicker">Draft and review-only guide data is hidden from visitors</p>
         </div>
+        <div class="list-loading-skeleton" hidden aria-hidden="true" data-list-skeleton="school">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
         <div class="school-list" data-school-results="true">${renderSchoolCards(cards, filters)}</div>
       </section>`
   });
