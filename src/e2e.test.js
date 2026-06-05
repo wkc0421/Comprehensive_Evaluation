@@ -146,7 +146,7 @@ describe("MVP end-to-end quality gates", () => {
     assert.equal(timelineBody.mine, true);
     assert.equal(timelineBody.favorites.length, 1);
     assert.ok(timelineBody.events.every((event) => event.schoolId === seedIds.schools.sysu));
-    assert.equal(deadline.title, "Application deadline");
+    assert.equal(deadline.title, "报名截止");
     assert.equal(deadline.dateLabel, "2026-04-20T15:59:59.000Z");
     assert.equal(deadline.status, "due_soon");
     assert.ok(timelineBody.reminders.some((reminder) => reminder.eventKey === "application_deadline"));
@@ -166,7 +166,7 @@ describe("MVP end-to-end quality gates", () => {
     const detailBody = await detailResponse.json();
 
     assert.equal(detailResponse.status, 200);
-    assert.equal(detailBody.formula.formulaName, "60/30/10 comprehensive score");
+    assert.equal(detailBody.formula.formulaName, "60/30/10 综合成绩");
     assert.equal(detailBody.formula.officialSourceUrl, "https://example.edu/sysu/2026-comprehensive-evaluation-guide");
 
     const calculatorPageResponse = await fetch(
@@ -181,8 +181,8 @@ describe("MVP end-to-end quality gates", () => {
     const calculatorPageBody = await calculatorPageResponse.text();
 
     assert.equal(calculatorPageResponse.status, 200);
-    assert.match(calculatorPageBody, /60\/30\/10 comprehensive score/);
-    assert.match(calculatorPageBody, /Official source/);
+    assert.match(calculatorPageBody, /60\/30\/10 综合成绩/);
+    assert.match(calculatorPageBody, /官方来源依据/);
 
     const scoreResponse = await fetch(`${baseUrl}/api/score/calculate`, {
       method: "POST",
@@ -201,7 +201,7 @@ describe("MVP end-to-end quality gates", () => {
     assert.equal(scoreResponse.status, 200);
     assert.equal(scoreBody.totalScore, 88.2);
     assert.equal(scoreBody.officialSourceUrl, detailBody.formula.officialSourceUrl);
-    assert.match(scoreBody.disclaimer, /not an admission probability/i);
+    assert.match(scoreBody.disclaimer, /不代表录取概率/);
   });
 
   it("covers a grade-two user viewing 2024 through 2026 guide changes and school experiences", async () => {
@@ -262,11 +262,11 @@ describe("MVP end-to-end quality gates", () => {
     const homeBody = await homeResponse.text();
 
     assert.equal(homeResponse.status, 200);
-    assert.match(homeBody, /High school grade one/);
-    assert.match(homeBody, /Core student tasks/);
-    assert.match(homeBody, /Understand the comprehensive evaluation path\./);
-    assert.match(homeBody, /Nearest timeline nodes/);
-    assert.match(homeBody, /Latest guides/);
+    assert.match(homeBody, /高一/);
+    assert.match(homeBody, /核心任务/);
+    assert.match(homeBody, /了解综评整体路径。/);
+    assert.match(homeBody, /最近时间节点/);
+    assert.match(homeBody, /最新简章/);
     assert.match(homeBody, /href="\/schools"/);
     assert.doesNotMatch(homeBody, /admission probability|paid consulting|private messaging/i);
 
@@ -279,10 +279,10 @@ describe("MVP end-to-end quality gates", () => {
     const schoolsBody = await schoolsResponse.text();
 
     assert.equal(schoolsResponse.status, 200);
-    assert.match(schoolsBody, /School list/);
-    assert.match(schoolsBody, /Sun Yat-sen University/);
-    assert.match(schoolsBody, /Application deadline/);
-    assert.match(schoolsBody, /Formula/);
+    assert.match(schoolsBody, /院校列表/);
+    assert.match(schoolsBody, /中山大学/);
+    assert.match(schoolsBody, /报名截止/);
+    assert.match(schoolsBody, /公式/);
     assert.doesNotMatch(schoolsBody, /Draft Review Guide|Working Draft/);
   });
 

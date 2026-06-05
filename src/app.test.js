@@ -85,11 +85,11 @@ function studentBottomNav(body) {
 
 function assertStudentBottomNav(body, currentHref) {
   const nav = studentBottomNav(body);
-  const labels = [...nav.matchAll(/<span>(Home|Schools|Experiences|My)<\/span>/g)]
+  const labels = [...nav.matchAll(/<span>(首页|院校|面经|我的)<\/span>/g)]
     .map((match) => match[1]);
 
-  assert.deepEqual(labels, ["Home", "Schools", "Experiences", "My"]);
-  assert.doesNotMatch(nav, />Timeline<|>Calculator</);
+  assert.deepEqual(labels, ["首页", "院校", "面经", "我的"]);
+  assert.doesNotMatch(nav, />时间线<|>综合分计算器</);
   assert.match(nav, new RegExp(`href="${currentHref}" aria-current="page"`));
 }
 
@@ -189,18 +189,18 @@ describe("web routes", () => {
     const gradeCases = [
       {
         grade: "high_school_g1",
-        label: "High school grade one",
-        tip: "Understand the comprehensive evaluation path."
+        label: "高一",
+        tip: "了解综评整体路径。"
       },
       {
         grade: "high_school_g2",
-        label: "High school grade two",
-        tip: "Check academic test and subject requirements."
+        label: "高二",
+        tip: "核对学考和选科要求。"
       },
       {
         grade: "high_school_g3",
-        label: "High school grade three",
-        tip: "Watch current guide releases."
+        label: "高三",
+        tip: "关注当年简章发布。"
       }
     ];
     const bodies = new Map();
@@ -216,38 +216,38 @@ describe("web routes", () => {
       assert.match(body, new RegExp(escapeRegExp(currentCase.label)));
       assert.match(body, new RegExp(`href="/\\?grade=${currentCase.grade}" aria-current="page"`));
       assert.match(body, new RegExp(escapeRegExp(currentCase.tip)));
-      assert.match(body, /Log in to favorite schools and view your personal timeline\./);
+      assert.match(body, /登录后可收藏院校并查看个人时间线。/);
       bodies.set(currentCase.grade, body);
     }
 
     const body = bodies.get("high_school_g3");
     const firstScreenIndex = body.indexOf("home-first-screen");
-    const latestGuideIndex = body.indexOf("Latest guides");
-    const latestExperienceIndex = body.indexOf("Latest experiences");
-    const gradeTipsIndex = body.indexOf("Grade preparation tips");
-    const nearestNodesIndex = body.indexOf("Nearest timeline nodes");
+    const latestGuideIndex = body.indexOf("最新简章");
+    const latestExperienceIndex = body.indexOf("最新面经");
+    const gradeTipsIndex = body.indexOf("年级准备建议");
+    const nearestNodesIndex = body.indexOf("最近时间节点");
 
     assert.ok(firstScreenIndex >= 0);
     assert.ok(nearestNodesIndex > firstScreenIndex);
     assert.ok(latestGuideIndex > nearestNodesIndex);
     assert.ok(latestExperienceIndex > latestGuideIndex);
     assert.ok(gradeTipsIndex > latestExperienceIndex);
-    assert.match(body, /Core student tasks/);
-    assert.match(body, /class="home-task-card" href="\/schools"[\s\S]*<strong>Schools<\/strong>[\s\S]*Browse schools/);
-    assert.match(body, /class="home-task-card" href="\/timeline"[\s\S]*<strong>Timeline<\/strong>[\s\S]*Key dates/);
-    assert.match(body, /class="home-task-card" href="\/calculator"[\s\S]*<strong>Score Calculator<\/strong>[\s\S]*Calculate score/);
-    assert.match(body, /class="home-task-card" href="\/experiences"[\s\S]*<strong>Experiences<\/strong>[\s\S]*Read stories/);
+    assert.match(body, /核心任务/);
+    assert.match(body, /class="home-task-card" href="\/schools"[\s\S]*<strong>院校<\/strong>[\s\S]*查院校/);
+    assert.match(body, /class="home-task-card" href="\/timeline"[\s\S]*<strong>时间线<\/strong>[\s\S]*看日期/);
+    assert.match(body, /class="home-task-card" href="\/calculator"[\s\S]*<strong>综合分<\/strong>[\s\S]*算分数/);
+    assert.match(body, /class="home-task-card" href="\/experiences"[\s\S]*<strong>面经<\/strong>[\s\S]*看经验/);
     assert.ok(countOccurrences(body, `data-home-timeline-row="true"`) >= 1);
     assert.ok(countOccurrences(body, `data-home-timeline-row="true"`) <= 3);
     assert.equal(countOccurrences(body, `data-home-guide-row="true"`), 3);
     assert.equal(countOccurrences(body, `data-home-experience-row="true"`), 3);
-    assert.match(body, /Sun Yat-sen University/);
-    assert.match(body, /2026 Published/);
-    assert.match(body, /Deadline Apr 20, 2026/);
-    assert.match(body, /Admission Guide/);
-    assert.match(body, /School Assessment/);
-    assert.match(body, /Structured Interview/);
-    assert.match(body, /Verified experience|Verification pending/);
+    assert.match(body, /中山大学/);
+    assert.match(body, /2026 已发布/);
+    assert.match(body, /截止 2026年4月20日/);
+    assert.match(body, /招生简章/);
+    assert.match(body, /校测/);
+    assert.match(body, /结构化面试/);
+    assert.match(body, /已认证面经|认证待审核/);
     assert.doesNotMatch(body, /Mobile-first student home|Grade-aware entry points|Annual progress|Nearest deadlines|Latest published guides|Latest high-quality experiences/);
     assert.doesNotMatch(body, /Draft Review Guide|Working Draft|Pending review experience/);
     assert.doesNotMatch(body, /admission probability|ranking prediction|paid consulting|open comments|private messaging/i);
@@ -261,9 +261,9 @@ describe("web routes", () => {
       }
     });
 
-    assert.match(emptyHome, /No clear timeline nodes yet\. We will update when published\./);
-    assert.match(emptyHome, /Current-year guides are not published yet\. Start with previous official rules\./);
-    assert.match(emptyHome, /No published experiences yet\. Check school guides first\./);
+    assert.match(emptyHome, /暂无明确时间线节点，发布后会更新。/);
+    assert.match(emptyHome, /当年简章暂未发布，可先参考往年官方规则。/);
+    assert.match(emptyHome, /暂无已发布面经，可先查看院校简章。/);
     assert.doesNotMatch(emptyHome, /admission probability|ranking prediction|paid consulting|open comments|private messaging/i);
   });
 
@@ -290,12 +290,12 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /High school grade two/);
-    assert.match(body, /Favorited schools/);
-    assert.match(body, /Sun Yat-sen University/);
+    assert.match(body, /高二/);
+    assert.match(body, /已收藏院校/);
+    assert.match(body, /中山大学/);
     assert.ok(countOccurrences(body, `data-home-timeline-row="true"`) >= 1);
     assert.ok(countOccurrences(body, `data-home-timeline-row="true"`) <= 3);
-    assert.doesNotMatch(body, /Log in to favorite schools and view your personal timeline\./);
+    assert.doesNotMatch(body, /登录后可收藏院校并查看个人时间线。/);
     assertNoPhoneFields(body);
   });
 
@@ -358,9 +358,9 @@ describe("web routes", () => {
     assertStudentBottomNav(schoolsBody, "/schools");
     assertStudentBottomNav(experiencesBody, "/experiences");
     assertStudentBottomNav(meBody, "/me");
-    assert.match(homeBody, /aria-label="Grade switch"/);
-    assert.match(schoolsBody, /aria-label="Open school filters"/);
-    assert.match(experiencesBody, /aria-label="Open experience filters"/);
+    assert.match(homeBody, /aria-label="年级切换"/);
+    assert.match(schoolsBody, /aria-label="打开院校筛选"/);
+    assert.match(experiencesBody, /aria-label="打开面经筛选"/);
     assert.match(meBody, /data-student-top-bar="list"/);
   });
 
@@ -390,14 +390,14 @@ describe("web routes", () => {
     assert.equal(detailResponse.status, 200);
     assert.equal(calculatorResponse.status, 200);
     assert.equal(submissionResponse.status, 200);
-    assert.match(detailBody, /aria-label="Back to schools"/);
-    assert.match(detailBody, /aria-label="Favorite school"/);
+    assert.match(detailBody, /aria-label="返回院校"/);
+    assert.match(detailBody, /aria-label="收藏院校"/);
     assertStudentBottomNav(detailBody, "/schools");
-    assert.match(calculatorBody, /aria-label="Back to schools"/);
-    assert.doesNotMatch(calculatorBody, /Student bottom navigation/);
-    assert.match(submissionBody, /aria-label="Back to experiences"/);
-    assert.match(submissionBody, /Review after submit/);
-    assert.doesNotMatch(submissionBody, /Student bottom navigation/);
+    assert.match(calculatorBody, /aria-label="返回院校"/);
+    assert.doesNotMatch(calculatorBody, /学生底部导航/);
+    assert.match(submissionBody, /aria-label="返回面经"/);
+    assert.match(submissionBody, /提交后审核/);
+    assert.doesNotMatch(submissionBody, /学生底部导航/);
   });
 
   it("renders the admin desktop shell route", async () => {
@@ -414,22 +414,22 @@ describe("web routes", () => {
 
     assert.equal(response.status, 200);
     assert.match(body, /data-admin-shell="desktop"/);
-    assert.match(body, /Admin left navigation/);
-    assert.match(body, /Admin global status bar/);
-    assert.match(body, /Admin console/);
+    assert.match(body, /管理端左侧导航/);
+    assert.match(body, /管理端全局状态栏/);
+    assert.match(body, /管理后台/);
     for (const label of [
-      "Data Ingestion",
-      "Guide Review",
-      "Timeline Management",
-      "Formula Management",
-      "Experience Review",
-      "Verification Review",
-      "Report Handling"
+      "AI 入库",
+      "简章审核",
+      "时间线管理",
+      "公式管理",
+      "面经审核",
+      "认证审核",
+      "举报处理"
     ]) {
       assert.match(body, new RegExp(label));
     }
-    assert.match(body, /Admin overview reviewer/);
-    assert.doesNotMatch(body, /Student bottom navigation/);
+    assert.match(body, /管理 overview reviewer/);
+    assert.doesNotMatch(body, /学生底部导航/);
   });
 
   it("returns the health API contract", async () => {
@@ -442,14 +442,14 @@ describe("web routes", () => {
   });
 
   it("returns the school list API with year, status, and keyword filters", async () => {
-    const response = await fetch(`${baseUrl}/schools?year=2025&status=published&keyword=Engineering`);
+    const response = await fetch(`${baseUrl}/schools?year=2025&status=published&keyword=${encodeURIComponent("华南")}`);
     const body = await response.json();
 
     assert.equal(response.status, 200);
     assert.equal(body.count, 1);
     assert.equal(body.filters.year, 2025);
     assert.equal(body.filters.status, "published");
-    assert.equal(body.filters.keyword, "Engineering");
+    assert.equal(body.filters.keyword, "华南");
     assert.equal(body.schools[0].school.id, seedIds.schools.scut);
     assert.equal(body.schools[0].guide.year, 2025);
     assert.equal(body.schools[0].guide.status, "published");
@@ -475,7 +475,7 @@ describe("web routes", () => {
     const serialized = JSON.stringify(body);
 
     assert.equal(response.status, 200);
-    assert.deepEqual(schoolNames(body), ["Sun Yat-sen University"]);
+    assert.deepEqual(schoolNames(body), ["中山大学"]);
     assert.doesNotMatch(serialized, /Draft Review Guide/);
     assert.doesNotMatch(serialized, /Working Draft/);
 
@@ -488,14 +488,14 @@ describe("web routes", () => {
 
   it("filters the school list API by application status and school type", async () => {
     const response = await fetch(
-      `${baseUrl}/api/schools?year=2025&applicationStatus=closed&schoolType=research%20university`
+      `${baseUrl}/api/schools?year=2025&applicationStatus=closed&schoolType=${encodeURIComponent("研究型大学")}`
     );
     const body = await response.json();
 
     assert.equal(response.status, 200);
-    assert.deepEqual(schoolNames(body), ["Southern University of Science and Technology"]);
+    assert.deepEqual(schoolNames(body), ["南方科技大学"]);
     assert.equal(body.schools[0].guide.applicationStatus, "closed");
-    assert.equal(body.schools[0].school.schoolType, "research university");
+    assert.equal(body.schools[0].school.schoolType, "研究型大学");
   });
 
   it("sorts the school list API by deadline, update time, and school name", async () => {
@@ -504,19 +504,19 @@ describe("web routes", () => {
     const nameResponse = await fetch(`${baseUrl}/api/schools?year=2025&sort=name`);
 
     assert.deepEqual(schoolNames(await deadlineResponse.json()), [
-      "Southern University of Science and Technology",
-      "Sun Yat-sen University",
-      "South China University of Technology"
+      "南方科技大学",
+      "中山大学",
+      "华南理工大学"
     ]);
     assert.deepEqual(schoolNames(await updatedResponse.json()), [
-      "Sun Yat-sen University",
-      "South China University of Technology",
-      "Southern University of Science and Technology"
+      "中山大学",
+      "华南理工大学",
+      "南方科技大学"
     ]);
     assert.deepEqual(schoolNames(await nameResponse.json()), [
-      "South China University of Technology",
-      "Southern University of Science and Technology",
-      "Sun Yat-sen University"
+      "华南理工大学",
+      "南方科技大学",
+      "中山大学"
     ]);
   });
 
@@ -527,32 +527,32 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /<h1 id="school-list-title">Schools<\/h1>/);
+    assert.match(body, /<h1 id="school-list-title">院校<\/h1>/);
     assert.match(body, /data-school-filter-form="true"/);
     assert.match(body, /data-school-results="true"/);
-    assert.match(body, /placeholder="Search school"/);
-    assert.match(body, /School keyword/);
-    assert.match(body, /Guide status/);
-    assert.match(body, /Application status/);
-    assert.match(body, /School type/);
-    assert.match(body, /Application deadline/);
-    assert.match(body, /Year: 2025/);
+    assert.match(body, /placeholder="搜索院校"/);
+    assert.match(body, /院校关键词/);
+    assert.match(body, /简章状态/);
+    assert.match(body, /报名状态/);
+    assert.match(body, /院校类型/);
+    assert.match(body, /报名截止/);
+    assert.match(body, /年份: 2025/);
     assert.match(body, /SCUT/);
-    assert.match(body, /Published/);
-    assert.match(body, /Key timeline/);
-    assert.match(body, /No formula/);
-    assert.match(body, /1 experience/);
-    assert.match(body, /aria-label="Favorite school"/);
+    assert.match(body, /已发布/);
+    assert.match(body, /关键时间线/);
+    assert.match(body, /无明确公式/);
+    assert.match(body, /1 条面经/);
+    assert.match(body, /aria-label="收藏院校"/);
     assert.match(body, /returnTo" value="\/schools\?year=2025&amp;sort=name"/);
     assert.match(body, /data-school-list-status="true"/);
-    assert.match(body, /Clear filters/);
+    assert.match(body, /清空筛选/);
     assert.doesNotMatch(body, /Draft Review Guide/);
     assert.doesNotMatch(body, /Working Draft/);
   });
 
   it("returns the guide list API with year, schoolId, status, and keyword filters", async () => {
     const response = await fetch(
-      `${baseUrl}/api/guides?year=2025&schoolId=${seedIds.schools.scut}&status=published&keyword=timeline`
+      `${baseUrl}/api/guides?year=2025&schoolId=${seedIds.schools.scut}&status=published&keyword=${encodeURIComponent("时间线")}`
     );
     const body = await response.json();
 
@@ -561,7 +561,7 @@ describe("web routes", () => {
     assert.equal(body.filters.year, 2025);
     assert.equal(body.filters.schoolId, seedIds.schools.scut);
     assert.equal(body.filters.status, "published");
-    assert.equal(body.filters.keyword, "timeline");
+    assert.equal(body.filters.keyword, "时间线");
     assert.equal(body.guides[0].id, seedIds.guides.scut2025);
     assert.equal(body.guides[0].status, "published");
     assert.equal(body.guides[0].source.sourceType, "admission_guide");
@@ -597,7 +597,7 @@ describe("web routes", () => {
     assert.equal(body.source.publishedAt, "2026-03-15T02:00:00.000Z");
     assert.equal(body.source.updatedAt, "2026-04-10T08:30:00.000Z");
     assert.equal(body.structuredFields.applicationUrl, "https://example.edu/apply");
-    assert.ok(body.structuredFields.majors.some((major) => major.name === "Experimental science program"));
+    assert.ok(body.structuredFields.majors.some((major) => major.name === "理科试验班"));
     assert.equal(body.versionSummary.currentVersion, 2);
     assert.deepEqual(body.versionSummary.versions.map((version) => version.version), [2, 1]);
     assert.equal(body.versionSummary.versions[1].id, seedIds.guides.sysu2026Initial);
@@ -611,7 +611,7 @@ describe("web routes", () => {
 
     assert.equal(response.status, 200);
     assert.equal(body.school.id, seedIds.schools.sysu);
-    assert.equal(body.school.name, "Sun Yat-sen University");
+    assert.equal(body.school.name, "中山大学");
     assert.equal(body.school.provinceScope, "guangdong");
     assert.deepEqual(body.availableYears, [2026, 2025]);
     assert.equal(body.selectedYear, 2026);
@@ -620,7 +620,7 @@ describe("web routes", () => {
     assert.equal(body.guide.officialSourceUrl, "https://example.edu/sysu/2026-comprehensive-evaluation-guide");
     assert.equal(body.guide.applicationUrl, "https://example.edu/apply");
     assert.ok(body.timeline.some((node) => node.eventKey === "school_assessment"));
-    assert.equal(body.formula.formulaName, "60/30/10 comprehensive score");
+    assert.equal(body.formula.formulaName, "60/30/10 综合成绩");
     assert.equal(body.featuredExperiences[0].schoolId, seedIds.schools.sysu);
     assert.doesNotMatch(serialized, /Pending review guide|Working Draft|Pending review experience/);
   });
@@ -648,32 +648,32 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /South China University of Technology/);
+    assert.match(body, /华南理工大学/);
     assert.match(body, /SCUT/);
-    assert.match(body, /Published/);
-    assert.match(body, /School quick actions/);
-    assert.match(body, /Official guide/);
-    assert.match(body, /Application link/);
-    assert.match(body, /target="_blank" rel="noopener">Application link/);
+    assert.match(body, /已发布/);
+    assert.match(body, /院校快捷操作/);
+    assert.match(body, /官方简章/);
+    assert.match(body, /报名入口/);
+    assert.match(body, /target="_blank" rel="noopener">报名入口/);
     assert.match(body, /class="school-bottom-action-bar"/);
-    assert.match(body, /Key timeline/);
-    assert.match(body, /Official guide summary/);
-    assert.match(body, /Score formula/);
-    assert.match(body, /No published formula\. Score calculation waits for official clarification\./);
+    assert.match(body, /关键时间线/);
+    assert.match(body, /官方简章摘要/);
+    assert.match(body, /综合分公式/);
+    assert.match(body, /暂无已发布公式，综合分计算等待官方明确。/);
     assert.doesNotMatch(body, new RegExp(`/calculator\\?schoolId=${escapeRegExp(seedIds.schools.scut)}&amp;year=2025`));
-    assert.match(body, /Admission requirements/);
-    assert.match(body, /Registration conditions/);
-    assert.match(body, /Official not specified/);
-    assert.match(body, /Assessment and admission/);
-    assert.match(body, /Fees and consultation/);
-    assert.match(body, /Majors/);
-    assert.match(body, /Subject requirements/);
-    assert.match(body, /Academic test requirements/);
-    assert.match(body, /Assessment method/);
-    assert.match(body, /Admission rule/);
-    assert.match(body, /Featured experiences/);
-    assert.match(body, /Questions emphasized engineering interest/);
-    assert.match(body, /To be announced/);
+    assert.match(body, /报考要求/);
+    assert.match(body, /报名条件/);
+    assert.match(body, /官方未明确/);
+    assert.match(body, /考核与录取/);
+    assert.match(body, /费用与咨询/);
+    assert.match(body, /招生专业/);
+    assert.match(body, /选科要求/);
+    assert.match(body, /学考要求/);
+    assert.match(body, /考核方式/);
+    assert.match(body, /录取规则/);
+    assert.match(body, /精选面经/);
+    assert.match(body, /问题重点考察工程兴趣/);
+    assert.match(body, /待公布/);
     assert.doesNotMatch(body, /Draft Review Guide/);
     assert.doesNotMatch(body, /Working Draft/);
   });
@@ -685,9 +685,9 @@ describe("web routes", () => {
     const fallbackBody = await fallbackResponse.text();
 
     assert.equal(fallbackResponse.status, 200);
-    assert.match(fallbackBody, /Historical reference/);
-    assert.match(fallbackBody, /No published 2026 guide is visible yet\. Showing 2025 as historical reference\./);
-    assert.match(fallbackBody, /South China University of Technology 2025 Guangdong Comprehensive Evaluation Guide/);
+    assert.match(fallbackBody, /历史参考/);
+    assert.match(fallbackBody, /暂无可见的 2026 已发布简章，当前展示 2025 年作为历史参考。/);
+    assert.match(fallbackBody, /华南理工大学 2025 年广东综合评价招生简章/);
     assert.doesNotMatch(fallbackBody, /Draft Review Guide/);
     assert.doesNotMatch(fallbackBody, /\/calculator\?schoolId=/);
 
@@ -697,23 +697,23 @@ describe("web routes", () => {
     const formulaBody = await formulaResponse.text();
 
     assert.equal(formulaResponse.status, 200);
-    assert.match(formulaBody, /Expand official summary/);
-    assert.match(formulaBody, /Score calculator/);
+    assert.match(formulaBody, /官方简章摘要/);
+    assert.match(formulaBody, /综合分计算器/);
     assert.match(formulaBody, new RegExp(`/calculator\\?schoolId=${escapeRegExp(seedIds.schools.sysu)}&amp;year=2026`));
     assert.equal(countOccurrences(formulaBody, `class="primary-action"`), 1);
     assert.ok(
-      formulaBody.indexOf("Key timeline") <
-        formulaBody.indexOf("Official guide summary") &&
-        formulaBody.indexOf("Official guide summary") <
-        formulaBody.indexOf("Score formula") &&
-        formulaBody.indexOf("Score formula") <
-        formulaBody.indexOf("Admission requirements") &&
-        formulaBody.indexOf("Admission requirements") <
-        formulaBody.indexOf("Assessment and admission") &&
-        formulaBody.indexOf("Assessment and admission") <
-        formulaBody.indexOf("Fees and consultation") &&
-        formulaBody.indexOf("Fees and consultation") <
-        formulaBody.indexOf("Featured experiences")
+      formulaBody.indexOf("关键时间线") <
+        formulaBody.indexOf("官方简章摘要") &&
+        formulaBody.indexOf("官方简章摘要") <
+        formulaBody.indexOf("综合分公式") &&
+        formulaBody.indexOf("综合分公式") <
+        formulaBody.indexOf("报考要求") &&
+        formulaBody.indexOf("报考要求") <
+        formulaBody.indexOf("考核与录取") &&
+        formulaBody.indexOf("考核与录取") <
+        formulaBody.indexOf("费用与咨询") &&
+        formulaBody.indexOf("费用与咨询") <
+        formulaBody.indexOf("精选面经")
     );
   });
 
@@ -735,12 +735,12 @@ describe("web routes", () => {
     assert.equal(response.status, 200);
     assert.equal(body.schoolId, seedIds.schools.sysu);
     assert.equal(body.year, 2026);
-    assert.equal(body.formulaName, "60/30/10 comprehensive score");
+    assert.equal(body.formulaName, "60/30/10 综合成绩");
     assert.equal(body.totalScore, 88.2);
     assert.deepEqual(body.breakdown.map((input) => input.contribution), [55.2, 24, 9]);
-    assert.equal(body.explanation, "Gaokao, school assessment, and academic level conversion are weighted 60%, 30%, and 10%.");
+    assert.equal(body.explanation, "高考成绩、学校考核成绩和学业水平折算成绩分别按 60%、30%、10% 加权。");
     assert.equal(body.officialSourceUrl, "https://example.edu/sysu/2026-comprehensive-evaluation-guide");
-    assert.match(body.disclaimer, /not an admission probability/i);
+    assert.match(body.disclaimer, /不代表录取概率/);
   });
 
   it("returns clear score API validation errors", async () => {
@@ -759,7 +759,7 @@ describe("web routes", () => {
 
     assert.equal(missingResponse.status, 400);
     assert.equal(missingBody.error, "missing_score");
-    assert.match(missingBody.message, /Academic level conversion/);
+    assert.match(missingBody.message, /学业水平折算成绩/);
 
     const noFormulaResponse = await fetch(`${baseUrl}/api/score/calculate`, {
       method: "POST",
@@ -786,21 +786,21 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /Score calculator/);
-    assert.match(body, /Step 1/);
-    assert.match(body, /Choose school and year/);
-    assert.match(body, /Step 2/);
-    assert.match(body, /Enter scores/);
-    assert.match(body, /Step 3/);
-    assert.match(body, /View results/);
-    assert.match(body, /Sun Yat-sen University/);
-    assert.match(body, /60\/30\/10 comprehensive score/);
-    assert.match(body, /Source-backed formula/);
-    assert.match(body, /Weights and max scores/);
+    assert.match(body, /综合分计算器/);
+    assert.match(body, /第 1 步/);
+    assert.match(body, /选择院校和年份/);
+    assert.match(body, /第 2 步/);
+    assert.match(body, /输入成绩/);
+    assert.match(body, /第 3 步/);
+    assert.match(body, /查看结果/);
+    assert.match(body, /中山大学/);
+    assert.match(body, /60\/30\/10 综合成绩/);
+    assert.match(body, /有官方来源的公式/);
+    assert.match(body, /权重与满分/);
     assert.match(body, /name="scores\[gaokao\]"/);
     assert.match(body, /name="scores\[schoolAssessment\]"/);
     assert.match(body, /name="scores\[academicLevel\]"/);
-    assert.match(body, /Official source basis/);
+    assert.match(body, /官方来源依据/);
     assert.match(body, /data-score-error-for="gaokao"/);
     assert.match(body, /data-calculate-score="true" disabled/);
     assert.match(body, /calculator\.js/);
@@ -816,9 +816,9 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /South China University of Technology/);
-    assert.match(body, /No clear published formula/);
-    assert.match(body, /Calculation form is hidden/);
+    assert.match(body, /华南理工大学/);
+    assert.match(body, /暂无明确已发布公式/);
+    assert.match(body, /计算表单已隐藏/);
     assert.doesNotMatch(body, /id="score-input-form"/);
     assert.doesNotMatch(body, /name="scores\[gaokao\]"/);
   });
@@ -839,11 +839,11 @@ describe("web routes", () => {
     assert.equal(body.filters.verified, false);
     assert.equal(body.filters.sort, "useful");
     assert.equal(body.experiences[0].id, seedIds.experiences.sysu2026PendingVerification);
-    assert.equal(body.experiences[0].school.name, "Sun Yat-sen University");
-    assert.equal(body.experiences[0].stageLabel, "School Assessment");
-    assert.equal(body.experiences[0].assessmentFormat, "Structured Interview");
+    assert.equal(body.experiences[0].school.name, "中山大学");
+    assert.equal(body.experiences[0].stageLabel, "校测");
+    assert.equal(body.experiences[0].assessmentFormat, "结构化面试");
     assert.equal(body.experiences[0].verified, false);
-    assert.equal(body.experiences[0].verifiedLabel, "Verification pending");
+    assert.equal(body.experiences[0].verifiedLabel, "认证待审核");
     assert.equal(body.experiences[0].historicalReferenceNotice, null);
     assert.doesNotMatch(serialized, /Pending review experience that must remain hidden/);
   });
@@ -876,16 +876,16 @@ describe("web routes", () => {
   });
 
   it("searches public experiences by school, stage, and keyword", async () => {
-    const schoolResponse = await fetch(`${baseUrl}/api/experiences?keyword=Sun%20Yat-sen`);
-    const stageResponse = await fetch(`${baseUrl}/api/experiences?keyword=school%20assessment`);
-    const keywordResponse = await fetch(`${baseUrl}/api/experiences?keyword=experiment%20design`);
+    const schoolResponse = await fetch(`${baseUrl}/api/experiences?keyword=${encodeURIComponent("中山")}`);
+    const stageResponse = await fetch(`${baseUrl}/api/experiences?keyword=school_assessment`);
+    const keywordResponse = await fetch(`${baseUrl}/api/experiences?keyword=${encodeURIComponent("实验设计")}`);
 
     const schoolBody = await schoolResponse.json();
     const stageBody = await stageResponse.json();
     const keywordBody = await keywordResponse.json();
 
     assert.equal(schoolResponse.status, 200);
-    assert.ok(schoolBody.experiences.every((experience) => experience.school.name === "Sun Yat-sen University"));
+    assert.ok(schoolBody.experiences.every((experience) => experience.school.name === "中山大学"));
     assert.equal(stageResponse.status, 200);
     assert.ok(stageBody.experiences.length > 1);
     assert.ok(stageBody.experiences.every((experience) => experience.stage === "school_assessment"));
@@ -902,25 +902,25 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /Experience list/);
-    assert.match(body, /Experience keyword/);
-    assert.match(body, /Search school, stage, or keyword/);
-    assert.match(body, /School/);
-    assert.match(body, /Year/);
-    assert.match(body, /Stage/);
-    assert.match(body, /Assessment format/);
-    assert.match(body, /Verified status/);
-    assert.match(body, /Sort/);
-    assert.match(body, /Southern University of Science and Technology/);
+    assert.match(body, /面经列表/);
+    assert.match(body, /面经关键词/);
+    assert.match(body, /搜索院校、阶段或关键词/);
+    assert.match(body, /院校/);
+    assert.match(body, /年份/);
+    assert.match(body, /阶段/);
+    assert.match(body, /考核形式/);
+    assert.match(body, /认证状态/);
+    assert.match(body, /排序/);
+    assert.match(body, /南方科技大学/);
     assert.match(body, /2024/);
-    assert.match(body, /Science innovation group/);
-    assert.match(body, /Machine Test/);
-    assert.match(body, /Verified experience/);
-    assert.match(body, /Useful count/);
-    assert.match(body, /Historical reference/);
-    assert.match(body, /Submit experience/);
+    assert.match(body, /科创组/);
+    assert.match(body, /机试/);
+    assert.match(body, /已认证面经/);
+    assert.match(body, /有用数/);
+    assert.match(body, /历史参考/);
+    assert.match(body, /发布面经/);
     assert.match(body, new RegExp(`/experiences/${seedIds.experiences.sustech2024}`));
-    assert.match(body, /aria-label="Favorite experience"/);
+    assert.match(body, /aria-label="收藏面经"/);
     assert.doesNotMatch(body, /Pending review experience that must remain hidden/);
   });
 
@@ -931,16 +931,16 @@ describe("web routes", () => {
     const htmlBody = await htmlResponse.text();
 
     assert.equal(htmlResponse.status, 200);
-    assert.match(htmlBody, /Basic information/);
-    assert.match(htmlBody, /Process/);
-    assert.match(htmlBody, /Question-type categories/);
-    assert.match(htmlBody, /Preparation and advice/);
-    assert.match(htmlBody, /Experience ratings/);
-    assert.match(htmlBody, /Favorite experience/);
-    assert.match(htmlBody, /Useful \(18\)/);
-    assert.match(htmlBody, /Report reason/);
-    assert.match(htmlBody, /Science pilot group/);
-    assert.match(htmlBody, /Experiment Design/);
+    assert.match(htmlBody, /基本信息/);
+    assert.match(htmlBody, /流程/);
+    assert.match(htmlBody, /题型类别/);
+    assert.match(htmlBody, /准备/);
+    assert.match(htmlBody, /面经评分/);
+    assert.match(htmlBody, /收藏面经/);
+    assert.match(htmlBody, /有用（18）/);
+    assert.match(htmlBody, /举报原因/);
+    assert.match(htmlBody, /理科试点组/);
+    assert.match(htmlBody, /实验设计/);
     assert.doesNotMatch(htmlBody, /phone|real name|source account|verificationMaterials|objectStorageKey/i);
 
     const apiResponse = await fetch(`${baseUrl}/api/experiences/${seedIds.experiences.sysu2026}`);
@@ -949,8 +949,8 @@ describe("web routes", () => {
 
     assert.equal(apiResponse.status, 200);
     assert.equal(apiBody.experience.id, seedIds.experiences.sysu2026);
-    assert.equal(apiBody.experience.majorGroup, "Science pilot group");
-    assert.equal(apiBody.experience.processSummary.includes("Candidates checked in"), true);
+    assert.equal(apiBody.experience.majorGroup, "理科试点组");
+    assert.equal(apiBody.experience.processSummary.includes("考生签到后参加小组讨论"), true);
     assert.deepEqual(apiBody.experience.questionTypeLabels.slice(0, 2), ["Motivation", "Experiment Design"]);
     assert.doesNotMatch(serialized, /phone|realName|sourceAccount|verificationMaterials|objectStorageKey|userId/i);
 
@@ -979,13 +979,13 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /Submit experience/);
+    assert.match(body, /发布面经/);
     assert.match(body, /action="\/experiences"/);
     assert.match(body, /data-experience-submission-form="true"/);
     assert.match(body, /data-experience-draft-prompt="true"/);
     assert.match(body, /data-character-count="true"/);
     assert.match(body, /data-char-count-for="processSummary"/);
-    assert.match(body, /aria-label="required"/);
+    assert.match(body, /aria-label="必填"/);
     assert.match(body, /name="schoolId"/);
     assert.match(body, /name="year"/);
     assert.match(body, /name="majorGroup"/);
@@ -1005,7 +1005,7 @@ describe("web routes", () => {
     assert.match(body, /name="isAnonymous"/);
     assert.match(body, /name="verificationMaterialType"/);
     assert.match(body, /name="verificationSourceAccount"/);
-    assert.match(body, /stays reviewer-only and is not shown on student pages/);
+    assert.match(body, /仅审核端可见，不会展示在学生端/);
     assert.doesNotMatch(body, /type="file"/);
   });
 
@@ -1029,7 +1029,7 @@ describe("web routes", () => {
 
     assert.equal(response.status, 400);
     assert.equal(body.error, "missing_required_field");
-    assert.match(body.message, /Process is required|Year is required|Major group is required/);
+    assert.match(body.message, /流程为必填项。/);
   });
 
   it("preserves entered values on failed HTML experience submission", async () => {
@@ -1069,7 +1069,7 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 400);
-    assert.match(body, /Advice is required/);
+    assert.match(body, /建议为必填项/);
     assert.match(body, /value="Browser preserved group"/);
     assert.match(body, /Preserved process text after validation failure\./);
     assert.match(body, /Preserved preparation text after validation failure\./);
@@ -1138,7 +1138,7 @@ describe("web routes", () => {
     assert.equal(body.experience.verification.materialCount, 1);
     assert.deepEqual(body.experience.author, {
       anonymous: true,
-      displayName: "Anonymous student"
+      displayName: "匿名考生"
     });
     assert.doesNotMatch(serialized, /Anonymous submitter/);
     assert.doesNotMatch(serialized, /source-account-123/);
@@ -1192,10 +1192,10 @@ describe("web routes", () => {
     assert.ok(eventKeys.has("volunteer_application"));
     assert.equal(body.events.some((event) => event.schoolId === seedIds.schools.scut), false);
     assert.equal(applicationDeadline.status, "due_soon");
-    assert.equal(applicationDeadline.statusLabel, "Due Soon");
+    assert.equal(applicationDeadline.statusLabel, "即将截止");
     assert.equal(preliminaryReview.startsAt, null);
     assert.equal(preliminaryReview.endsAt, null);
-    assert.equal(preliminaryReview.dateLabel, "To be announced");
+    assert.equal(preliminaryReview.dateLabel, "待公布");
     assert.equal(preliminaryReview.status, "not_started");
     assert.ok(body.reminders.some((reminder) => reminder.eventKey === "application_deadline"));
     assert.ok(body.reminders.every((reminder) => reminder.delivery === "site_only"));
@@ -1209,18 +1209,18 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /Guangdong timeline/);
-    assert.match(body, /All Nodes/);
-    assert.match(body, /My Favorites/);
-    assert.match(body, /Node type/);
-    assert.match(body, /April 2026/);
-    assert.match(body, /Preliminary review result/);
-    assert.match(body, /To be announced/);
-    assert.match(body, /Due Soon/);
-    assert.match(body, /Ended/);
-    assert.match(body, /Not Started/);
-    assert.match(body, /Site reminder/);
-    assert.match(body, /Source guide year/);
+    assert.match(body, /时间线/);
+    assert.match(body, /全部节点/);
+    assert.match(body, /我的收藏/);
+    assert.match(body, /节点类型/);
+    assert.match(body, /2026年4月/);
+    assert.match(body, /初审结果/);
+    assert.match(body, /待公布/);
+    assert.match(body, /即将截止/);
+    assert.match(body, /已结束/);
+    assert.match(body, /未开始/);
+    assert.match(body, /站内提醒/);
+    assert.match(body, /来源简章年份/);
     assert.match(body, new RegExp(`/schools/${escapeRegExp(seedIds.schools.sysu)}\\?year=2026`));
     assert.doesNotMatch(body, /Application deadline under review/);
     assert.doesNotMatch(body, /1970/);
@@ -1241,7 +1241,7 @@ describe("web routes", () => {
     const loginGuideBody = await loginGuideResponse.text();
 
     assert.equal(loginGuideResponse.status, 401);
-    assert.match(loginGuideBody, /Log in/);
+    assert.match(loginGuideBody, /登录/);
     assert.match(loginGuideBody, /returnTo/);
 
     const user = authService.createUserForTesting({
@@ -1259,9 +1259,9 @@ describe("web routes", () => {
     const emptyMineBody = await emptyMineResponse.text();
 
     assert.equal(emptyMineResponse.status, 200);
-    assert.match(emptyMineBody, /My timeline/);
-    assert.match(emptyMineBody, /Collect schools to build My Favorites/);
-    assert.match(emptyMineBody, /Browse schools/);
+    assert.match(emptyMineBody, /我的时间线/);
+    assert.match(emptyMineBody, /收藏院校后生成我的时间线/);
+    assert.match(emptyMineBody, /浏览院校/);
   });
 
   it("renders active timeline status when the official date window is active", async () => {
@@ -1291,8 +1291,8 @@ describe("web routes", () => {
       const body = await response.text();
 
       assert.equal(response.status, 200);
-      assert.match(body, /School assessment/);
-      assert.match(body, /Active/);
+      assert.match(body, /校测/);
+      assert.match(body, /进行中/);
     } finally {
       await new Promise((resolve, reject) => {
         activeServer.close((error) => {
@@ -1358,7 +1358,7 @@ describe("web routes", () => {
 
     assert.equal(invalidOtpResponse.status, 400);
     assert.equal(invalidOtpBody.error, "invalid_phone");
-    assert.match(invalidOtpBody.message, /mainland China phone number/i);
+    assert.match(invalidOtpBody.message, /请输入中国大陆手机号。/);
 
     const validOtpResponse = await fetch(`${baseUrl}/api/auth/otp`, {
       method: "POST",
@@ -1375,15 +1375,15 @@ describe("web routes", () => {
     const pageBody = await pageResponse.text();
 
     assert.equal(pageResponse.status, 200);
-    assert.match(pageBody, /Login Guangdong CE/);
+    assert.match(pageBody, /登录广东综评/);
     assert.match(pageBody, /name="phoneNumber"/);
     assert.match(pageBody, /inputmode="numeric"/);
     assert.match(pageBody, /placeholder="13812345678"/);
     assert.match(pageBody, /data-send-otp="true"/);
     assert.match(pageBody, /data-login-submit="true" disabled/);
-    assert.match(pageBody, /I agree to the user agreement and privacy policy\./);
+    assert.match(pageBody, /我同意用户协议和隐私政策。/);
     assert.match(pageBody, /\/login\.js/);
-    assert.doesNotMatch(pageBody, /Student bottom navigation/);
+    assert.doesNotMatch(pageBody, /学生底部导航/);
 
     const missingAgreementResponse = await fetch(`${baseUrl}/login`, {
       method: "POST",
@@ -1396,7 +1396,7 @@ describe("web routes", () => {
     const missingAgreementBody = await missingAgreementResponse.text();
 
     assert.equal(missingAgreementResponse.status, 400);
-    assert.match(missingAgreementBody, /Agreement consent is required before login\./);
+    assert.match(missingAgreementBody, /登录前必须同意用户协议和隐私政策。/);
     assert.match(missingAgreementBody, /name="phoneNumber"[\s\S]*value="13900001010"/);
     assert.match(missingAgreementBody, /name="otpCode"[\s\S]*value="246810"/);
     assert.doesNotMatch(missingAgreementBody, /name="agreement" value="accepted" checked/);
@@ -1413,7 +1413,7 @@ describe("web routes", () => {
     const invalidLoginBody = await invalidLoginResponse.text();
 
     assert.equal(invalidLoginResponse.status, 401);
-    assert.match(invalidLoginBody, /Verification code is invalid\. Please re-enter\./);
+    assert.match(invalidLoginBody, /验证码无效，请重新输入。/);
     assert.match(invalidLoginBody, /name="phoneNumber"[\s\S]*value="13900001010"/);
     assert.match(invalidLoginBody, /name="otpCode"[\s\S]*value="000000"/);
     assert.match(invalidLoginBody, /name="agreement" value="accepted" checked/);
@@ -1452,7 +1452,7 @@ describe("web routes", () => {
     const favoritePromptBody = await favoritePromptResponse.text();
 
     assert.equal(favoritePromptResponse.status, 401);
-    assert.match(favoritePromptBody, /Login Guangdong CE/);
+    assert.match(favoritePromptBody, /登录广东综评/);
 
     const favoriteLogin = await loginFromPrompt(favoritePromptBody, "13900001101");
 
@@ -1477,7 +1477,7 @@ describe("web routes", () => {
     const usefulPromptBody = await usefulPromptResponse.text();
 
     assert.equal(usefulPromptResponse.status, 401);
-    assert.match(usefulPromptBody, /Login Guangdong CE/);
+    assert.match(usefulPromptBody, /登录广东综评/);
 
     const usefulLogin = await loginFromPrompt(usefulPromptBody, "13900001102");
 
@@ -1505,7 +1505,7 @@ describe("web routes", () => {
     const reportPromptBody = await reportPromptResponse.text();
 
     assert.equal(reportPromptResponse.status, 401);
-    assert.match(reportPromptBody, /Login Guangdong CE/);
+    assert.match(reportPromptBody, /登录广东综评/);
 
     const reportLogin = await loginFromPrompt(reportPromptBody, "13900001103");
     const reportMeResponse = await fetch(`${baseUrl}/api/me`, {
@@ -1530,7 +1530,7 @@ describe("web routes", () => {
     const publishPromptBody = await publishPromptResponse.text();
 
     assert.equal(publishPromptResponse.status, 401);
-    assert.match(publishPromptBody, /Login Guangdong CE/);
+    assert.match(publishPromptBody, /登录广东综评/);
 
     const publishLogin = await loginFromPrompt(publishPromptBody, "13900001104");
 
@@ -1545,7 +1545,7 @@ describe("web routes", () => {
     const publishPageBody = await publishPageResponse.text();
 
     assert.equal(publishPageResponse.status, 200);
-    assert.match(publishPageBody, /Review after submit/);
+    assert.match(publishPageBody, /提交后审核/);
     assert.doesNotMatch(publishPageBody, /system internals|stack trace|exception/i);
   });
 
@@ -1611,18 +1611,18 @@ describe("web routes", () => {
     assert.equal(meBody.preferences.grade, "high_school_g3");
     assert.equal(meBody.preferences.defaultAnonymous, true);
     assert.equal(meBody.favorites.count, 2);
-    assert.equal(meBody.favorites.schools[0].school.name, "Sun Yat-sen University");
+    assert.equal(meBody.favorites.schools[0].school.name, "中山大学");
     assert.equal(meBody.favorites.schools[0].guide.year, 2026);
     assert.equal(meBody.favorites.experiences[0].experience.id, seedIds.experiences.sysu2026);
     assert.equal(meBody.submittedExperiences.length, 1);
     assert.equal(meBody.submittedExperiences[0].id, submissionBody.experience.id);
     assert.equal(meBody.submittedExperiences[0].status, "pending_review");
-    assert.equal(meBody.submittedExperiences[0].statusLabel, "Pending Review");
-    assert.equal(meBody.submittedExperiences[0].verification.statusLabel, "Pending Review");
-    assert.equal(meBody.statusLabels.draft, "Draft");
-    assert.equal(meBody.statusLabels.published, "Published");
-    assert.equal(meBody.statusLabels.rejected, "Rejected");
-    assert.equal(meBody.statusLabels.hidden, "Hidden");
+    assert.equal(meBody.submittedExperiences[0].statusLabel, "待审核");
+    assert.equal(meBody.submittedExperiences[0].verification.statusLabel, "待审核");
+    assert.equal(meBody.statusLabels.draft, "草稿");
+    assert.equal(meBody.statusLabels.published, "已发布");
+    assert.equal(meBody.statusLabels.rejected, "已拒绝");
+    assert.equal(meBody.statusLabels.hidden, "已隐藏");
     assert.ok(meBody.notifications.some((notification) => {
       return notification.delivery === "site_only" &&
         notification.channels.includes("personal_center") &&
@@ -1652,8 +1652,8 @@ describe("web routes", () => {
 
     assert.equal(experiencesResponse.status, 200);
     assert.equal(experiencesBody.count, 1);
-    assert.equal(experiencesBody.experiences[0].statusLabel, "Pending Review");
-    assert.equal(experiencesBody.statusLabels.pending_review, "Pending Review");
+    assert.equal(experiencesBody.experiences[0].statusLabel, "待审核");
+    assert.equal(experiencesBody.statusLabels.pending_review, "待审核");
     assertNoPhoneFields(experiencesBody);
   });
 
@@ -1665,8 +1665,8 @@ describe("web routes", () => {
 
     assert.equal(response.status, 200);
     assertStudentBottomNav(body, "/me");
-    assert.match(body, /Log in to use My page/);
-    assert.match(body, /Login enables school favorites, experience publishing, and review-status tracking\./);
+    assert.match(body, /登录后使用我的页面/);
+    assert.match(body, /登录后可使用院校收藏、面经发布和审核状态跟踪。/);
     assert.match(body, /href="\/login\?returnTo=%2Fme"/);
     assert.doesNotMatch(body, /name="phoneNumber"/);
     assert.doesNotMatch(body, /Phone OTP/);
@@ -1694,7 +1694,7 @@ describe("web routes", () => {
     const published = createSubmission("Grouped Published State");
     const returned = createSubmission("Grouped Returned State");
     const hidden = createSubmission("Grouped Hidden State");
-    const rejected = createSubmission("Grouped Rejected State");
+    const rejected = createSubmission("Grouped 已拒绝 State");
 
     interactionStore.addFavorite({
       userId: student.id,
@@ -1728,7 +1728,7 @@ describe("web routes", () => {
       experienceId: rejected.id,
       action: "ban",
       operator: reviewer,
-      note: "Rejected for student-facing safety."
+      note: "已拒绝 for student-facing safety."
     });
 
     const apiResponse = await fetch(`${baseUrl}/api/me`, {
@@ -1740,9 +1740,9 @@ describe("web routes", () => {
     const notificationTypes = new Set(apiBody.notifications.map((notification) => notification.type));
 
     assert.equal(apiResponse.status, 200);
-    assert.deepEqual(groupLabels, ["Pending Review", "Published", "Returned", "Hidden", "Rejected"]);
-    assert.equal(apiBody.submittedExperiences.find((experience) => experience.id === rejected.id).statusLabel, "Rejected");
-    assert.equal(apiBody.favorites.schools[0].school.name, "Sun Yat-sen University");
+    assert.deepEqual(groupLabels, ["待审核", "已发布", "已退回", "已隐藏", "已拒绝"]);
+    assert.equal(apiBody.submittedExperiences.find((experience) => experience.id === rejected.id).statusLabel, "已拒绝");
+    assert.equal(apiBody.favorites.schools[0].school.name, "中山大学");
     assert.equal(apiBody.favorites.experiences[0].experience.id, seedIds.experiences.sysu2026);
     assert.equal(notificationTypes.has("timeline_node"), true);
     assert.equal(notificationTypes.has("submission_review"), true);
@@ -1761,25 +1761,25 @@ describe("web routes", () => {
 
     assert.equal(pageResponse.status, 200);
     assert.match(pageBody, /Grouped personal student/);
-    assert.match(pageBody, /High school grade three/);
-    assert.match(pageBody, /Default anonymous preference/);
-    assert.match(pageBody, /Show nickname by default/);
-    assert.match(pageBody, /Favorited schools/);
-    assert.match(pageBody, /Favorited experiences/);
-    assert.match(pageBody, /Submitted experiences/);
-    assert.match(pageBody, /Site reminders/);
-    assert.match(pageBody, /Account preferences/);
-    for (const label of ["Pending Review", "Published", "Returned", "Hidden", "Rejected"]) {
+    assert.match(pageBody, /高三/);
+    assert.match(pageBody, /默认匿名偏好/);
+    assert.match(pageBody, /默认展示昵称/);
+    assert.match(pageBody, /已收藏院校/);
+    assert.match(pageBody, /已收藏面经/);
+    assert.match(pageBody, /已提交面经/);
+    assert.match(pageBody, /站内提醒/);
+    assert.match(pageBody, /账号偏好/);
+    for (const label of ["待审核", "已发布", "已退回", "已隐藏", "已拒绝"]) {
       assert.match(pageBody, new RegExp(escapeRegExp(label)));
     }
-    assert.match(pageBody, /Next action/);
-    assert.match(pageBody, /No action needed while reviewers check student-safe details\./);
-    assert.match(pageBody, /View the student-safe public detail\./);
-    assert.match(pageBody, /Submit a revised experience with private details removed\./);
-    assert.match(pageBody, /Prepare a new student-safe version before publishing again\./);
-    assert.match(pageBody, /Review status change/);
-    assert.match(pageBody, /Application deadline/);
-    assert.match(pageBody, /Site-only/);
+    assert.match(pageBody, /下一步/);
+    assert.match(pageBody, /审核员正在核对可公开内容，暂时无需操作。/);
+    assert.match(pageBody, /查看学生端公开详情。/);
+    assert.match(pageBody, /删除隐私细节后重新提交。/);
+    assert.match(pageBody, /整理新的学生安全版本后再发布。/);
+    assert.match(pageBody, /审核状态/);
+    assert.match(pageBody, /报名截止/);
+    assert.match(pageBody, /仅站内/);
     assert.doesNotMatch(pageBody, /Banned/);
     assert.doesNotMatch(pageBody, /source-account|Real Name|private\/submissions|verificationMaterials|phone|realName|sourceAccount|userId/i);
 
@@ -1808,20 +1808,20 @@ describe("web routes", () => {
     const pageBody = await pageResponse.text();
 
     assert.equal(pageResponse.status, 200);
-    assert.match(pageBody, /Personal center/);
-    assert.match(pageBody, /My/);
-    assert.match(pageBody, /Site reminders/);
-    assert.match(pageBody, /Default anonymous preference/);
-    assert.match(pageBody, /Anonymous by default/);
-    assert.match(pageBody, /Favorited schools/);
-    assert.match(pageBody, /Favorited experiences/);
-    assert.match(pageBody, /Submitted experiences/);
-    assert.match(pageBody, /Account preferences/);
+    assert.match(pageBody, /个人中心/);
+    assert.match(pageBody, /我的/);
+    assert.match(pageBody, /站内提醒/);
+    assert.match(pageBody, /默认匿名偏好/);
+    assert.match(pageBody, /默认匿名/);
+    assert.match(pageBody, /已收藏院校/);
+    assert.match(pageBody, /已收藏面经/);
+    assert.match(pageBody, /已提交面经/);
+    assert.match(pageBody, /账号偏好/);
     assert.match(pageBody, /name="nickname"/);
     assert.match(pageBody, /name="grade"/);
     assert.match(pageBody, /name="defaultAnonymous"/);
     assert.match(pageBody, /action="\/logout"/);
-    assert.match(pageBody, />Logout</);
+    assert.match(pageBody, />退出登录</);
     assert.doesNotMatch(pageBody, /phone/i);
 
     const formBody = new URLSearchParams({
@@ -1841,9 +1841,9 @@ describe("web routes", () => {
     const updateBody = await updateResponse.text();
 
     assert.equal(updateResponse.status, 200);
-    assert.match(updateBody, /Preferences updated/);
+    assert.match(updateBody, /偏好已更新/);
     assert.match(updateBody, /value="Updated profile student"/);
-    assert.match(updateBody, /High school grade one/);
+    assert.match(updateBody, /高一/);
     assert.doesNotMatch(updateBody, /phone/i);
 
     const apiResponse = await fetch(`${baseUrl}/api/me`, {
@@ -2201,7 +2201,7 @@ describe("web routes", () => {
 
       assert.equal(response.status, 401, currentCase.path);
       assert.equal(body.error, "login_required", currentCase.path);
-      assert.match(body.message, /Login is required/);
+      assert.match(body.message, /需要登录后才能执行此操作。/);
     }
   });
 
@@ -2341,20 +2341,20 @@ describe("web routes", () => {
 
     assert.equal(response.status, 200);
     assert.match(body, /data-admin-shell="desktop"/);
-    assert.match(body, /Guide review queue/);
-    assert.match(body, /Guide review queue table/);
-    assert.match(body, /South China University of Technology 2026 Draft Review Guide/);
-    assert.match(body, /Southern University of Science and Technology 2026 Working Draft/);
-    assert.match(body, /Missing fields/);
-    assert.match(body, /Student-visible preview/);
-    assert.match(body, /Official source preview or link/);
-    assert.match(body, /Extracted fields/);
-    assert.match(body, /Field-level confirmation state/);
-    assert.match(body, /Submit review/);
-    assert.match(body, /Publish/);
-    assert.match(body, /Return/);
-    assert.match(body, /Pending supplement/);
-    assert.match(body, /Archive/);
+    assert.match(body, /简章审核队列/);
+    assert.match(body, /简章审核队列表/);
+    assert.match(body, /华南理工大学 2026 年待审核招生简章/);
+    assert.match(body, /南方科技大学 2026 年工作草稿/);
+    assert.match(body, /缺失字段/);
+    assert.match(body, /学生端预览/);
+    assert.match(body, /官方来源预览或链接/);
+    assert.match(body, /抽取字段/);
+    assert.match(body, /字段级确认状态/);
+    assert.match(body, /提交审核/);
+    assert.match(body, /发布/);
+    assert.match(body, /退回/);
+    assert.match(body, /待补充/);
+    assert.match(body, /归档/);
     assertNoPhoneFields(body);
   });
 
@@ -2372,7 +2372,7 @@ describe("web routes", () => {
       sourceType: "admission_guide",
       sourceTitle: "SYSU 2027 official comprehensive evaluation guide",
       sourcePublishedAt: "2027-03-15T02:00:00.000Z",
-      guideTitle: "Sun Yat-sen University 2027 Guangdong Comprehensive Evaluation Guide",
+      guideTitle: "中山大学 2027 Guangdong Comprehensive Evaluation Guide",
       summary: "Draft official guide for 2027 Guangdong candidates awaiting manual data review.",
       structuredFields: {
         applicationUrl: "https://example.edu/sysu/2027-apply",
@@ -2559,14 +2559,14 @@ describe("web routes", () => {
 
     assert.equal(timelineResponse.status, 200);
     assert.match(timelineBody, /data-admin-shell="desktop"/);
-    assert.match(timelineBody, /Timeline overrides/);
-    assert.match(timelineBody, /Timeline management generated nodes table/);
-    assert.match(timelineBody, /Date precision/);
-    assert.match(timelineBody, /Student status/);
-    assert.match(timelineBody, /Original generated data/);
-    assert.match(timelineBody, /Manual override state/);
-    assert.match(timelineBody, /Override reason/);
-    assert.match(timelineBody, /Save override/);
+    assert.match(timelineBody, /时间线覆写/);
+    assert.match(timelineBody, /时间线管理生成节点表/);
+    assert.match(timelineBody, /日期精度/);
+    assert.match(timelineBody, /学生端状态/);
+    assert.match(timelineBody, /原始生成数据/);
+    assert.match(timelineBody, /人工覆写状态/);
+    assert.match(timelineBody, /覆写原因/);
+    assert.match(timelineBody, /保存覆写/);
     assertNoPhoneFields(timelineBody);
 
     const formulaResponse = await fetch(`${baseUrl}/admin/formulas`, {
@@ -2579,13 +2579,13 @@ describe("web routes", () => {
 
     assert.equal(formulaResponse.status, 200);
     assert.match(formulaBody, /data-admin-shell="desktop"/);
-    assert.match(formulaBody, /Score formula drafts/);
-    assert.match(formulaBody, /Formula editor/);
-    assert.match(formulaBody, /Formula management list table/);
-    assert.match(formulaBody, /Student-side preview/);
-    assert.match(formulaBody, /Formula configuration/);
-    assert.match(formulaBody, /Test sample area/);
-    assert.match(formulaBody, /Publish formula/);
+    assert.match(formulaBody, /综合分公式草稿/);
+    assert.match(formulaBody, /公式编辑器/);
+    assert.match(formulaBody, /公式管理列表表格/);
+    assert.match(formulaBody, /学生端预览/);
+    assert.match(formulaBody, /公式配置/);
+    assert.match(formulaBody, /样例测试区/);
+    assert.match(formulaBody, /发布公式/);
     assertNoPhoneFields(formulaBody);
   });
 
@@ -2836,7 +2836,7 @@ describe("web routes", () => {
     ];
     const extractedGuideFields = {
       guideTitle: {
-        value: "Sun Yat-sen University 2029 Guangdong Comprehensive Evaluation Guide",
+        value: "中山大学 2029 Guangdong Comprehensive Evaluation Guide",
         sourceDocumentId: "route-source-geea",
         confidence: 0.92
       },
@@ -2908,7 +2908,7 @@ describe("web routes", () => {
       "route-source-chsi",
       "route-source-third-party"
     ]);
-    assert.equal(createBody.ingestionRun.sourceDocuments[0].sourcePriorityLabel, "Guangdong Education Examination Authority");
+    assert.equal(createBody.ingestionRun.sourceDocuments[0].sourcePriorityLabel, "广东省教育考试院");
     assert.equal(createBody.ingestionRun.sourceDocuments.at(-1).authorityRole, "discovery_clue");
     assert.equal(createBody.ingestionRun.draftGuide.status, "draft");
     assert.equal(createBody.ingestionRun.draftGuide.isCurrent, false);
@@ -2956,15 +2956,15 @@ describe("web routes", () => {
 
     assert.equal(pageResponse.status, 200);
     assert.match(pageBody, /data-admin-shell="desktop"/);
-    assert.match(pageBody, /Ingestion draft workflow/);
-    assert.match(pageBody, /Data ingestion task list/);
-    assert.match(pageBody, /Extraction confidence/);
-    assert.match(pageBody, /Created by/);
-    assert.match(pageBody, /Source document candidates/);
-    assert.match(pageBody, /Traceable extracted guide fields/);
-    assert.match(pageBody, /Manual-confirmation items/);
-    assert.match(pageBody, /Draft-guide creation/);
-    assert.match(pageBody, /Hidden until manual guide review publishes it/);
+    assert.match(pageBody, /入库草稿流程/);
+    assert.match(pageBody, /数据入库任务列表/);
+    assert.match(pageBody, /抽取置信度/);
+    assert.match(pageBody, /创建人/);
+    assert.match(pageBody, /来源文档候选/);
+    assert.match(pageBody, /可追溯抽取简章字段/);
+    assert.match(pageBody, /人工确认项/);
+    assert.match(pageBody, /简章草稿创建/);
+    assert.match(pageBody, /人工简章审核发布前保持隐藏/);
     assertNoPhoneFields(pageBody);
 
     const rejectResponse = await fetch(`${baseUrl}/api/admin/ingestion-runs`, {
@@ -3056,13 +3056,13 @@ describe("web routes", () => {
 
     assert.equal(htmlResponse.status, 200);
     assert.match(htmlBody, /data-admin-shell="desktop"/);
-    assert.match(htmlBody, /Experience moderation queue/);
-    assert.match(htmlBody, /Experience moderation pending queue/);
-    assert.match(htmlBody, /Student-side preview/);
-    assert.match(htmlBody, /Sensitive content and privacy warnings/);
-    assert.match(htmlBody, /Verification privacy warning/);
-    assert.match(htmlBody, /Blocked content boundaries/);
-    assert.match(htmlBody, /Limit account/);
+    assert.match(htmlBody, /面经审核队列/);
+    assert.match(htmlBody, /面经待审核队列/);
+    assert.match(htmlBody, /学生端预览/);
+    assert.match(htmlBody, /敏感内容与隐私警告/);
+    assert.match(htmlBody, /认证隐私风险/);
+    assert.match(htmlBody, /禁止内容边界/);
+    assert.match(htmlBody, /限制账号/);
     assertNoPhoneFields(htmlBody);
 
     const approveResponse = await fetch(`${baseUrl}/api/admin/experiences/${encodeURIComponent(experienceId)}/review`, {
@@ -3113,11 +3113,11 @@ describe("web routes", () => {
 
     assert.equal(verificationPageResponse.status, 200);
     assert.match(verificationPageBody, /data-admin-shell="desktop"/);
-    assert.match(verificationPageBody, /Verification material queue/);
-    assert.match(verificationPageBody, /Verification material queue table/);
-    assert.match(verificationPageBody, /Backend-only material preview/);
-    assert.match(verificationPageBody, /Student-side verification label preview/);
-    assert.match(verificationPageBody, /Reason required when refusing verification/);
+    assert.match(verificationPageBody, /认证材料队列/);
+    assert.match(verificationPageBody, /认证材料队列表/);
+    assert.match(verificationPageBody, /仅后端可见材料预览/);
+    assert.match(verificationPageBody, /学生端认证标签预览/);
+    assert.match(verificationPageBody, /拒绝认证时必须填写原因/);
     assertNoPhoneFields(verificationPageBody);
     assert.doesNotMatch(verificationPageBody, /moderation-source-account|Moderation Student Name|private\/moderation/);
 
@@ -3367,13 +3367,13 @@ describe("web routes", () => {
 
     assert.equal(reportsPageResponse.status, 200);
     assert.match(reportsPageBody, /data-admin-shell="desktop"/);
-    assert.match(reportsPageBody, /Report resolution queue/);
-    assert.match(reportsPageBody, /Report handling list table/);
-    assert.match(reportsPageBody, /Target preview/);
-    assert.match(reportsPageBody, /History and operator record/);
-    assert.match(reportsPageBody, /Keep target/);
-    assert.match(reportsPageBody, /Limit account/);
-    assert.match(reportsPageBody, /Reject report/);
+    assert.match(reportsPageBody, /举报处理队列/);
+    assert.match(reportsPageBody, /举报处理列表表格/);
+    assert.match(reportsPageBody, /对象预览/);
+    assert.match(reportsPageBody, /历史与操作记录/);
+    assert.match(reportsPageBody, /保留对象/);
+    assert.match(reportsPageBody, /限制账号/);
+    assert.match(reportsPageBody, /驳回举报/);
     assertNoPhoneFields(reportsPageBody);
 
     const keepResolveResponse = await fetch(

@@ -121,7 +121,7 @@ function validGuideDraft(overrides = {}) {
     sourceTitle: "SYSU 2027 readiness guide official source",
     sourcePublishedAt: "2026-06-01T00:00:00.000Z",
     sourceUpdatedAt: "2026-06-02T00:00:00.000Z",
-    guideTitle: "Sun Yat-sen University 2027 Readiness Guide",
+    guideTitle: "中山大学 2027 Readiness Guide",
     summary: "Readiness official guide with dates and source-backed admissions details.",
     applicationUrl: "https://example.edu/sysu/2027-apply",
     applicationStatus: "open",
@@ -375,7 +375,7 @@ describe("complete test PRD readiness gates", () => {
     assert.equal(score631.status, 200);
     assert.equal(score631.body.totalScore, 88.5);
     assert.equal(score631.body.breakdown.length, 3);
-    assert.match(score631.body.disclaimer, /not an admission probability/i);
+    assert.match(score631.body.disclaimer, /不代表录取概率/);
     assertNoBlockedProductCopy("score result", score631.body);
 
     const score8515 = await readJson(await fetch(`${baseUrl}/api/score/calculate`, jsonRequest({
@@ -470,7 +470,7 @@ describe("complete test PRD readiness gates", () => {
 
     const secondGuide = await readJson(await fetch(`${baseUrl}/api/admin/guides`, jsonRequest(
       validGuideDraft({
-        guideTitle: "Sun Yat-sen University 2027 Readiness Guide Version Two",
+        guideTitle: "中山大学 2027 Readiness Guide Version Two",
         summary: "Readiness official guide updated with a second version."
       }),
       { cookie: dataReviewer.cookie }
@@ -668,11 +668,11 @@ describe("complete test PRD readiness gates", () => {
     const combinedFormHtml = `${schoolHtml}\n${calculatorHtml}\n${timelineHtml}\n${submissionHtml}\n${invalidSubmissionHtml}\n${loginHtml}`;
 
     for (const pattern of [
-      /<span>School keyword<\/span>[\s\S]*<input[^>]+name="keyword"/,
-      /<span>School<\/span>[\s\S]*<select[^>]+id="calculator-school"/,
-      /<span>Gaokao score<\/span>[\s\S]*<input[^>]+id="score-gaokao"/,
-      /<span>Mainland China phone<\/span>[\s\S]*<input[\s\S]*name="phoneNumber"/,
-      /<span>Process[\s\S]*<\/span>[\s\S]*<textarea[^>]+name="processSummary"/
+      /<span>院校关键词<\/span>[\s\S]*<input[^>]+name="keyword"/,
+      /<span>院校<\/span>[\s\S]*<select[^>]+id="calculator-school"/,
+      /<span>高考成绩<\/span>[\s\S]*<input[^>]+id="score-gaokao"/,
+      /<span>中国大陆手机号<\/span>[\s\S]*<input[\s\S]*name="phoneNumber"/,
+      /<span>流程[\s\S]*<\/span>[\s\S]*<textarea[^>]+name="processSummary"/
     ]) {
       assert.match(combinedFormHtml, pattern);
     }
@@ -688,6 +688,6 @@ describe("complete test PRD readiness gates", () => {
 
     assert.match(css, /\.icon-button[\s\S]*width: 44px;[\s\S]*height: 44px;/);
     assert.match(css, /\.student-nav-item[\s\S]*min-height: 48px;[\s\S]*min-width: 44px;/);
-    assert.match(timelineHtml, /status-badge[\s\S]*(Due Soon|Ended|To be announced)/);
+    assert.match(timelineHtml, /status-badge[\s\S]*(即将截止|已结束|待公布)/);
   });
 });

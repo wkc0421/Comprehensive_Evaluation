@@ -34,11 +34,11 @@ function assertStudentBottomNav(body, currentHref) {
   const match = body.match(/<nav class="student-bottom-nav"[\s\S]*?<\/nav>/);
 
   assert.ok(match, "Expected student bottom navigation");
-  assert.deepEqual([...match[0].matchAll(/<span>(Home|Schools|Experiences|My)<\/span>/g)].map((item) => item[1]), [
-    "Home",
-    "Schools",
-    "Experiences",
-    "My"
+  assert.deepEqual([...match[0].matchAll(/<span>(首页|院校|面经|我的)<\/span>/g)].map((item) => item[1]), [
+    "首页",
+    "院校",
+    "面经",
+    "我的"
   ]);
   assert.match(match[0], new RegExp(`href="${currentHref}" aria-current="page"`));
   assert.doesNotMatch(match[0], />Timeline<|>Calculator</);
@@ -216,7 +216,7 @@ describe("frontend PRD acceptance gates", () => {
     assert.match(css, /\.status-badge[\s\S]*font-size: 12px;/);
 
     assert.match(pages, /data-list-skeleton="school"/);
-    assert.match(studentJs, /setSchoolListStatus\("Loading schools\.\.\."/);
+    assert.match(studentJs, /setSchoolListStatus\("正在加载院校\.\.\."/);
     assert.match(studentJs, /setSchoolListLoading\(true\)/);
     assert.match(studentJs, /aria-busy/);
     assert.match(browserScript, /data-list-skeleton='school'/);
@@ -247,24 +247,24 @@ describe("frontend PRD acceptance gates", () => {
 
     assert.equal(homeResponse.status, 200);
     assert.match(homeBody, /class="home-first-screen"/);
-    assert.match(homeBody, /Core student tasks/);
-    assert.match(homeBody, /Latest guides/);
-    assert.match(homeBody, /Latest experiences/);
+    assert.match(homeBody, /核心任务/);
+    assert.match(homeBody, /最新简章/);
+    assert.match(homeBody, /最新面经/);
     assertStudentBottomNav(homeBody, "/");
 
     assert.equal(schoolDetailResponse.status, 200);
-    for (const expected of ["Official guide", "Application link", "Score calculator", "Featured experiences", "Submit experience"]) {
+    for (const expected of ["官方简章", "报名入口", "综合分计算器", "精选面经", "发布面经"]) {
       assert.match(schoolDetailBody, new RegExp(expected));
     }
 
     assert.equal(noFormulaDetailResponse.status, 200);
-    assert.match(noFormulaDetailBody, /Historical reference/);
-    assert.match(noFormulaDetailBody, /No published formula\. Score calculation waits for official clarification\./);
+    assert.match(noFormulaDetailBody, /历史参考/);
+    assert.match(noFormulaDetailBody, /暂无已发布公式，综合分计算等待官方明确。/);
     assert.doesNotMatch(noFormulaDetailBody, new RegExp(`/calculator\\?schoolId=${seedIds.schools.scut}`));
 
     assert.equal(calculatorUnavailableResponse.status, 200);
-    assert.match(calculatorUnavailableBody, /No clear published formula/);
-    assert.match(calculatorUnavailableBody, /Calculation form is hidden/);
+    assert.match(calculatorUnavailableBody, /暂无明确已发布公式/);
+    assert.match(calculatorUnavailableBody, /计算表单已隐藏/);
     assert.doesNotMatch(calculatorUnavailableBody, /id="score-input-form"/);
 
     assert.equal(pendingExperienceResponse.status, 404);
@@ -288,7 +288,7 @@ describe("frontend PRD acceptance gates", () => {
     const anonymousBody = await anonymousResponse.json();
 
     assert.equal(anonymousResponse.status, 201);
-    assert.equal(anonymousBody.experience.author.displayName, "Anonymous student");
+    assert.equal(anonymousBody.experience.author.displayName, "匿名考生");
     assert.equal(anonymousBody.experience.verification.materialCount, 1);
     assertNoPublicPrivacyLeaks("anonymous submission response", anonymousBody);
 
@@ -352,9 +352,9 @@ describe("frontend PRD acceptance gates", () => {
 
     assert.match(calculator, /aria-describedby="[^"]*score-gaokao-error[^"]*"/);
     assert.match(calculator, /data-score-error-for="gaokao"/);
-    assert.match(timeline, /Due Soon|Ended|To be announced/);
+    assert.match(timeline, /即将截止|已结束|待公布/);
     assert.match(timeline, /class="status-badge status-/);
-    assert.match(submissionForm, /aria-label="required"/);
+    assert.match(submissionForm, /aria-label="必填"/);
     assert.match(submissionForm, /data-char-count-for="processSummary"/);
   });
 
@@ -534,11 +534,11 @@ describe("frontend PRD acceptance gates", () => {
     assert.doesNotMatch(serializedVerificationQueue, /private\/frontend-acceptance\/moderation/);
 
     const adminPages = [
-      ["/admin/ingestion-runs", dataReviewer.cookie, /Draft-guide creation|Source document candidates/],
-      ["/admin/guides", dataReviewer.cookie, /Official source preview or link|Student-visible preview/],
-      ["/admin/formulas", dataReviewer.cookie, /Official source and publication gate|Test sample area/],
-      ["/admin/experiences", contentReviewer.cookie, /Sensitive content and privacy warnings|Student-side preview/],
-      ["/admin/verifications", contentReviewer.cookie, /Backend-only material preview|Student-side verification label preview/]
+      ["/admin/ingestion-runs", dataReviewer.cookie, /简章草稿创建|来源文档候选/],
+      ["/admin/guides", dataReviewer.cookie, /官方来源预览或链接|学生端预览/],
+      ["/admin/formulas", dataReviewer.cookie, /官方来源与发布门槛|样例测试区/],
+      ["/admin/experiences", contentReviewer.cookie, /敏感内容与隐私警告|学生端预览/],
+      ["/admin/verifications", contentReviewer.cookie, /仅后端可见材料预览|学生端认证标签预览/]
     ];
 
     for (const [path, cookie, pattern] of adminPages) {
@@ -553,7 +553,7 @@ describe("frontend PRD acceptance gates", () => {
       assert.equal(response.status, 200, path);
       assert.match(body, /data-admin-shell="desktop"/);
       assert.match(body, pattern);
-      assert.doesNotMatch(body, /Student bottom navigation/);
+      assert.doesNotMatch(body, /学生底部导航/);
     }
   });
 });

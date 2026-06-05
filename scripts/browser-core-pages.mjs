@@ -78,9 +78,9 @@ hidden_text = [
 ]
 
 home_grade_states = [
-    ("/?grade=high_school_g1", "High school grade one", "Understand the comprehensive evaluation path."),
-    ("/?grade=high_school_g2", "High school grade two", "Check academic test and subject requirements."),
-    ("/?grade=high_school_g3", "High school grade three", "Watch current guide releases."),
+    ("/?grade=high_school_g1", "高一", "了解综评整体路径。"),
+    ("/?grade=high_school_g2", "高二", "核对学考和选科要求。"),
+    ("/?grade=high_school_g3", "高三", "关注当年简章发布。"),
 ]
 
 async def verify_home_state(page, path, expected_grade, expected_tip, *, logged_in=False):
@@ -114,15 +114,15 @@ async def verify_home_state(page, path, expected_grade, expected_tip, *, logged_
         raise AssertionError(f"Home state missing grade {expected_grade}")
     if expected_tip not in metrics["bodyText"]:
         raise AssertionError(f"Home state missing grade tip {expected_tip}")
-    if "Latest guides" in metrics["firstText"] or "Latest experiences" in metrics["firstText"]:
+    if "最新简章" in metrics["firstText"] or "最新面经" in metrics["firstText"]:
         raise AssertionError("Home first screen contains below-the-fold latest content")
     if metrics["latestGuideTop"] is None or metrics["latestGuideTop"] < metrics["viewportHeight"] - 8:
         raise AssertionError(f"Latest guides are not below the first screen: {metrics}")
     expected_tasks = [
-        ("/schools", "Schools\\nBrowse schools"),
-        ("/timeline", "Timeline\\nKey dates"),
-        ("/calculator", "Score Calculator\\nCalculate score"),
-        ("/experiences", "Experiences\\nRead stories"),
+        ("/schools", "院校\\n查院校"),
+        ("/timeline", "时间线\\n看日期"),
+        ("/calculator", "综合分\\n算分数"),
+        ("/experiences", "面经\\n看经验"),
     ]
     actual_tasks = [(item["href"], "\\n".join(item["text"].splitlines()[-2:])) for item in metrics["taskLinks"]]
     if actual_tasks != expected_tasks:
@@ -132,17 +132,17 @@ async def verify_home_state(page, path, expected_grade, expected_tip, *, logged_
     if metrics["guideCount"] != 3 or metrics["experienceCount"] != 3:
         raise AssertionError(f"Latest row counts are wrong: {metrics}")
     if logged_in:
-        if "Favorited schools" not in metrics["bodyText"]:
+        if "已收藏院校" not in metrics["bodyText"]:
             raise AssertionError("Logged-in home did not use favorited school timeline source")
-        if "Log in to favorite schools" in metrics["bodyText"]:
+        if "登录后可收藏院校" in metrics["bodyText"]:
             raise AssertionError("Logged-in home still shows the guest timeline login prompt")
     else:
-        if "Log in to favorite schools and view your personal timeline." not in metrics["bodyText"]:
+        if "登录后可收藏院校并查看个人时间线。" not in metrics["bodyText"]:
             raise AssertionError("Guest home missing personal timeline login prompt")
 
 async def verify_login_favorite_continuation(page):
     await page.goto(f"{base_url}/schools/{sysu_school_id}?year=2026", wait_until="domcontentloaded")
-    await page.locator(".student-top-bar button[aria-label='Favorite school']").click()
+    await page.locator(".student-top-bar button[aria-label='收藏院校']").click()
     await page.locator("#login-title").wait_for()
 
     submit = page.locator("[data-login-submit='true']")
@@ -152,7 +152,7 @@ async def verify_login_favorite_continuation(page):
     await page.locator("input[name='phoneNumber']").fill("12112345678")
     await page.locator("[data-send-otp='true']").click()
     error_text = await page.locator("[data-login-error='true']").inner_text()
-    if "mainland China phone number" not in error_text:
+    if "请输入中国大陆手机号" not in error_text:
         raise AssertionError(f"Invalid phone did not show retryable validation: {error_text}")
 
     await page.locator("input[name='phoneNumber']").fill("13900001234")
@@ -167,7 +167,7 @@ async def verify_login_favorite_continuation(page):
     await page.wait_for_url(f"**/schools/{sysu_school_id}?year=2026&toast=favorite_saved")
     await page.locator("[data-student-toast='true']").wait_for(state="visible")
     toast_text = await page.locator("[data-student-toast='true']").inner_text()
-    if toast_text != "Favorite saved":
+    if toast_text != "已收藏":
         raise AssertionError(f"Favorite continuation toast was wrong: {toast_text}")
 
 async def verify_admin_desktop_page(browser, path, cookie, screenshot_name, required_text, viewport):
@@ -198,13 +198,13 @@ async def verify_admin_desktop_page(browser, path, cookie, screenshot_name, requ
         };
     }""")
     expected_nav = [
-        "Data Ingestion",
-        "Guide Review",
-        "Timeline Management",
-        "Formula Management",
-        "Experience Review",
-        "Verification Review",
-        "Report Handling",
+        "AI 入库",
+        "简章审核",
+        "时间线管理",
+        "公式管理",
+        "面经审核",
+        "认证审核",
+        "举报处理",
     ]
     for label in expected_nav:
         if label not in metrics["navLabels"]:
@@ -216,7 +216,7 @@ async def verify_admin_desktop_page(browser, path, cookie, screenshot_name, requ
     for expected in required_text:
         if expected.lower() not in metrics["bodyText"].lower():
             raise AssertionError(f"Admin page {path} missing {expected}")
-    if "Student-visible preview".lower() in metrics["bodyText"].lower() and "Student-visible preview".lower() not in metrics["panelText"].lower():
+    if "学生端预览" in metrics["bodyText"] and "学生端预览" not in metrics["panelText"]:
         raise AssertionError(f"Student preview is not in the admin detail panel for {path}")
     if metrics["hasStudentFrame"] or metrics["hasStudentNav"]:
         raise AssertionError(f"Admin page rendered student shell elements: {path}")
@@ -235,7 +235,7 @@ async def verify_school_filter_interactions(page):
     await page.goto(f"{base_url}/schools?year=2025&sort=name", wait_until="domcontentloaded")
     await page.locator("[data-school-filter-form='true']").wait_for()
 
-    if await page.locator("input[placeholder='Search school']").count() != 1:
+    if await page.locator("input[placeholder='搜索院校']").count() != 1:
         raise AssertionError("School list search placeholder is missing")
 
     await page.evaluate("() => { window.__schoolFilterMarker = 'kept'; }")
@@ -256,14 +256,14 @@ async def verify_school_filter_interactions(page):
     if marker != "kept":
         raise AssertionError("School filter change caused a full page navigation")
     body_text = await page.locator("body").inner_text()
-    if "Year: 2026" not in body_text or "Sun Yat-sen University" not in body_text:
+    if "年份: 2026" not in body_text or "中山大学" not in body_text:
         raise AssertionError(f"School AJAX year filter did not preserve visible state: {body_text}")
 
     previous_count = await ajax_count(page)
     await page.locator("[data-school-clear-filters='true']").first.click()
     await wait_for_ajax_count(page, previous_count)
     body_text = await page.locator("body").inner_text()
-    if "Showing all published school guide cards." not in body_text:
+    if "正在展示全部已发布院校简章卡片。" not in body_text:
         raise AssertionError("School clear filters did not restore the all-published summary")
 
     await page.locator("input[name='keyword']").fill("NoSuchSchool")
@@ -271,7 +271,7 @@ async def verify_school_filter_interactions(page):
     await page.locator("[data-school-filter-form='true'] .primary-action").click()
     await wait_for_ajax_count(page, previous_count)
     body_text = await page.locator("body").inner_text()
-    if "No schools match these filters." not in body_text or "Clear filters" not in body_text:
+    if "当前筛选没有匹配院校" not in body_text or "清空筛选" not in body_text:
         raise AssertionError("School empty state did not include clear-filter guidance")
 
     async def fail_school_request(route):
@@ -282,7 +282,7 @@ async def verify_school_filter_interactions(page):
     await page.locator("[data-school-filter-form='true'] .primary-action").click()
     await page.locator("[data-school-filter-retry='true']").wait_for()
     error_text = await page.locator("[data-school-list-status='true']").inner_text()
-    if "Could not load schools." not in error_text or "Retry" not in error_text:
+    if "院校加载失败。" not in error_text or "重试" not in error_text:
         raise AssertionError(f"School failed-loading state was wrong: {error_text}")
 
     await page.unroute("**/schools?*keyword=BrowserFail*", fail_school_request)
@@ -290,16 +290,16 @@ async def verify_school_filter_interactions(page):
     await page.locator("[data-school-filter-retry='true']").click()
     await wait_for_ajax_count(page, previous_count)
     body_text = await page.locator("body").inner_text()
-    if "No schools match these filters." not in body_text:
+    if "当前筛选没有匹配院校" not in body_text:
         raise AssertionError("School retry did not reload the requested filters")
 
 async def verify_school_detail_fallback(page):
     await page.goto(f"{base_url}/schools/{scut_school_id}?year=2026", wait_until="domcontentloaded")
     await page.locator("#school-detail-title").wait_for()
     body_text = await page.locator("body").inner_text()
-    if "Historical reference" not in body_text:
+    if "历史参考" not in body_text:
         raise AssertionError("School detail fallback is missing historical reference label")
-    if "No published 2026 guide is visible yet. Showing 2025 as historical reference." not in body_text:
+    if "暂无可见的 2026 已发布简章，当前展示 2025 年作为历史参考。" not in body_text:
         raise AssertionError("School detail fallback does not explain the unpublished requested year")
     if "Draft Review Guide" in body_text:
         raise AssertionError("School detail fallback exposed pending-review guide text")
@@ -310,30 +310,30 @@ async def verify_timeline_interactions(page):
     await page.goto(f"{base_url}/timeline?mine=true&year=2026", wait_until="domcontentloaded")
     await page.locator("#login-title").wait_for()
     login_text = await page.locator("body").inner_text()
-    if "Log in" not in login_text:
+    if "登录" not in login_text:
         raise AssertionError("Unauthenticated My Favorites timeline did not show the login guide")
 
     try:
         await page.set_extra_http_headers({"Cookie": no_favorite_cookie})
         await page.goto(f"{base_url}/timeline?mine=true&year=2026", wait_until="domcontentloaded")
         no_fav_text = await page.locator("body").inner_text()
-        if "Collect schools to build My Favorites" not in no_fav_text or "Browse schools" not in no_fav_text:
+        if "收藏院校后生成我的时间线" not in no_fav_text:
             raise AssertionError("Logged-in no-favorites timeline empty state was missing")
     finally:
         await page.set_extra_http_headers({})
 
     await page.goto(f"{base_url}/timeline?year=2026&nodeType=application_deadline", wait_until="domcontentloaded")
     filtered_text = await page.locator(".timeline-list").inner_text()
-    if "Application deadline" not in filtered_text:
+    if "报名截止" not in filtered_text:
         raise AssertionError("Timeline node-type filter did not show application deadlines")
-    if "Preliminary review result" in filtered_text:
+    if "初审结果" in filtered_text:
         raise AssertionError("Timeline node-type filter still showed another node type")
 
 async def verify_calculator_flow(page):
     await page.goto(f"{base_url}/calculator?schoolId={sysu_school_id}&year=2026", wait_until="domcontentloaded")
     await page.locator("#score-input-form").wait_for()
     body_text = await page.locator("body").inner_text()
-    for expected in ["Source-backed formula", "Weights and max scores", "Official source basis"]:
+    for expected in ["有官方来源的公式", "权重与满分", "官方来源依据"]:
         if expected not in body_text:
             raise AssertionError(f"Calculator missing source-backed context: {expected}")
 
@@ -343,7 +343,7 @@ async def verify_calculator_flow(page):
 
     await page.locator("#score-gaokao").fill("800")
     error_text = await page.locator("[data-score-error-for='gaokao']").inner_text()
-    if "between 0 and 750" not in error_text:
+    if "必须在 0 到 750 之间" not in error_text:
         raise AssertionError(f"Out-of-range score did not render inline error: {error_text}")
     if not await calculate.is_disabled():
         raise AssertionError("Calculator submit should stay disabled for invalid scores")
@@ -376,7 +376,7 @@ async def verify_calculator_flow(page):
     await page.route("**/api/score/calculate", slow_score)
     before_scroll = await page.evaluate("() => window.scrollY")
     await page.locator("[data-calculate-score='true']").click()
-    await page.wait_for_function("""() => document.querySelector("[data-calculate-score='true']")?.textContent === "Calculating..." """)
+    await page.wait_for_function("""() => document.querySelector("[data-calculate-score='true']")?.textContent === "正在计算..." """)
     await page.locator(".result-score").wait_for()
     await page.wait_for_function("before => window.scrollY > before", arg=before_scroll)
     await page.unroute("**/api/score/calculate", slow_score)
@@ -386,7 +386,7 @@ async def verify_calculator_flow(page):
 
     if after_scroll <= before_scroll:
         raise AssertionError(f"Calculator result did not scroll into view: before {before_scroll}, after {after_scroll}")
-    for expected in ["Comprehensive score", "60/30/10 comprehensive score", "Contribution breakdown", "Official source", "not an admission probability"]:
+    for expected in ["综合分", "60/30/10 综合成绩", "分项贡献", "官方来源", "不代表录取概率"]:
         if expected.lower() not in result_lower:
             raise AssertionError(f"Calculator result missing {expected}: {result_text}")
     for blocked in ["ranking prediction", "recommended application", "guaranteed admission"]:
@@ -396,7 +396,7 @@ async def verify_calculator_flow(page):
 async def verify_calculator_unavailable(page):
     await page.goto(f"{base_url}/calculator?schoolId={scut_school_id}&year=2025", wait_until="domcontentloaded")
     body_text = await page.locator("body").inner_text()
-    if "No clear published formula" not in body_text or "Calculation form is hidden" not in body_text:
+    if "暂无明确已发布公式" not in body_text or "计算表单已隐藏" not in body_text:
         raise AssertionError("No-formula calculator unavailable state was missing")
     if await page.locator("#score-input-form").count() != 0:
         raise AssertionError("No-formula calculator exposed the score entry form")
@@ -428,7 +428,7 @@ async def verify_experience_submission_drafts(page):
     await page.locator("[data-experience-submission-form='true']").wait_for()
     body_text = await page.locator("body").inner_text()
     body_lower = body_text.lower()
-    for expected in ["reviewer-only", "Process", "Advice"]:
+    for expected in ["仅审核端可见", "流程", "建议"]:
         if expected.lower() not in body_lower:
             raise AssertionError(f"Experience submission page missing {expected}")
     if await page.locator("[data-experience-draft-prompt='true']").count() != 1:
@@ -478,7 +478,7 @@ async def verify_experience_submission_drafts(page):
     await page.locator(".submission-form button[type='submit']").click()
     await page.locator("#submission-status-title").wait_for()
     status_text = await page.locator(".submission-status").inner_text()
-    if "Pending review" not in status_text or "Browser pending draft group" in status_text:
+    if "待审核" not in status_text or "Browser pending draft group" in status_text:
         raise AssertionError(f"Submission status did not show a safe under-review state: {status_text}")
     draft_after_submit = await page.evaluate("() => localStorage.getItem('gce:experience-submission-draft')")
     if draft_after_submit is not None:
@@ -488,12 +488,12 @@ async def verify_experience_submission_drafts(page):
     public_text = await page.locator("body").inner_text()
     if "Browser pending draft group" in public_text:
         raise AssertionError("Pending-review experience appeared in public experience browsing")
-    if "publish the first relevant experience" not in public_text:
+    if "没有匹配的已发布面经" not in public_text or "发布面经" not in public_text:
         raise AssertionError("Experience empty state did not guide filter changes or first publication")
 
     await page.goto(f"{base_url}/me", wait_until="domcontentloaded")
     my_text = await page.locator("body").inner_text()
-    if "Browser pending draft group" not in my_text or "Pending Review" not in my_text:
+    if "Browser pending draft group" not in my_text or "待审核" not in my_text:
         raise AssertionError("Pending experience was not visible in My Submissions")
 
     await page.locator("form[action='/logout'] button").click()
@@ -508,25 +508,24 @@ async def verify_logged_in_personal_center(page, *, exercise_account_actions=Fal
     body_text = await page.locator("body").inner_text()
     body_lower = body_text.lower()
     required_text = [
-        "Browser My student",
-        "High school grade two",
-        "Default anonymous preference",
-        "Show nickname by default",
-        "Favorited schools",
-        "Favorited experiences",
-        "Submitted experiences",
-        "Site reminders",
-        "Account preferences",
-        "Pending Review",
-        "Published",
-        "Returned",
-        "Hidden",
-        "Rejected",
-        "Next action",
-        "Review status change",
-        "Application deadline",
-        "Site-only",
-        "Sun Yat-sen University",
+        "高二",
+        "默认匿名偏好",
+        "默认展示昵称",
+        "已收藏院校",
+        "已收藏面经",
+        "已提交面经",
+        "站内提醒",
+        "账号偏好",
+        "待审核",
+        "已发布",
+        "已退回",
+        "已隐藏",
+        "已拒绝",
+        "下一步",
+        "审核状态",
+        "报名截止",
+        "仅站内",
+        "中山大学",
     ]
     for expected in required_text:
         if expected.lower() not in body_lower:
@@ -559,9 +558,9 @@ async def verify_logged_in_personal_center(page, *, exercise_account_actions=Fal
     await page.locator("form[action='/me/preferences'] button[type='submit']").click()
     await page.locator(".form-success").wait_for()
     updated_text = await page.locator("body").inner_text()
-    if "Preferences updated" not in updated_text or "High school grade one" not in updated_text:
+    if "偏好已更新" not in updated_text or "高一" not in updated_text:
         raise AssertionError("Preference update did not render the updated My page")
-    if "Anonymous by default" not in updated_text:
+    if "默认匿名" not in updated_text:
         raise AssertionError("Default anonymous preference update was not visible")
 
     await page.evaluate("""() => localStorage.setItem("gce:experience-submission-draft", JSON.stringify({
@@ -574,7 +573,7 @@ async def verify_logged_in_personal_center(page, *, exercise_account_actions=Fal
     if logout_draft is not None:
         raise AssertionError("My page logout did not clear experience submission drafts")
     logged_out_text = await page.locator("body").inner_text()
-    if "Log in to use My page" not in logged_out_text:
+    if "登录后使用我的页面" not in logged_out_text:
         raise AssertionError("Logout did not return to the logged-out My guide")
     if "Browser My updated" in logged_out_text:
         raise AssertionError("Logged-out My page still showed the previous user's nickname")
@@ -692,7 +691,7 @@ async def main():
                 if metrics["requiresNav"]:
                     if not metrics["navExists"]:
                         raise AssertionError(f"{label} at {width}px is missing student bottom navigation")
-                    if metrics["navLabels"] != ["Home", "Schools", "Experiences", "My"]:
+                    if metrics["navLabels"] != ["首页", "院校", "面经", "我的"]:
                         raise AssertionError(f"{label} at {width}px has unexpected nav labels: {metrics['navLabels']}")
                     if metrics["currentHref"] and metrics["activeHref"] != metrics["currentHref"]:
                         raise AssertionError(
@@ -724,14 +723,14 @@ async def main():
                 if label == "schools":
                     body_lower = metrics["bodyText"].lower()
                     required_school_text = [
-                        "School keyword",
-                        "Guide status",
-                        "Application status",
-                        "School type",
+                        "院校关键词",
+                        "简章状态",
+                        "报名状态",
+                        "院校类型",
                         "SCUT",
-                        "No formula",
-                        "1 experience",
-                        "Key timeline",
+                        "无明确公式",
+                        "1 条面经",
+                        "关键时间线",
                     ]
                     for expected in required_school_text:
                         if expected.lower() not in body_lower:
@@ -740,13 +739,13 @@ async def main():
                 if label == "school-detail":
                     body_lower = metrics["bodyText"].lower()
                     required_detail_text = [
-                        "Official guide summary",
-                        "Score formula",
-                        "Admission requirements",
-                        "Assessment and admission",
-                        "Fees and consultation",
-                        "Featured experiences",
-                        "Submit experience",
+                        "官方简章摘要",
+                        "综合分公式",
+                        "报考要求",
+                        "考核与录取",
+                        "费用与咨询",
+                        "精选面经",
+                        "发布面经",
                     ]
                     for expected in required_detail_text:
                         if expected.lower() not in body_lower:
@@ -760,13 +759,13 @@ async def main():
                 if label == "timeline":
                     body_lower = metrics["bodyText"].lower()
                     required_timeline_text = [
-                        "All Nodes",
-                        "My Favorites",
-                        "Node type",
-                        "Source guide year",
-                        "To be announced",
-                        "Due Soon",
-                        "Ended",
+                        "全部节点",
+                        "我的收藏",
+                        "节点类型",
+                        "来源简章年份",
+                        "待公布",
+                        "即将截止",
+                        "已结束",
                     ]
                     for expected in required_timeline_text:
                         if expected.lower() not in body_lower:
@@ -775,9 +774,9 @@ async def main():
                 if label == "calculator":
                     body_lower = metrics["bodyText"].lower()
                     required_calculator_text = [
-                        "Source-backed formula",
-                        "Weights and max scores",
-                        "Official source basis",
+                        "有官方来源的公式",
+                        "权重与满分",
+                        "官方来源依据",
                     ]
                     for expected in required_calculator_text:
                         if expected.lower() not in body_lower:
@@ -786,28 +785,28 @@ async def main():
                 if label == "experiences":
                     body_lower = metrics["bodyText"].lower()
                     required_experience_text = [
-                        "Experience keyword",
-                        "Verified status",
-                        "Major or group",
-                        "Historical reference",
-                        "Read structured detail",
+                        "面经关键词",
+                        "认证状态",
+                        "专业或组别",
+                        "历史参考",
+                        "阅读结构化详情",
                     ]
                     for expected in required_experience_text:
                         if expected.lower() not in body_lower:
                             raise AssertionError(f"Experiences at {width}px missing {expected}")
-                    if await page.locator("button[aria-label='Favorite experience']").count() == 0:
+                    if await page.locator("button[aria-label='收藏面经']").count() == 0:
                         raise AssertionError(f"Experiences at {width}px missing favorite control")
 
                 if label == "experience-detail":
                     body_lower = metrics["bodyText"].lower()
                     required_experience_detail_text = [
-                        "Basic information",
-                        "Process",
-                        "Question-type categories",
-                        "Preparation and advice",
-                        "Experience ratings",
-                        "Useful (18)",
-                        "Report",
+                        "基本信息",
+                        "流程",
+                        "题型类别",
+                        "准备与建议",
+                        "面经评分",
+                        "有用（18）",
+                        "举报",
                     ]
                     for expected in required_experience_detail_text:
                         if expected.lower() not in body_lower:
@@ -816,10 +815,10 @@ async def main():
                 if label == "personal-logged-out":
                     body_lower = metrics["bodyText"].lower()
                     required_personal_text = [
-                        "Log in to use My page",
-                        "Login enables school favorites, experience publishing, and review-status tracking.",
-                        "Save Guangdong comprehensive evaluation schools",
-                        "Check submitted experience review status",
+                        "登录后使用我的页面",
+                        "登录后可使用院校收藏、面经发布和审核状态跟踪。",
+                        "收藏广东综评院校",
+                        "查看已投稿面经的审核状态",
                     ]
                     for expected in required_personal_text:
                         if expected.lower() not in body_lower:
@@ -847,8 +846,8 @@ async def main():
             await verify_home_state(
                 logged_home,
                 "/",
-                "High school grade two",
-                "Check academic test and subject requirements.",
+                "高二",
+                "核对学考和选科要求。",
                 logged_in=True
             )
             if width == 390:
@@ -932,8 +931,8 @@ async def main():
 
         desktop_school_page = await browser.new_page(viewport={"width": 1440, "height": 900})
         for path, screenshot_name, required_text in [
-            ("/schools?year=2025&sort=name", "schools-desktop-1440x900.png", "School keyword"),
-            (f"/schools/{sysu_school_id}?year=2026", "school-detail-desktop-1440x900.png", "Official guide summary"),
+            ("/schools?year=2025&sort=name", "schools-desktop-1440x900.png", "院校关键词"),
+            (f"/schools/{sysu_school_id}?year=2026", "school-detail-desktop-1440x900.png", "官方简章摘要"),
         ]:
             await desktop_school_page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
             desktop_school_metrics = await desktop_school_page.evaluate("""() => {
@@ -957,56 +956,56 @@ async def main():
 
         admin_pages = [
             ("/admin", admin_data_cookie, "admin-overview-desktop", [
-                "Desktop workflow overview",
-                "Review workflow rules",
-                "Data Ingestion",
-                "Report Handling",
+                "桌面工作流总览",
+                "审核工作流规则",
+                "AI 入库",
+                "举报处理",
             ]),
             ("/admin/ingestion-runs", admin_data_cookie, "admin-ingestion-desktop", [
-                "Data ingestion task list",
-                "Source document candidates",
-                "Traceable extracted guide fields",
-                "Manual-confirmation items",
-                "Draft-guide creation",
+                "数据入库任务列表",
+                "来源文档候选",
+                "可追溯抽取简章字段",
+                "人工确认项",
+                "简章草稿创建",
             ]),
             ("/admin/guides", admin_data_cookie, "admin-guide-review-desktop", [
-                "Guide review queue table",
-                "Student-visible preview",
-                "Official source preview or link",
-                "Field-level confirmation state",
+                "简章审核队列表",
+                "学生端预览",
+                "官方来源预览或链接",
+                "字段级确认状态",
             ]),
             ("/admin/timeline?year=2026", admin_data_cookie, "admin-timeline-desktop", [
-                "Timeline management generated nodes table",
-                "Date precision",
-                "Student-side status",
-                "Manual override state",
+                "时间线管理生成节点表",
+                "日期精度",
+                "学生端状态",
+                "人工覆写状态",
             ]),
             ("/admin/formulas", admin_data_cookie, "admin-formulas-desktop", [
-                "Formula editor",
-                "Formula management list table",
-                "Test sample area",
-                "Student-side preview",
-                "Official source and publication gate",
+                "公式编辑器",
+                "公式管理列表表格",
+                "样例测试区",
+                "学生端预览",
+                "官方来源与发布门槛",
             ]),
             ("/admin/experiences", admin_content_cookie, "admin-experiences-desktop", [
-                "Experience moderation pending queue",
-                "Sensitive content and privacy warnings",
-                "Student-side preview",
-                "Blocked content boundaries",
-                "Limit account",
+                "面经待审核队列",
+                "敏感内容与隐私警告",
+                "学生端预览",
+                "禁止内容边界",
+                "限制账号",
             ]),
             ("/admin/verifications", admin_content_cookie, "admin-verifications-desktop", [
-                "Verification material queue table",
-                "Backend-only material preview",
-                "Student-side verification label preview",
-                "Reason required when refusing verification",
+                "认证材料队列表",
+                "仅后端可见材料预览",
+                "学生端认证标签预览",
+                "拒绝认证时必须填写原因",
             ]),
             ("/admin/reports", admin_content_cookie, "admin-reports-desktop", [
-                "Report handling list table",
-                "Target preview",
-                "Report reason",
-                "History and operator record",
-                "Reject report",
+                "举报处理列表表格",
+                "对象预览",
+                "举报原因",
+                "历史与操作记录",
+                "驳回举报",
             ]),
         ]
         for admin_width, admin_height in admin_viewports:
