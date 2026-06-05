@@ -17,35 +17,35 @@ import {
 const entryPoints = [
   {
     badge: "G1",
-    title: "High school grade one",
-    body: "Build a baseline view of participating schools, assessment formats, and subject requirement signals."
+    title: "高一",
+    body: "先建立参评院校、校测形式和选科要求的基础认知。"
   },
   {
     badge: "G2",
-    title: "High school grade two",
-    body: "Compare recent guide changes, timeline rhythm, and verified experience patterns before application year."
+    title: "高二",
+    body: "在报名前比较近年简章变化、时间节奏和已认证面经规律。"
   },
   {
     badge: "G3",
-    title: "High school grade three",
-    body: "Track current guide releases, important dates, score formula availability, and assessment preparation details."
+    title: "高三",
+    body: "跟踪当年简章、关键日期、公式可用性和校测准备信息。"
   }
 ];
 
 const workflowPlaceholders = [
-  { title: "Data Ingestion", status: "Draft-only workflow active" },
-  { title: "Guide Review", status: "Official source review active" },
-  { title: "Timeline Management", status: "Override workflow active" },
-  { title: "Formula Management", status: "Draft and publish workflow active" },
-  { title: "Experience Review", status: "Content review active" },
-  { title: "Verification Review", status: "Material metadata review active" },
-  { title: "Report Handling", status: "Resolution workflow active" }
+  { title: "AI 入库", status: "草稿流转已启用" },
+  { title: "简章审核", status: "官方来源审核已启用" },
+  { title: "时间线管理", status: "人工覆盖流程已启用" },
+  { title: "公式管理", status: "草稿发布流程已启用" },
+  { title: "面经审核", status: "内容审核已启用" },
+  { title: "认证审核", status: "材料元数据审核已启用" },
+  { title: "举报处理", status: "处理闭环已启用" }
 ];
 
-const dateFormatter = new Intl.DateTimeFormat("en", {
-  month: "short",
-  day: "numeric",
+const zhDateFormatter = new Intl.DateTimeFormat("zh-CN", {
   year: "numeric",
+  month: "long",
+  day: "numeric",
   timeZone: "UTC"
 });
 
@@ -58,8 +58,349 @@ const importantEventKeys = new Set([
   "admission_publication"
 ]);
 
-const missingOfficialText = "Official not specified";
-const pendingSupplementText = "Pending supplement";
+const missingOfficialText = "官方未明确";
+const pendingSupplementText = "待补充";
+
+const tokenLabels = Object.freeze({
+  active: "进行中",
+  admission_guide: "招生简章",
+  admission_publication: "录取公布",
+  application_deadline: "报名截止",
+  application_portal: "报名入口",
+  application_start: "报名开始",
+  archived: "历史参考",
+  candidate: "候选",
+  closed: "已结束",
+  confirmation_or_payment: "确认或缴费",
+  content_reviewer: "内容审核员",
+  custom: "自定义",
+  data_reviewer: "数据审核员",
+  draft: "草稿",
+  due_soon: "即将截止",
+  education_exam_authority: "教育考试院",
+  ended: "已结束",
+  experience: "面经",
+  failed: "失败",
+  guide_publication: "简章发布",
+  group_discussion: "小组讨论",
+  hidden: "已隐藏",
+  history: "历史类",
+  machine_test: "机试",
+  manual_upload: "人工上传",
+  not_started: "未开始",
+  official_notice: "官方通知",
+  open: "开放报名",
+  pending: "待处理",
+  pending_review: "待审核",
+  physics: "物理类",
+  preliminary_review_result: "初审结果",
+  published: "已发布",
+  rejected: "已拒绝",
+  research_university: "研究型大学",
+  running: "运行中",
+  school_assessment: "校测",
+  shortlist_publication: "入围名单",
+  structured_interview: "结构化面试",
+  succeeded: "已完成",
+  user: "普通用户",
+  verified: "已认证",
+  volunteer_application: "志愿填报",
+  weighted_sum: "加权求和"
+});
+
+const htmlTranslations = Object.freeze([
+  ["Guangdong Comprehensive Evaluation", "广东综合评价招生"],
+  ["Guangdong CE", "广东综评"],
+  ["High school grade one", "高一"],
+  ["High school grade two", "高二"],
+  ["High school grade three", "高三"],
+  ["Use your grade to move quickly between schools, dates, score tools, and structured experiences.", "按年级快速查看院校、时间节点、综合分工具和结构化面经。"],
+  ["Core student tasks", "核心任务"],
+  ["Browse schools", "查院校"],
+  ["Key dates", "看时间线"],
+  ["Calculate score", "算综合分"],
+  ["Read stories", "看面经"],
+  ["Nearest timeline nodes", "最近时间节点"],
+  ["Site-wide published nodes", "全站已发布节点"],
+  ["Favorited schools", "已收藏院校"],
+  ["Log in to favorite schools and view your personal timeline.", "登录后可收藏院校并查看个人时间线。"],
+  ["Latest guides", "最新简章"],
+  ["All schools", "全部院校"],
+  ["Latest experiences", "最新面经"],
+  ["All experiences", "全部面经"],
+  ["Grade preparation tips", "年级准备建议"],
+  ["Watch current guide releases.", "关注当年简章发布。"],
+  ["Keep deadline and confirmation dates visible.", "留意报名截止、确认和缴费时间。"],
+  ["Prepare school assessment examples.", "准备校测可用的经历和案例。"],
+  ["Understand the comprehensive evaluation path.", "了解综评整体路径。"],
+  ["Check academic test and subject requirements.", "核对学考和选科要求。"],
+  ["Build a baseline view of participating schools, assessment formats, and subject requirement signals.", "先建立参评院校、校测形式和选科要求的基础认知。"],
+  ["Compare recent guide changes, timeline rhythm, and verified experience patterns before application year.", "在报名前比较近年简章变化、时间节奏和已认证面经规律。"],
+  ["Track current guide releases, important dates, score formula availability, and assessment preparation details.", "跟踪当年简章、关键日期、公式可用性和校测准备信息。"],
+  ["School keyword", "院校关键词"],
+  ["Search school", "搜索院校"],
+  ["Visible school filters", "院校筛选"],
+  ["All years", "全部年份"],
+  ["Year", "年份"],
+  ["Guide status", "简章状态"],
+  ["All guide statuses", "全部简章状态"],
+  ["Waiting publication", "待发布"],
+  ["Historical reference", "历史参考"],
+  ["Application status", "报名状态"],
+  ["All application statuses", "全部报名状态"],
+  ["School type", "院校类型"],
+  ["All school types", "全部院校类型"],
+  ["Sort", "排序"],
+  ["Application deadline", "报名截止"],
+  ["Update time", "更新时间"],
+  ["School name", "院校名称"],
+  ["Apply", "应用"],
+  ["Clear", "清空"],
+  ["Selected school filters", "已选院校筛选"],
+  ["Showing all published school guide cards.", "正在展示全部已发布院校简章卡片。"],
+  ["Clear filters", "清空筛选"],
+  ["No matching schools", "没有匹配院校"],
+  ["No schools match these filters. Try switching year or status.", "当前筛选没有匹配院校，可以切换年份或状态。"],
+  ["No formula", "无明确公式"],
+  ["Deadline", "截止时间"],
+  ["Formula", "公式"],
+  ["Experiences", "面经"],
+  ["Application", "报名"],
+  ["Key timeline", "关键时间线"],
+  ["View school detail", "查看院校详情"],
+  ["School list", "院校列表"],
+  ["School filters", "院校筛选"],
+  ["Open filters", "打开筛选"],
+  ["Go back", "返回"],
+  ["Favorite school", "收藏院校"],
+  ["Favorite school action", "收藏院校操作"],
+  ["Favorite experience", "收藏面经"],
+  ["Official source", "官方来源"],
+  ["Official source basis", "官方依据"],
+  ["Open source", "打开来源"],
+  ["Source-backed formula", "有官方来源的公式"],
+  ["Weights and max scores", "权重与满分"],
+  ["Comprehensive score", "综合分"],
+  ["Contribution breakdown", "分项贡献"],
+  ["Score Calculator", "综合分计算器"],
+  ["Calculate", "计算"],
+  ["No published formula is available for this school year.", "该院校年份暂无已发布公式。"],
+  ["This calculation follows published formula fields for reference only and is not an admission probability.", "本计算仅按已发布公式字段提供参考，不代表录取概率。"],
+  ["Verification pending", "认证待审核"],
+  ["Verified experience", "已认证面经"],
+  ["Historical reference notice", "历史参考提示"],
+  ["Useful count", "有用数"],
+  ["Mark useful", "标记有用"],
+  ["Report", "举报"],
+  ["Submit report", "提交举报"],
+  ["Login", "登录"],
+  ["Login Guangdong CE", "登录广东综评"],
+  ["Log in to favorite schools, publish experiences, and track review status.", "登录后可收藏院校、发布面经并跟踪审核状态。"],
+  ["Login guide", "登录引导"],
+  ["Log in to use My page", "登录后使用我的页面"],
+  ["Login enables school favorites, experience publishing, and review-status tracking.", "登录后可使用院校收藏、面经发布和审核状态跟踪。"],
+  ["Save Guangdong comprehensive evaluation schools for a personal timeline.", "收藏广东综评院校，生成个人时间线。"],
+  ["My", "我的"],
+  ["School favorites", "院校收藏"],
+  ["Experience favorites", "面经收藏"],
+  ["No favorited schools yet.", "还没有收藏院校。"],
+  ["No favorited experiences yet.", "还没有收藏面经。"],
+  ["No site reminders for favorited schools or submitted experiences right now.", "当前没有院校收藏或投稿相关站内提醒。"],
+  ["Account settings", "账号设置"],
+  ["Preferences updated", "偏好已更新"],
+  ["Logout", "退出登录"],
+  ["Admin console", "管理后台"],
+  ["Admin", "管理"],
+  ["Admin left navigation", "管理端左侧导航"],
+  ["Admin global status bar", "管理端全局状态栏"],
+  ["Admin main content", "管理端主内容"],
+  ["Global status: manual review required before student-visible changes", "全局状态：学生可见变更前必须人工审核"],
+  ["Signed in as", "当前登录"],
+  ["Detail drawer", "详情面板"],
+  ["Action bar", "操作区"],
+  ["Student-visible preview", "学生端预览"],
+  ["Audit requirement", "审计要求"],
+  ["Data Ingestion", "AI 入库"],
+  ["Guide Review", "简章审核"],
+  ["Timeline Management", "时间线管理"],
+  ["Formula Management", "公式管理"],
+  ["Experience Review", "面经审核"],
+  ["Verification Review", "认证审核"],
+  ["Report Handling", "举报处理"],
+  ["Overview", "总览"],
+  ["Published guide", "已发布简章"],
+  ["Published guides", "已发布简章"],
+  ["Published experiences", "已发布面经"],
+  ["Published official data", "已发布官方数据"],
+  ["Visible to students", "学生端可见"],
+  ["Guide releases and deadlines", "简章发布与截止节点"],
+  ["Structured student references", "结构化学生参考"],
+  ["Official not specified", "官方未明确"],
+  ["Pending supplement", "待补充"],
+  ["To be announced", "待公布"],
+  ["Not Started", "未开始"],
+  ["Due Soon", "即将截止"],
+  ["Ended", "已结束"],
+  ["Active", "进行中"],
+  ["Application start", "报名开始"],
+  ["Preliminary review result", "初审结果"],
+  ["Shortlist publication", "入围名单"],
+  ["Official guide summary", "官方简章摘要"],
+  ["Application window", "报名时间"],
+  ["Updated", "更新于"],
+  ["Assessment", "考核"],
+  ["Assessment format", "考核形式"],
+  ["Subject requirements", "选科要求"],
+  ["Academic test requirements", "学考要求"],
+  ["Assessment and admission", "考核与录取"],
+  ["Admission rule", "录取规则"],
+  ["Fees and consultation", "费用与咨询"],
+  ["Featured experiences", "精选面经"],
+  ["Expand", "展开"],
+  ["Application:", "报名费："],
+  ["Assessment:", "考核费："],
+  ["Phone:", "电话："],
+  ["Email:", "邮箱："],
+  ["CNY", "元"],
+  ["Current cycle", "当前周期"],
+  ["Timeline progress", "时间线进度"],
+  ["school", "所院校"],
+  ["schools", "所院校"],
+  ["node", "个节点"],
+  ["nodes", "个节点"],
+  ["story", "条面经"],
+  ["stories", "条面经"],
+  ["experience", "条面经"],
+  ["experiences", "条面经"],
+  ["Select school", "选择院校"],
+  ["Select year", "选择年份"],
+  ["Select score", "选择分值"],
+  ["Select track", "选择科类"],
+  ["Select stage", "选择阶段"],
+  ["Select status", "选择状态"],
+  ["Physics", "物理类"],
+  ["History", "历史类"],
+  ["General", "通用"],
+  ["Preliminary review", "初审"],
+  ["Admission result", "录取结果"],
+  ["Shortlisted status", "入围状态"],
+  ["Shortlisted", "已入围"],
+  ["Not shortlisted", "未入围"],
+  ["Admitted status", "录取状态"],
+  ["Not disclosed", "未披露"],
+  ["Admitted", "已录取"],
+  ["Not admitted", "未录取"],
+  ["Structured interview", "结构化面试"],
+  ["Group discussion", "小组讨论"],
+  ["Machine test", "机试"],
+  ["Materials review", "材料审核"],
+  ["Practical task", "实践任务"],
+  ["Motivation", "报考动机"],
+  ["Current affairs", "时事议题"],
+  ["Major interest", "专业兴趣"],
+  ["Experiment design", "实验设计"],
+  ["Project reflection", "项目复盘"],
+  ["Math reasoning", "数学推理"],
+  ["Teamwork", "团队协作"],
+  ["Learning plan", "学习计划"],
+  ["Structured submission", "结构化投稿"],
+  ["Submit experience", "发布面经"],
+  ["Submit", "提交"],
+  ["Back to experiences", "返回面经"],
+  ["Review after submit", "提交后审核"],
+  ["Record school assessment details, preparation signals, and optional verification metadata for reviewer approval.", "记录校测过程、准备经验和可选认证材料元数据，提交审核后再公开。"],
+  ["Saved draft found from this device.", "发现本设备保存的草稿。"],
+  ["Restore draft", "恢复草稿"],
+  ["Clear draft", "清除草稿"],
+  ["Experience submission form", "面经投稿表单"],
+  ["School and result", "院校与结果"],
+  ["School", "院校"],
+  ["Major group", "专业组"],
+  ["Candidate track", "考生科类"],
+  ["Stage", "阶段"],
+  ["Location", "地点"],
+  ["Assessment details", "考核详情"],
+  ["Assessment types", "考核类型"],
+  ["Process", "流程"],
+  ["Question types", "问题类型"],
+  ["Preparation", "准备"],
+  ["Scores and advice", "评分与建议"],
+  ["Difficulty score", "难度评分"],
+  ["Pressure score", "压力评分"],
+  ["Differentiation score", "区分度评分"],
+  ["Anonymous preference", "匿名偏好"],
+  ["Anonymous display", "匿名展示"],
+  ["Show nickname", "展示昵称"],
+  ["Advice", "建议"],
+  ["Verification metadata", "认证材料元数据"],
+  ["Verification metadata helps reviewers check authenticity. It stays reviewer-only and is not shown on student pages.", "认证材料元数据用于帮助审核员核验真实性，仅审核端可见，不会展示在学生端。"],
+  ["Material type", "材料类型"],
+  ["Storage key", "存储键"],
+  ["required", "必填"],
+  ["Pending review", "待审核"],
+  ["verification metadata record", "条认证材料元数据"],
+  ["metadata records", "条认证材料元数据"],
+  ["Display", "展示身份"],
+  ["Timeline", "时间线"],
+  ["All Nodes", "全部节点"],
+  ["My Favorites", "我的收藏"],
+  ["Collect schools to build My Favorites", "收藏院校后生成我的时间线"],
+  ["Source guide year", "来源简章年份"],
+  ["Score inputs", "成绩输入"],
+  ["Result will appear after calculation.", "计算后将在这里显示结果。"],
+  ["Calculate score", "计算综合分"],
+  ["Calculating...", "正在计算..."],
+  ["Data ingestion", "AI 入库"],
+  ["Create ingestion run", "创建入库任务"],
+  ["Source candidates", "来源候选"],
+  ["Extraction confidence", "抽取置信度"],
+  ["Draft guide", "简章草稿"],
+  ["Manual review required", "需要人工审核"],
+  ["No timeline candidates stored.", "暂无时间线候选。"],
+  ["No formula candidates stored.", "暂无公式候选。"],
+  ["Source priority", "来源优先级"],
+  ["Official source preview or link", "官方来源预览或链接"],
+  ["Official source attribution", "官方来源归因"],
+  ["Official source checked; missing fields are marked for students.", "已核对官方来源，缺失字段会向学生标注。"],
+  ["Official notice checked and date/title corrected", "已核对官方通知并修正日期/标题"],
+  ["Official source URL", "官方来源链接"],
+  ["Official source linked", "已关联官方来源"],
+  ["Source required", "需要来源"],
+  ["Publication requirement", "发布要求"],
+  ["At least one sample calculation passed", "至少一个样例计算已通过"],
+  ["A passing sample calculation is required", "需要一个通过的样例计算"],
+  ["Test sample area", "样例测试区"],
+  ["Approval is blocked when rewrite-required warnings are present", "存在需改写风险提示时禁止通过"],
+  ["Reason required when refusing verification", "拒绝认证时必须填写原因"],
+  ["Explain why the verification material is rejected or returned.", "说明认证材料被拒绝或退回的原因。"],
+  ["Report reason", "举报原因"],
+  ["Target preview", "对象预览"],
+  ["History and operator record", "历史与操作记录"],
+  ["Resolution notes are required for every report action", "每个举报处理动作都必须填写处理说明"],
+  ["Record why the report is kept, rejected, hidden, deleted, or account-limited.", "记录保留、驳回、隐藏、删除或限制账号的原因。"],
+  ["No reports match this queue.", "当前队列没有匹配举报。"],
+  ["No report selected.", "未选择举报。"],
+  ["Open detail drawer", "打开详情面板"],
+  ["Keep content", "保留内容"],
+  ["Hide content", "隐藏内容"],
+  ["Delete display", "删除展示"],
+  ["Limit account", "限制账号"],
+  ["Reject report", "驳回举报"],
+  ["Target id", "对象 ID"],
+  ["Report id", "举报 ID"],
+  ["Description", "说明"],
+  ["Operator", "操作人"],
+  ["Operation time", "操作时间"],
+  ["Resolved", "已处理"],
+  ["Created", "创建时间"],
+  ["Reason", "原因"],
+  ["Note", "备注"],
+  ["Action", "操作"],
+  ["Currently visible", "当前可见"],
+  ["Not student-visible", "学生端不可见"],
+  ["No resolution recorded", "暂无处理记录"],
+  ["Published school", "已发布院校"]
+]);
 
 function escapeHtml(value) {
   return String(value)
@@ -81,10 +422,10 @@ function safeScriptJson(value) {
 
 function formatDate(value) {
   if (!value) {
-    return "To be announced";
+    return "待公布";
   }
 
-  return dateFormatter.format(new Date(value));
+  return zhDateFormatter.format(new Date(value));
 }
 
 function timestampFor(value) {
@@ -101,6 +442,10 @@ function pluralize(count, singular, plural = `${singular}s`) {
 }
 
 function humanizeToken(value) {
+  if (Object.hasOwn(tokenLabels, value)) {
+    return tokenLabels[value];
+  }
+
   return String(value)
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -108,7 +453,7 @@ function humanizeToken(value) {
 
 function displayValue(value, fallback = missingOfficialText) {
   if (Array.isArray(value)) {
-    return value.length > 0 ? value.join(", ") : fallback;
+    return value.length > 0 ? value.join("、") : fallback;
   }
 
   if (value === 0) {
@@ -123,7 +468,7 @@ function displayValue(value, fallback = missingOfficialText) {
 }
 
 function schoolNameFor(record) {
-  return getSchoolById(record.schoolId)?.name ?? "Published school";
+  return getSchoolById(record.schoolId)?.name ?? "已发布院校";
 }
 
 function currentAdmissionYear(guides) {
@@ -167,8 +512,8 @@ function highQualityExperiences(experiences) {
 }
 
 function htmlPage({ title, body }) {
-  return `<!doctype html>
-<html lang="en">
+  const html = `<!doctype html>
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -180,6 +525,43 @@ function htmlPage({ title, body }) {
 ${body}
   </body>
 </html>`;
+
+  return translateHtml(html);
+}
+
+function translateHtml(html) {
+  return html
+    .split(/(<script\b[\s\S]*?<\/script>)/gi)
+    .map((part) => {
+      if (part.toLowerCase().startsWith("<script")) {
+        return part;
+      }
+
+      return translateHtmlFragment(part);
+    })
+    .join("");
+}
+
+function translateHtmlFragment(html) {
+  return html
+    .split(/(<[^>]+>)/g)
+    .map((part) => {
+      if (!part.startsWith("<")) {
+        return translateTextSegment(part);
+      }
+
+      return part.replace(
+        /\b(aria-label|placeholder|title|content)="([^"]*)"/g,
+        (match, attribute, value) => `${attribute}="${translateTextSegment(value)}"`
+      );
+    })
+    .join("");
+}
+
+function translateTextSegment(text) {
+  return [...htmlTranslations]
+    .sort((left, right) => right[0].length - left[0].length)
+    .reduce((translated, [source, target]) => translated.replaceAll(source, target), text);
 }
 
 function renderIcon(name) {
@@ -214,17 +596,17 @@ function renderStudentNav(currentKey = "") {
 }
 
 function renderStudentBottomNav(currentKey = "") {
-  return `<nav class="student-bottom-nav" aria-label="Student bottom navigation" data-student-bottom-nav="true">${renderStudentNav(currentKey)}</nav>`;
+  return `<nav class="student-bottom-nav" aria-label="学生底部导航" data-student-bottom-nav="true">${renderStudentNav(currentKey)}</nav>`;
 }
 
 function renderGradeSwitch(currentGrade = "high_school_g3") {
   const grades = [
-    ["high_school_g1", "G1"],
-    ["high_school_g2", "G2"],
-    ["high_school_g3", "G3"]
+    ["high_school_g1", "高一"],
+    ["high_school_g2", "高二"],
+    ["high_school_g3", "高三"]
   ];
 
-  return `<div class="grade-switch" aria-label="Grade switch" role="group">
+  return `<div class="grade-switch" aria-label="年级切换" role="group">
     ${grades
       .map(([grade, label]) => {
         const current = grade === currentGrade ? ` aria-current="page"` : "";
@@ -246,10 +628,10 @@ function renderStudentTopBar({
   type = "list",
   title,
   backHref = "",
-  backLabel = "Go back",
+  backLabel = "返回",
   actionHtml = "",
   filterHref = "",
-  filterLabel = "Open filters",
+  filterLabel = "打开筛选",
   submitState = ""
 }) {
   const backEntry = backHref ? renderIconLink({ href: backHref, label: backLabel, icon: "back" }) : "";
@@ -308,20 +690,20 @@ function renderAdminShell({
   user,
   content,
   detailPanel = "",
-  statusText = "Global status: manual review required before student-visible changes"
+  statusText = "全局状态：学生可见变更前必须人工审核"
 }) {
   return htmlPage({
     title,
     body: `    <div class="admin-workspace" data-admin-shell="desktop">
-      <aside class="admin-sidebar" aria-label="Admin left navigation">
+      <aside class="admin-sidebar" aria-label="管理端左侧导航">
         <a class="brand admin-brand" href="/admin">
-          <span class="brand-mark">Admin</span>
+          <span class="brand-mark">管理</span>
           <span class="brand-name">${productName}</span>
         </a>
-        <nav class="admin-side-nav" aria-label="Admin left navigation">${renderAdminNav(currentKey)}</nav>
+        <nav class="admin-side-nav" aria-label="管理端左侧导航">${renderAdminNav(currentKey)}</nav>
       </aside>
       <div class="admin-surface">
-        <header class="admin-topbar" aria-label="Admin global status bar">
+        <header class="admin-topbar" aria-label="管理端全局状态栏">
           <div>
             <p class="eyebrow">${escapeHtml(eyebrow)}</p>
             <h1>${escapeHtml(heading)}</h1>
@@ -329,10 +711,10 @@ function renderAdminShell({
           </div>
           <div class="admin-topbar-meta">
             <span>${escapeHtml(statusText)}</span>
-            ${user ? `<strong>Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</strong>` : ""}
+            ${user ? `<strong>当前登录：${escapeHtml(user.nickname)}（${escapeHtml(humanizeToken(user.role))}）</strong>` : ""}
           </div>
         </header>
-        <main class="admin-content" aria-label="Admin main content">
+        <main class="admin-content" aria-label="管理端主内容">
           <div class="admin-main-region">${content}</div>
           ${detailPanel}
         </main>
@@ -359,14 +741,14 @@ function renderAdminPanel({ id, title, kicker, sections, actions = "", footer = 
   return `<aside class="admin-detail-panel" id="${escapeHtml(id)}" aria-label="${escapeHtml(title)}">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">Detail drawer</p>
+        <p class="eyebrow">详情面板</p>
         <h2>${escapeHtml(title)}</h2>
         ${kicker ? `<p class="section-kicker">${escapeHtml(kicker)}</p>` : ""}
       </div>
     </div>
     ${sections.join("")}
-    ${actions ? `<section class="admin-review-section" aria-label="${escapeHtml(title)} actions">
-      <h3>Action bar</h3>
+    ${actions ? `<section class="admin-review-section" aria-label="${escapeHtml(title)}操作">
+      <h3>操作区</h3>
       ${actions}
     </section>` : ""}
     ${footer}
@@ -383,24 +765,24 @@ function renderAdminPanelSection(title, body, ariaLabel = title) {
 function renderStatusCards({ currentYear, annualGuideCount, annualTimelineCount, annualExperienceCount }) {
   return [
     {
-      label: "Current cycle",
-      value: `${currentYear} Guangdong`,
-      detail: "Published official data"
+      label: "当前周期",
+      value: `${currentYear} 广东`,
+      detail: "已发布官方数据"
     },
     {
-      label: "Published guides",
-      value: `${annualGuideCount} ${pluralize(annualGuideCount, "school")}`,
-      detail: "Visible to students"
+      label: "已发布简章",
+      value: `${annualGuideCount} 所院校`,
+      detail: "学生端可见"
     },
     {
-      label: "Timeline progress",
-      value: `${annualTimelineCount} ${pluralize(annualTimelineCount, "node")}`,
-      detail: "Guide releases and deadlines"
+      label: "时间线进度",
+      value: `${annualTimelineCount} 个节点`,
+      detail: "简章发布与截止节点"
     },
     {
-      label: "Published experiences",
-      value: `${annualExperienceCount} ${pluralize(annualExperienceCount, "story", "stories")}`,
-      detail: "Structured student references"
+      label: "已发布面经",
+      value: `${annualExperienceCount} 条面经`,
+      detail: "结构化学生参考"
     }
   ]
     .map(
@@ -427,7 +809,7 @@ function renderGradeCards() {
 
 function renderTimelineCards(events) {
   if (events.length === 0) {
-    return `<p class="empty-state">No published timeline dates are available yet.</p>`;
+    return `<p class="empty-state">暂无已发布时间线日期。</p>`;
   }
 
   return events
@@ -443,35 +825,35 @@ function renderTimelineCards(events) {
 
 function renderGuideCards(guides) {
   if (guides.length === 0) {
-    return `<p class="empty-state">No published guides are available yet.</p>`;
+    return `<p class="empty-state">暂无已发布招生简章。</p>`;
   }
 
   return guides
     .map((guide) => `<article class="info-card">
       <div class="badge-row">
         <span class="badge">${escapeHtml(guide.admissionYear)}</span>
-        <span class="soft-badge">Published guide</span>
+        <span class="soft-badge">已发布简章</span>
       </div>
       <h3>${escapeHtml(schoolNameFor(guide))}</h3>
       <p>${escapeHtml(guide.summary)}</p>
       <dl class="detail-list">
         <div>
-          <dt>Application window</dt>
-          <dd>${escapeHtml(formatDate(guide.applicationStartAt))} to ${escapeHtml(formatDate(guide.applicationDeadlineAt))}</dd>
+          <dt>报名时间</dt>
+          <dd>${escapeHtml(formatDate(guide.applicationStartAt))} 至 ${escapeHtml(formatDate(guide.applicationDeadlineAt))}</dd>
         </div>
         <div>
-          <dt>Updated</dt>
+          <dt>更新于</dt>
           <dd>${escapeHtml(formatDate(guide.updatedAt))}</dd>
         </div>
       </dl>
-      <a class="text-link" href="${escapeHtml(guide.officialSourceUrl)}" rel="noopener">Official source</a>
+      <a class="text-link" href="${escapeHtml(guide.officialSourceUrl)}" rel="noopener">官方来源</a>
     </article>`)
     .join("");
 }
 
 function renderExperienceCards(experiences) {
   if (experiences.length === 0) {
-    return `<p class="empty-state">No published experiences are available yet.</p>`;
+    return `<p class="empty-state">暂无已发布面经。</p>`;
   }
 
   return experiences
@@ -484,11 +866,11 @@ function renderExperienceCards(experiences) {
       <p>${escapeHtml(experience.summary)}</p>
       <dl class="detail-list">
         <div>
-          <dt>Assessment</dt>
+          <dt>考核</dt>
           <dd>${escapeHtml(experience.assessmentTypes.join(", "))}</dd>
         </div>
         <div>
-          <dt>Useful count</dt>
+          <dt>有用数</dt>
           <dd>${escapeHtml(experience.usefulCount)}</dd>
         </div>
       </dl>
@@ -502,7 +884,7 @@ function selectedAttribute(currentValue, optionValue) {
 
 function uniqueSorted(values) {
   return [...new Set(values.filter(Boolean))]
-    .sort((left, right) => String(left).localeCompare(String(right), "en"));
+    .sort((left, right) => String(left).localeCompare(String(right), "zh-CN"));
 }
 
 function renderOption(value, label, currentValue) {
@@ -563,70 +945,70 @@ function renderSchoolFilters(filters, allCards) {
   const schoolTypes = uniqueSorted(allCards.map((card) => card.school.schoolType));
 
   const yearOptions = [
-    renderOption("", "All years", filters.year ?? ""),
+    renderOption("", "全部年份", filters.year ?? ""),
     ...years.map((year) => renderOption(year, year, filters.year))
   ].join("");
   const statusOptions = [
-    renderOption("", "All guide statuses", filters.status ?? ""),
-    renderOption("published", "Published", filters.status),
-    renderOption("pending_review", "Waiting publication", filters.status),
-    renderOption("archived", "Historical reference", filters.status)
+    renderOption("", "全部简章状态", filters.status ?? ""),
+    renderOption("published", "已发布", filters.status),
+    renderOption("pending_review", "待发布", filters.status),
+    renderOption("archived", "历史参考", filters.status)
   ].join("");
   const applicationStatusOptions = [
-    renderOption("", "All application statuses", filters.applicationStatus ?? ""),
+    renderOption("", "全部报名状态", filters.applicationStatus ?? ""),
     ...applicationStatuses.map((status) => renderOption(status, humanizeToken(status), filters.applicationStatus))
   ].join("");
   const schoolTypeOptions = [
-    renderOption("", "All school types", filters.schoolType ?? ""),
+    renderOption("", "全部院校类型", filters.schoolType ?? ""),
     ...schoolTypes.map((schoolType) => renderOption(schoolType, humanizeToken(schoolType), filters.schoolType))
   ].join("");
   const sortOptions = [
-    renderOption("deadline", "Application deadline", filters.sort ?? "deadline"),
-    renderOption("updated", "Update time", filters.sort),
-    renderOption("name", "School name", filters.sort)
+    renderOption("deadline", "报名截止", filters.sort ?? "deadline"),
+    renderOption("updated", "更新时间", filters.sort),
+    renderOption("name", "院校名称", filters.sort)
   ].join("");
 
-  return `<form class="school-filter-panel" method="get" action="/schools" aria-label="School filters" data-school-filter-form="true">
+  return `<form class="school-filter-panel" method="get" action="/schools" aria-label="院校筛选" data-school-filter-form="true">
     <label class="filter-field school-search-field">
-      <span>School keyword</span>
-      <input type="search" name="keyword" value="${escapeHtml(filters.keyword ?? "")}" placeholder="Search school" autocomplete="off">
+      <span>院校关键词</span>
+      <input type="search" name="keyword" value="${escapeHtml(filters.keyword ?? "")}" placeholder="搜索院校" autocomplete="off">
     </label>
-    <div class="school-filter-row" aria-label="Visible school filters">
+    <div class="school-filter-row" aria-label="可见院校筛选">
       <label class="filter-field">
-        <span>Year</span>
+        <span>年份</span>
         <select name="year">${yearOptions}</select>
       </label>
       <label class="filter-field">
-        <span>Guide status</span>
+        <span>简章状态</span>
         <select name="status">${statusOptions}</select>
       </label>
       <label class="filter-field">
-        <span>Application status</span>
+        <span>报名状态</span>
         <select name="applicationStatus">${applicationStatusOptions}</select>
       </label>
       <label class="filter-field">
-        <span>School type</span>
+        <span>院校类型</span>
         <select name="schoolType">${schoolTypeOptions}</select>
       </label>
       <label class="filter-field">
-        <span>Sort</span>
+        <span>排序</span>
         <select name="sort">${sortOptions}</select>
       </label>
     </div>
     <div class="filter-actions">
-      <button class="primary-action" type="submit">Apply</button>
-      <a class="secondary-action" href="/schools" data-school-clear-filters="true">Clear</a>
+      <button class="primary-action" type="submit">应用</button>
+      <a class="secondary-action" href="/schools" data-school-clear-filters="true">清空</a>
     </div>
   </form>`;
 }
 
 function selectedSchoolFilterEntries(filters) {
   const entries = [
-    ["Year", filters.year],
-    ["Keyword", filters.keyword],
-    ["Guide status", filters.status && humanizeToken(filters.status)],
-    ["Application status", filters.applicationStatus && humanizeToken(filters.applicationStatus)],
-    ["School type", filters.schoolType && humanizeToken(filters.schoolType)]
+    ["年份", filters.year],
+    ["关键词", filters.keyword],
+    ["简章状态", filters.status && humanizeToken(filters.status)],
+    ["报名状态", filters.applicationStatus && humanizeToken(filters.applicationStatus)],
+    ["院校类型", filters.schoolType && humanizeToken(filters.schoolType)]
   ];
 
   return entries.filter(([, value]) => value !== undefined && value !== null && String(value).length > 0);
@@ -636,20 +1018,20 @@ function renderSelectedSchoolFilters(filters) {
   const selected = selectedSchoolFilterEntries(filters);
 
   if (selected.length === 0) {
-    return `<p class="filter-summary">Showing all published school guide cards.</p>`;
+    return `<p class="filter-summary">正在展示全部已发布院校简章卡片。</p>`;
   }
 
-  return `<div class="selected-filters" aria-label="Selected school filters">
+  return `<div class="selected-filters" aria-label="已选院校筛选">
     ${selected
       .map(([label, value]) => `<span class="filter-chip">${escapeHtml(label)}: ${escapeHtml(value)}</span>`)
       .join("")}
-    <a class="text-link" href="/schools" data-school-clear-filters="true">Clear filters</a>
+    <a class="text-link" href="/schools" data-school-clear-filters="true">清空筛选</a>
   </div>`;
 }
 
 function renderSchoolTimelineNodes(nodes) {
   if (nodes.length === 0) {
-    return `<p class="inline-empty">Timeline ${escapeHtml(pendingSupplementText.toLowerCase())}</p>`;
+    return `<p class="inline-empty">时间线${escapeHtml(pendingSupplementText)}</p>`;
   }
 
   return `<ul class="school-timeline">${nodes
@@ -662,7 +1044,7 @@ function renderSchoolTimelineNodes(nodes) {
 
 function renderFormulaTag(formula) {
   if (!formula?.available) {
-    return "No formula";
+    return "无明确公式";
   }
 
   const formulaName = String(formula.formulaName ?? "").toLowerCase();
@@ -676,25 +1058,25 @@ function renderFormulaTag(formula) {
   }
 
   if (formula.formulaType === "custom") {
-    return "Custom";
+    return "自定义";
   }
 
-  return "Custom";
+  return "自定义";
 }
 
 function renderExperienceAvailability(experiences) {
-  return `${experiences.count} ${pluralize(experiences.count, "experience")}`;
+  return `${experiences.count} 条面经`;
 }
 
 function renderSchoolEmptyState(filters) {
   const hasFilters = selectedSchoolFilterEntries(filters).length > 0;
   const clearAction = hasFilters
-    ? `<a class="secondary-action" href="/schools" data-school-clear-filters="true">Clear filters</a>`
+    ? `<a class="secondary-action" href="/schools" data-school-clear-filters="true">清空筛选</a>`
     : "";
 
   return `<div class="empty-state school-empty-state">
-    <strong>No matching schools</strong>
-    <p>No schools match these filters. Try switching year or status.</p>
+    <strong>没有匹配院校</strong>
+    <p>当前筛选没有匹配院校，可以切换年份或状态。</p>
     ${clearAction}
   </div>`;
 }
@@ -725,28 +1107,28 @@ function renderSchoolCards(cards, filters) {
         </div>
         <dl class="school-card-facts">
           <div>
-            <dt>Deadline</dt>
+            <dt>截止时间</dt>
             <dd>${escapeHtml(formatDate(card.guide.applicationDeadlineAt))}</dd>
           </div>
           <div>
-            <dt>Formula</dt>
+            <dt>公式</dt>
             <dd>${escapeHtml(renderFormulaTag(card.formula))}</dd>
           </div>
           <div>
-            <dt>Experiences</dt>
+            <dt>面经</dt>
             <dd>${escapeHtml(renderExperienceAvailability(card.experiences))}</dd>
           </div>
           <div>
-            <dt>Application</dt>
+            <dt>报名</dt>
             <dd>${escapeHtml(humanizeToken(card.guide.applicationStatus))}</dd>
           </div>
         </dl>
         <p>${escapeHtml(card.guide.summary)}</p>
         <div class="timeline-block">
-          <h4>Key timeline</h4>
+          <h4>关键时间线</h4>
           ${renderSchoolTimelineNodes(card.keyTimelineNodes)}
         </div>
-        <a class="text-link school-card-link" href="${detailHref}">View school detail</a>
+        <a class="text-link school-card-link" href="${detailHref}">查看院校详情</a>
       </article>`;
     })
     .join("");
@@ -759,38 +1141,38 @@ function renderTimelineFilters(filters) {
     listSchoolGuideCards({ sort: "name" }).map((card) => [card.school.id, card.school])
   );
   const nodeTypeOptions = [
-    renderOption("", "All node types", filters.nodeType ?? ""),
+    renderOption("", "全部节点类型", filters.nodeType ?? ""),
     ...timelineEventDefinitions.map((definition) => (
       renderOption(definition.eventKey, definition.title, filters.nodeType)
     ))
   ].join("");
   const yearOptions = [
-    renderOption("", "All years", filters.year ?? ""),
+    renderOption("", "全部年份", filters.year ?? ""),
     ...years.map((year) => renderOption(year, year, filters.year))
   ].join("");
   const schoolOptions = [
-    renderOption("", "All schools", selectedSchoolId),
+    renderOption("", "全部院校", selectedSchoolId),
     ...[...schoolsById.values()].map((school) => renderOption(school.id, school.name, selectedSchoolId))
   ].join("");
   const mineInput = filters.mine ? `<input type="hidden" name="mine" value="true">` : "";
 
-  return `<form class="filter-panel timeline-filter-panel" method="get" action="/timeline" aria-label="Timeline filters">
+  return `<form class="filter-panel timeline-filter-panel" method="get" action="/timeline" aria-label="时间线筛选">
     ${mineInput}
     <label class="filter-field">
-      <span>Year</span>
+      <span>年份</span>
       <select name="year">${yearOptions}</select>
     </label>
     <label class="filter-field">
-      <span>Node type</span>
+      <span>节点类型</span>
       <select name="nodeType">${nodeTypeOptions}</select>
     </label>
     <label class="filter-field wide-field">
-      <span>School</span>
+      <span>院校</span>
       <select name="schoolIds">${schoolOptions}</select>
     </label>
     <div class="filter-actions">
-      <button class="secondary-action" type="submit">Apply</button>
-      <a class="secondary-action" href="${filters.mine ? "/timeline?mine=true" : "/timeline"}">Reset</a>
+      <button class="secondary-action" type="submit">应用</button>
+      <a class="secondary-action" href="${filters.mine ? "/timeline?mine=true" : "/timeline"}">重置</a>
     </div>
   </form>`;
 }
@@ -831,19 +1213,19 @@ function renderTimelineTabs(filters) {
   const allCurrent = filters.mine ? "" : ` aria-current="page"`;
   const mineCurrent = filters.mine ? ` aria-current="page"` : "";
 
-  return `<nav class="timeline-tabs" aria-label="Timeline scope">
-    <a href="${escapeHtml(allHref)}"${allCurrent}>All Nodes</a>
-    <a href="${escapeHtml(mineHref)}"${mineCurrent}>My Favorites</a>
+  return `<nav class="timeline-tabs" aria-label="时间线范围">
+    <a href="${escapeHtml(allHref)}"${allCurrent}>全部节点</a>
+    <a href="${escapeHtml(mineHref)}"${mineCurrent}>我的收藏</a>
   </nav>`;
 }
 
 function formatTimelineWindow(node) {
   if (!node.startsAt && !node.endsAt) {
-    return "To be announced";
+    return "待公布";
   }
 
   if (node.startsAt && node.endsAt && node.startsAt !== node.endsAt) {
-    return `${formatDate(node.startsAt)} to ${formatDate(node.endsAt)}`;
+    return `${formatDate(node.startsAt)} 至 ${formatDate(node.endsAt)}`;
   }
 
   return formatDate(node.endsAt ?? node.startsAt);
@@ -853,7 +1235,7 @@ function timelineDisplayStatus(node) {
   if (!node.isDateKnown) {
     return {
       className: "status-to_be_announced",
-      label: "To be announced"
+      label: "待公布"
     };
   }
 
@@ -867,16 +1249,16 @@ function timelineMonthLabel(node) {
   const dateValue = node.startsAt ?? node.endsAt;
 
   if (!dateValue) {
-    return "To be announced";
+    return "待公布";
   }
 
   const date = new Date(dateValue);
 
   if (Number.isNaN(date.getTime())) {
-    return "To be announced";
+    return "待公布";
   }
 
-  return date.toLocaleString("en", {
+  return date.toLocaleString("zh-CN", {
     month: "long",
     year: "numeric",
     timeZone: "UTC"
@@ -904,17 +1286,17 @@ function groupTimelineNodesByMonth(nodes) {
 function renderTimelineEmptyState(timeline) {
   if (timeline.mine && timeline.favorites.length === 0) {
     return `<div class="timeline-empty-state">
-      <strong>Collect schools to build My Favorites.</strong>
-      <p>Favorite schools from the school list or detail pages, then return here for a school-focused timeline.</p>
-      <a class="secondary-action" href="/schools">Browse schools</a>
+      <strong>收藏院校后生成我的时间线。</strong>
+      <p>从院校列表或详情页收藏目标院校，再回到这里查看院校相关时间线。</p>
+      <a class="secondary-action" href="/schools">浏览院校</a>
     </div>`;
   }
 
   if (timeline.mine) {
-    return `<p class="empty-state">No favorite-school timeline nodes match these filters.</p>`;
+    return `<p class="empty-state">当前筛选没有匹配的收藏院校时间线节点。</p>`;
   }
 
-  return `<p class="empty-state">No published timeline nodes match these filters.</p>`;
+  return `<p class="empty-state">当前筛选没有匹配的已发布时间线节点。</p>`;
 }
 
 function renderTimelineNodeCards(timeline) {
@@ -930,7 +1312,7 @@ function renderTimelineNodeCards(timeline) {
       <div class="timeline-month-list">${group.nodes
     .map((node) => {
       const reminderBadge = reminderEventIds.has(node.id)
-        ? `<span class="site-badge">Site reminder</span>`
+        ? `<span class="site-badge">站内提醒</span>`
         : "";
       const displayStatus = timelineDisplayStatus(node);
       const detailHref = `/schools/${escapeHtml(encodeURIComponent(node.school.id))}?year=${escapeHtml(node.guide.admissionYear)}`;
@@ -944,23 +1326,23 @@ function renderTimelineNodeCards(timeline) {
         <h4><a href="${detailHref}">${escapeHtml(node.title)}</a></h4>
         <dl class="detail-list split-details">
           <div>
-            <dt>School</dt>
+            <dt>院校</dt>
             <dd>${escapeHtml(node.school.name)}</dd>
           </div>
           <div>
-            <dt>Date</dt>
+            <dt>日期</dt>
             <dd>${escapeHtml(formatTimelineWindow(node))}</dd>
           </div>
           <div>
-            <dt>Node type</dt>
+            <dt>节点类型</dt>
             <dd>${escapeHtml(humanizeToken(node.eventKey))}</dd>
           </div>
           <div>
-            <dt>Source guide year</dt>
+            <dt>来源简章年份</dt>
             <dd>${escapeHtml(node.guide.admissionYear)}</dd>
           </div>
         </dl>
-        <a class="text-link" href="${detailHref}">Open related school detail</a>
+        <a class="text-link" href="${detailHref}">查看关联院校详情</a>
       </article>`;
     })
     .join("")}</div>
@@ -1026,7 +1408,7 @@ function renderFeeSummary(fees) {
   const applicationFee = fees.applicationFeeCny ?? missingOfficialText;
   const assessmentFee = fees.assessmentFeeCny ?? missingOfficialText;
 
-  return `Application: ${Number.isFinite(applicationFee) ? `CNY ${applicationFee}` : applicationFee}; Assessment: ${Number.isFinite(assessmentFee) ? `CNY ${assessmentFee}` : assessmentFee}`;
+  return `报名费：${Number.isFinite(applicationFee) ? `${applicationFee} 元` : applicationFee}；考核费：${Number.isFinite(assessmentFee) ? `${assessmentFee} 元` : assessmentFee}`;
 }
 
 function renderContactSummary(contact) {
@@ -1035,17 +1417,17 @@ function renderContactSummary(contact) {
   }
 
   return [
-    `Phone: ${displayValue(contact.phone)}`,
-    `Email: ${displayValue(contact.email)}`
-  ].join("; ");
+    `电话：${displayValue(contact.phone)}`,
+    `邮箱：${displayValue(contact.email)}`
+  ].join("；");
 }
 
 const detailTimelineOrder = [
-  ["application_start", "Application start"],
-  ["application_deadline", "Application deadline"],
-  ["preliminary_review_result", "Preliminary review result"],
-  ["school_assessment", "School assessment"],
-  ["shortlist_publication", "Shortlist publication"]
+  ["application_start", "报名开始"],
+  ["application_deadline", "报名截止"],
+  ["preliminary_review_result", "初审结果"],
+  ["school_assessment", "校测"],
+  ["shortlist_publication", "入围名单"]
 ];
 
 function dateForDetailTimeline(eventKey, guide, nodes) {
@@ -1063,7 +1445,7 @@ function dateForDetailTimeline(eventKey, guide, nodes) {
 
 function renderDetailTimelineCard(detail) {
   return `<article class="detail-panel" data-detail-card="key-timeline">
-    <div class="section-heading"><h2>Key timeline</h2></div>
+    <div class="section-heading"><h2>关键时间线</h2></div>
     <ul class="detail-timeline">${detailTimelineOrder
       .map(([eventKey, label]) => `<li>
         <span>${escapeHtml(label)}</span>
@@ -1086,8 +1468,8 @@ function renderHistoricalReferenceNotice(detail) {
     return "";
   }
 
-  const requestedYear = detail.requestedYear ?? "current year";
-  return `<p class="reference-notice">No published ${escapeHtml(requestedYear)} guide is visible yet. Showing ${escapeHtml(detail.selectedYear)} as historical reference.</p>`;
+  const requestedYear = detail.requestedYear ?? "当年";
+  return `<p class="reference-notice">暂无可见的 ${escapeHtml(requestedYear)} 已发布简章，当前展示 ${escapeHtml(detail.selectedYear)} 年作为历史参考。</p>`;
 }
 
 function renderCollapsibleText(value, label, fallback = missingOfficialText) {
@@ -1106,7 +1488,7 @@ function renderCollapsibleText(value, label, fallback = missingOfficialText) {
   return `<div class="collapsible-text">
     <p>${escapeHtml(preview)}</p>
     <details>
-      <summary>Expand ${escapeHtml(label)}</summary>
+      <summary>展开${escapeHtml(label)}</summary>
       <p>${escapeHtml(text)}</p>
     </details>
   </div>`;
@@ -1116,15 +1498,15 @@ function renderOfficialGuideSummaryCard(detail) {
   const guide = detail.guide;
 
   return `<article class="detail-panel" data-detail-card="official-guide-summary">
-    <div class="section-heading"><h2>Official guide summary</h2></div>
+    <div class="section-heading"><h2>官方简章摘要</h2></div>
     ${renderHistoricalReferenceNotice(detail)}
     <h3>${escapeHtml(displayValue(guide.guideTitle, pendingSupplementText))}</h3>
     ${renderCollapsibleText(guide.summary, "official summary", pendingSupplementText)}
     ${renderDetailRows([
-      { label: "Source type", value: humanizeToken(displayValue(guide.sourceType)) },
-      { label: "Source date", value: formatDate(sourceDateForGuide(guide)) },
-      { label: "Official guide", html: renderDetailLink(guide.officialSourceUrl, "Open official guide") },
-      { label: "Version", value: `Version ${guide.version}` }
+      { label: "来源类型", value: humanizeToken(displayValue(guide.sourceType)) },
+      { label: "来源日期", value: formatDate(sourceDateForGuide(guide)) },
+      { label: "官方简章", html: renderDetailLink(guide.officialSourceUrl, "打开官方简章") },
+      { label: "版本", value: `版本 ${guide.version}` }
     ])}
   </article>`;
 }
@@ -1140,8 +1522,8 @@ function renderFormulaDetail(detail) {
 
   if (!formula) {
     return `<article class="detail-panel" id="formula" data-detail-card="score-formula">
-      <div class="section-heading"><h2>Score formula</h2></div>
-      <p class="empty-state">No published formula. Score calculation waits for official clarification.</p>
+      <div class="section-heading"><h2>综合分公式</h2></div>
+      <p class="empty-state">暂无已发布公式，综合分计算等待官方明确。</p>
     </article>`;
   }
 
@@ -1149,61 +1531,61 @@ function renderFormulaDetail(detail) {
     .map((input) => `<li>
       <span>${escapeHtml(input.label)}</span>
       <strong>${escapeHtml(Math.round(input.weight * 100))}%</strong>
-      <em>Max ${escapeHtml(input.maxScore)}</em>
+      <em>满分 ${escapeHtml(input.maxScore)}</em>
     </li>`)
     .join("");
   const calculatorHref = detailCalculatorHref(detail);
 
   return `<article class="detail-panel" id="formula" data-detail-card="score-formula">
     <div class="section-heading">
-      <h2>Score formula</h2>
-      ${renderDetailLink(formula.officialSourceUrl, "Formula source")}
+      <h2>综合分公式</h2>
+      ${renderDetailLink(formula.officialSourceUrl, "公式来源")}
     </div>
     <h3>${escapeHtml(formula.formulaName)}</h3>
     <p>${escapeHtml(formulaWeightSummary(formula))}</p>
-    ${renderCollapsibleText(formula.explanation, "formula explanation")}
+    ${renderCollapsibleText(formula.explanation, "公式说明")}
     <ul class="formula-inputs">${inputs}</ul>
-    <a class="text-link" href="${escapeHtml(calculatorHref)}">Open score calculator</a>
+    <a class="text-link" href="${escapeHtml(calculatorHref)}">打开综合分计算器</a>
   </article>`;
 }
 
 function renderAdmissionRequirementsCard(guide) {
   return `<article class="detail-panel" data-detail-card="admission-requirements">
-    <div class="section-heading"><h2>Admission requirements</h2></div>
+    <div class="section-heading"><h2>报考要求</h2></div>
     ${renderDetailRows([
-      { label: "Registration conditions", value: missingOfficialText },
-      { label: "Academic test requirements", html: renderCollapsibleText(guide.academicTestRequirements, "academic test requirements") },
-      { label: "Subject requirements", html: renderTextList(guide.subjectRequirements) },
-      { label: "Majors", html: renderMajorList(guide.majors) }
+      { label: "报名条件", value: missingOfficialText },
+      { label: "学考要求", html: renderCollapsibleText(guide.academicTestRequirements, "学考要求") },
+      { label: "选科要求", html: renderTextList(guide.subjectRequirements) },
+      { label: "招生专业", html: renderMajorList(guide.majors) }
     ])}
   </article>`;
 }
 
 function renderAssessmentAdmissionCard(guide) {
   return `<article class="detail-panel" data-detail-card="assessment-admission">
-    <div class="section-heading"><h2>Assessment and admission</h2></div>
+    <div class="section-heading"><h2>考核与录取</h2></div>
     ${renderDetailRows([
-      { label: "Assessment method", html: renderCollapsibleText(guide.assessmentMethod, "assessment method") },
-      { label: "Shortlist rule", value: missingOfficialText },
-      { label: "Admission rule", html: renderCollapsibleText(guide.admissionRule, "admission rule") },
-      { label: "Volunteer batch", value: missingOfficialText }
+      { label: "考核方式", html: renderCollapsibleText(guide.assessmentMethod, "考核方式") },
+      { label: "入围规则", value: missingOfficialText },
+      { label: "录取规则", html: renderCollapsibleText(guide.admissionRule, "录取规则") },
+      { label: "志愿批次", value: missingOfficialText }
     ])}
   </article>`;
 }
 
 function renderFeesConsultationCard(guide) {
   return `<article class="detail-panel" data-detail-card="fees-consultation">
-    <div class="section-heading"><h2>Fees and consultation</h2></div>
+    <div class="section-heading"><h2>费用与咨询</h2></div>
     ${renderDetailRows([
-      { label: "Fees", value: renderFeeSummary(guide.fees) },
-      { label: "Contact", value: renderContactSummary(guide.contact) }
+      { label: "费用", value: renderFeeSummary(guide.fees) },
+      { label: "咨询方式", value: renderContactSummary(guide.contact) }
     ])}
   </article>`;
 }
 
 function renderExperienceDetailCards(experiences) {
   if (experiences.length === 0) {
-    return `<p class="empty-state">Experience ${escapeHtml(pendingSupplementText.toLowerCase())}</p>`;
+    return `<p class="empty-state">面经${escapeHtml(pendingSupplementText)}</p>`;
   }
 
   return experiences
@@ -1216,8 +1598,8 @@ function renderExperienceDetailCards(experiences) {
       <h3>${escapeHtml(humanizeToken(experience.stage))}</h3>
       <p>${escapeHtml(experience.summary)}</p>
       ${renderDetailRows([
-        { label: "Assessment", value: displayValue(experience.assessmentTypes) },
-        { label: "Useful count", value: experience.usefulCount }
+        { label: "考核", value: displayValue(experience.assessmentTypes) },
+        { label: "有用数", value: experience.usefulCount }
       ])}
     </article>`)
     .join("");
@@ -1282,7 +1664,7 @@ function renderSchoolQuickActions(detail) {
     guide.officialSourceUrl
       ? renderActionAnchor({
           href: guide.officialSourceUrl,
-          label: "Official guide",
+          label: "官方简章",
           external: true
         })
       : `<span class="action-note">${escapeHtml(missingOfficialText)}</span>`
@@ -1291,7 +1673,7 @@ function renderSchoolQuickActions(detail) {
   if (guide.applicationUrl) {
     actions.push(renderActionAnchor({
       href: guide.applicationUrl,
-      label: "Application link",
+      label: "报名入口",
       primary: primaryAction === "application",
       external: true
     }));
@@ -1300,19 +1682,19 @@ function renderSchoolQuickActions(detail) {
   if (detail.formula) {
     actions.push(renderActionAnchor({
       href: detailCalculatorHref(detail),
-      label: "Score calculator",
+      label: "综合分计算器",
       primary: primaryAction === "calculator"
     }));
   } else {
-    actions.push(`<span class="action-note">Score calculation waits for official clarification.</span>`);
+    actions.push(`<span class="action-note">综合分计算等待官方明确。</span>`);
   }
 
   actions.push(renderActionAnchor({
     href: detailExperiencesHref(detail),
-    label: "Experiences"
+    label: "面经"
   }));
 
-  return `<div class="actions detail-actions school-quick-actions" aria-label="School quick actions">${actions.join("")}</div>`;
+  return `<div class="actions detail-actions school-quick-actions" aria-label="院校快捷操作">${actions.join("")}</div>`;
 }
 
 function renderSchoolBottomActionBar(detail) {
@@ -1321,7 +1703,7 @@ function renderSchoolBottomActionBar(detail) {
   if (detail.guide.applicationUrl) {
     actions.push(renderActionAnchor({
       href: detail.guide.applicationUrl,
-      label: "Apply",
+      label: "报名",
       external: true
     }));
   }
@@ -1329,16 +1711,16 @@ function renderSchoolBottomActionBar(detail) {
   if (detail.formula) {
     actions.push(renderActionAnchor({
       href: detailCalculatorHref(detail),
-      label: "Calculate"
+      label: "计算"
     }));
   }
 
   actions.push(renderActionAnchor({
     href: detailSubmissionHref(detail),
-    label: "Submit experience"
+    label: "发布面经"
   }));
 
-  return `<section class="school-bottom-action-bar" aria-label="School bottom actions">${actions.join("")}</section>`;
+  return `<section class="school-bottom-action-bar" aria-label="院校底部操作">${actions.join("")}</section>`;
 }
 
 function renderSchoolHeaderCard(detail) {
@@ -1369,7 +1751,7 @@ export function renderSchoolDetailPage(detail) {
       type: "detail",
       title: schoolAbbreviation(detail.school),
       backHref: "/schools",
-      backLabel: "Back to schools",
+      backLabel: "返回院校",
       actionHtml: renderFavoriteSchoolAction(
         detail.school.id,
         `/schools/${encodeURIComponent(detail.school.id)}?year=${detail.selectedYear}`
@@ -1379,7 +1761,7 @@ export function renderSchoolDetailPage(detail) {
       ${renderSchoolHeaderCard(detail)}
       ${renderSchoolBottomActionBar(detail)}
 
-      <section class="section detail-card-stack" aria-label="School official detail">
+      <section class="section detail-card-stack" aria-label="院校官方详情">
         ${renderDetailTimelineCard(detail)}
         ${renderOfficialGuideSummaryCard(detail)}
         ${renderFormulaDetail(detail)}
@@ -1390,9 +1772,9 @@ export function renderSchoolDetailPage(detail) {
 
       <section class="section" aria-labelledby="featured-experiences-title">
         <div class="section-heading">
-          <h2 id="featured-experiences-title">Featured experiences</h2>
-          <p class="section-kicker">Published structured assessment references</p>
-          <a class="text-link" href="${escapeHtml(detailExperiencesHref(detail))}">View all</a>
+          <h2 id="featured-experiences-title">精选面经</h2>
+          <p class="section-kicker">已发布的结构化校测参考</p>
+          <a class="text-link" href="${escapeHtml(detailExperiencesHref(detail))}">查看全部</a>
         </div>
         <div class="card-grid">${renderExperienceDetailCards(detail.featuredExperiences)}</div>
       </section>`
@@ -1404,22 +1786,22 @@ export function renderSchoolListPage(filters = {}) {
   const cards = listSchoolGuideCards(filters);
 
   return renderStudentPage({
-    title: `Schools | ${productName}`,
+    title: `院校 | ${productName}`,
     currentKey: "schools",
     topBar: renderStudentTopBar({
       type: "list",
-      title: "Schools",
+      title: "院校",
       filterHref: "#school-filters",
-      filterLabel: "Open school filters"
+      filterLabel: "打开院校筛选"
     }),
     content: `
       <section class="page-heading" aria-labelledby="school-list-title">
-        <p class="eyebrow">Published school guides</p>
-        <h1 id="school-list-title">Schools</h1>
-        <p class="lead">Search schools by name or abbreviation, then scan guide status, deadlines, formulas, and published experiences.</p>
+        <p class="eyebrow">已发布院校简章</p>
+        <h1 id="school-list-title">院校</h1>
+        <p class="lead">按院校名称或简称搜索，并快速查看简章状态、截止时间、公式和已发布面经。</p>
       </section>
 
-      <section class="section" id="school-filters" aria-label="School list filters" data-school-filters-container="true">
+      <section class="section" id="school-filters" aria-label="院校列表筛选" data-school-filters-container="true">
         ${renderSchoolFilters(filters, allCards)}
         ${renderSelectedSchoolFilters(filters)}
         <div class="school-list-status" role="status" aria-live="polite" hidden data-school-list-status="true"></div>
@@ -1427,8 +1809,8 @@ export function renderSchoolListPage(filters = {}) {
 
       <section class="section" aria-labelledby="school-results-title" data-school-results-section="true">
         <div class="section-heading">
-          <h2 id="school-results-title">${escapeHtml(cards.length)} ${escapeHtml(pluralize(cards.length, "school"))}</h2>
-          <p class="section-kicker">Draft and review-only guide data is hidden from visitors</p>
+          <h2 id="school-results-title">${escapeHtml(cards.length)} 所院校</h2>
+          <p class="section-kicker">草稿和审核中简章不会对访客展示</p>
         </div>
         <div class="list-loading-skeleton" hidden aria-hidden="true" data-list-skeleton="school">
           <span></span>
@@ -1442,30 +1824,30 @@ export function renderSchoolListPage(filters = {}) {
 
 export function renderTimelinePage(timeline) {
   return renderStudentPage({
-    title: `Timeline | ${productName}`,
+    title: `时间线 | ${productName}`,
     currentKey: "",
     topBar: renderStudentTopBar({
       type: "list",
-      title: "Timeline",
+      title: "时间线",
       filterHref: "#timeline-filters",
-      filterLabel: "Open timeline filters"
+      filterLabel: "打开时间线筛选"
     }),
     content: `
       <section class="page-heading" aria-labelledby="timeline-title">
-        <p class="eyebrow">Published admissions dates</p>
-        <h1 id="timeline-title">${timeline.mine ? "My timeline" : "Guangdong timeline"}</h1>
-        <p class="lead">Track official comprehensive evaluation guide publication, application windows, review nodes, assessments, volunteer application, and admission result publication.</p>
+        <p class="eyebrow">已发布招生日程</p>
+        <h1 id="timeline-title">${timeline.mine ? "我的时间线" : "广东时间线"}</h1>
+        <p class="lead">跟踪官方综评简章发布、报名窗口、审核节点、校测、志愿填报和录取结果公布。</p>
         ${renderTimelineTabs(timeline.filters)}
       </section>
 
-      <section class="section" id="timeline-filters" aria-label="Timeline filters">
+      <section class="section" id="timeline-filters" aria-label="时间线筛选">
         ${renderTimelineFilters(timeline.filters)}
       </section>
 
       <section class="section" aria-labelledby="timeline-results-title">
         <div class="section-heading">
-          <h2 id="timeline-results-title">${escapeHtml(timeline.count)} ${escapeHtml(pluralize(timeline.count, "timeline node"))}</h2>
-          <p class="section-kicker">${escapeHtml(timeline.reminders.length)} site-only ${escapeHtml(pluralize(timeline.reminders.length, "reminder"))}</p>
+          <h2 id="timeline-results-title">${escapeHtml(timeline.count)} 个时间线节点</h2>
+          <p class="section-kicker">${escapeHtml(timeline.reminders.length)} 个站内提醒</p>
         </div>
         <div class="timeline-list">${renderTimelineNodeCards(timeline)}</div>
       </section>`
@@ -1481,80 +1863,80 @@ function renderExperienceFilters(filters, allExperiences) {
     listSchoolGuideCards({ sort: "name" }).map((card) => [card.school.id, card.school])
   );
   const yearOptions = [
-    renderOption("", "All years", filters.year ?? ""),
+    renderOption("", "全部年份", filters.year ?? ""),
     ...years.map((year) => renderOption(year, year, filters.year))
   ].join("");
   const schoolOptions = [
-    renderOption("", "All schools", filters.schoolId ?? ""),
+    renderOption("", "全部院校", filters.schoolId ?? ""),
     ...[...schoolsById.values()].map((school) => renderOption(school.id, school.name, filters.schoolId))
   ].join("");
   const stageOptions = [
-    renderOption("", "All stages", filters.stage ?? ""),
+    renderOption("", "全部阶段", filters.stage ?? ""),
     ...stages.map((stage) => renderOption(stage, humanizeToken(stage), filters.stage))
   ].join("");
   const assessmentOptions = [
-    renderOption("", "All assessment formats", filters.assessmentType ?? ""),
+    renderOption("", "全部考核形式", filters.assessmentType ?? ""),
     ...assessmentTypes.map((type) => renderOption(type, humanizeToken(type), filters.assessmentType))
   ].join("");
   const verifiedOptions = [
-    renderOption("", "Any verification", filters.verified ?? ""),
-    renderOption("true", "Verified", filters.verified === true ? "true" : ""),
-    renderOption("false", "Verification pending", filters.verified === false ? "false" : "")
+    renderOption("", "全部认证状态", filters.verified ?? ""),
+    renderOption("true", "已认证", filters.verified === true ? "true" : ""),
+    renderOption("false", "认证待审核", filters.verified === false ? "false" : "")
   ].join("");
   const sortOptions = [
-    renderOption("default", "Recent two years first", filters.sort ?? "default"),
-    renderOption("newest", "Newest", filters.sort),
-    renderOption("useful", "Useful count", filters.sort),
-    renderOption("verified", "Verified first", filters.sort)
+    renderOption("default", "近两年优先", filters.sort ?? "default"),
+    renderOption("newest", "最新", filters.sort),
+    renderOption("useful", "有用数", filters.sort),
+    renderOption("verified", "已认证优先", filters.sort)
   ].join("");
 
-  return `<form class="filter-panel experience-filter-panel" method="get" action="/experiences" aria-label="Experience filters">
+  return `<form class="filter-panel experience-filter-panel" method="get" action="/experiences" aria-label="面经筛选">
     <label class="filter-field wide-field experience-search-field">
-      <span>Experience keyword</span>
-      <input type="search" name="keyword" value="${escapeHtml(filters.keyword ?? "")}" placeholder="Search school, stage, or keyword" autocomplete="off">
+      <span>面经关键词</span>
+      <input type="search" name="keyword" value="${escapeHtml(filters.keyword ?? "")}" placeholder="搜索院校、阶段或关键词" autocomplete="off">
     </label>
     <label class="filter-field wide-field">
-      <span>School</span>
+      <span>院校</span>
       <select name="schoolId">${schoolOptions}</select>
     </label>
     <label class="filter-field">
-      <span>Year</span>
+      <span>年份</span>
       <select name="year">${yearOptions}</select>
     </label>
     <label class="filter-field">
-      <span>Stage</span>
+      <span>阶段</span>
       <select name="stage">${stageOptions}</select>
     </label>
     <label class="filter-field">
-      <span>Assessment format</span>
+      <span>考核形式</span>
       <select name="assessmentType">${assessmentOptions}</select>
     </label>
     <label class="filter-field">
-      <span>Verified status</span>
+      <span>认证状态</span>
       <select name="verified">${verifiedOptions}</select>
     </label>
     <label class="filter-field">
-      <span>Sort</span>
+      <span>排序</span>
       <select name="sort">${sortOptions}</select>
     </label>
     <div class="filter-actions">
-      <button class="secondary-action" type="submit">Apply</button>
-      <a class="secondary-action" href="/experiences">Clear</a>
+      <button class="secondary-action" type="submit">应用</button>
+      <a class="secondary-action" href="/experiences">清空</a>
     </div>
   </form>`;
 }
 
 function selectedExperienceFilterEntries(filters) {
   const entries = [
-    ["Keyword", filters.keyword],
-    ["School", filters.schoolId && (getSchoolById(filters.schoolId)?.name ?? filters.schoolId)],
-    ["Year", filters.year],
-    ["Stage", filters.stage && humanizeToken(filters.stage)],
-    ["Assessment format", filters.assessmentType && humanizeToken(filters.assessmentType)],
-    ["Verified status", typeof filters.verified === "boolean"
-      ? filters.verified ? "Verified" : "Verification pending"
+    ["关键词", filters.keyword],
+    ["院校", filters.schoolId && (getSchoolById(filters.schoolId)?.name ?? filters.schoolId)],
+    ["年份", filters.year],
+    ["阶段", filters.stage && humanizeToken(filters.stage)],
+    ["考核形式", filters.assessmentType && humanizeToken(filters.assessmentType)],
+    ["认证状态", typeof filters.verified === "boolean"
+      ? filters.verified ? "已认证" : "认证待审核"
       : null],
-    ["Sort", filters.sort && filters.sort !== "default" ? humanizeToken(filters.sort) : null]
+    ["排序", filters.sort && filters.sort !== "default" ? humanizeToken(filters.sort) : null]
   ];
 
   return entries.filter(([, value]) => value !== undefined && value !== null && String(value).length > 0);
@@ -1564,14 +1946,14 @@ function renderSelectedExperienceFilters(filters) {
   const selected = selectedExperienceFilterEntries(filters);
 
   if (selected.length === 0) {
-    return `<p class="filter-summary">Showing recent published experiences first, then verified status and update time.</p>`;
+    return `<p class="filter-summary">优先展示近年已发布面经，再按认证状态和更新时间排序。</p>`;
   }
 
-  return `<div class="selected-filters" aria-label="Selected experience filters">
+  return `<div class="selected-filters" aria-label="已选面经筛选">
     ${selected
       .map(([label, value]) => `<span class="filter-chip">${escapeHtml(label)}: ${escapeHtml(value)}</span>`)
       .join("")}
-    <a class="text-link" href="/experiences">Clear filters</a>
+    <a class="text-link" href="/experiences">清空筛选</a>
   </div>`;
 }
 
@@ -1580,7 +1962,7 @@ function latestExperienceReferenceYear() {
 }
 
 function experienceVerifiedLabel(experience) {
-  return experience.verificationStatus === "verified" ? "Verified experience" : "Verification pending";
+  return experience.verificationStatus === "verified" ? "已认证面经" : "认证待审核";
 }
 
 function experienceHistoricalReferenceNotice(experience) {
@@ -1588,7 +1970,7 @@ function experienceHistoricalReferenceNotice(experience) {
     return "";
   }
 
-  return `Historical reference: this ${experience.admissionYear} experience may not reflect current assessment rules.`;
+  return `历史参考：${experience.admissionYear} 年面经可能不反映当前校测规则。`;
 }
 
 function renderExperienceReferenceNotice(experience) {
@@ -1600,15 +1982,15 @@ function renderExperienceReferenceNotice(experience) {
 function renderExperienceEmptyState(filters) {
   const hasFilters = selectedExperienceFilterEntries(filters).length > 0;
   const clearAction = hasFilters
-    ? `<a class="secondary-action" href="/experiences">Clear filters</a>`
+    ? `<a class="secondary-action" href="/experiences">清空筛选</a>`
     : "";
 
   return `<div class="empty-state experience-empty-state">
-    <strong>No matching published experiences</strong>
-    <p>Try changing filters or publish the first relevant experience for this school, year, or assessment format.</p>
+    <strong>没有匹配的已发布面经</strong>
+    <p>可以调整筛选，或发布该院校、年份、考核形式的第一条相关面经。</p>
     <div class="actions">
       ${clearAction}
-      <a class="primary-action" href="/experiences/new">Submit experience</a>
+      <a class="primary-action" href="/experiences/new">发布面经</a>
     </div>
   </div>`;
 }
@@ -1633,40 +2015,40 @@ function renderExperienceListCards(experiences, filters = {}) {
               <span class="soft-badge">${escapeHtml(experienceVerifiedLabel(experience))}</span>
               <span class="muted-badge">${escapeHtml(humanizeToken(experience.stage))}</span>
             </div>
-            <h3><a href="${escapeHtml(detailHref)}">${escapeHtml(school?.name ?? "Published school")}</a></h3>
-            <p class="experience-major">${escapeHtml(displayValue(experience.majorGroup, "Admission group not specified"))}</p>
+            <h3><a href="${escapeHtml(detailHref)}">${escapeHtml(school?.name ?? "已发布院校")}</a></h3>
+            <p class="experience-major">${escapeHtml(displayValue(experience.majorGroup, "招生组别未明确"))}</p>
           </div>
           ${renderFavoriteExperienceForm(experience.id, returnTo, "experience-card-favorite")}
         </div>
         <p>${escapeHtml(experience.summary)}</p>
         <dl class="detail-list split-details">
           <div>
-            <dt>School</dt>
-            <dd>${escapeHtml(school?.name ?? "Published school")}</dd>
+            <dt>院校</dt>
+            <dd>${escapeHtml(school?.name ?? "已发布院校")}</dd>
           </div>
           <div>
-            <dt>Year</dt>
+            <dt>年份</dt>
             <dd>${escapeHtml(experience.admissionYear)}</dd>
           </div>
           <div>
-            <dt>Major or group</dt>
+            <dt>专业或组别</dt>
             <dd>${escapeHtml(displayValue(experience.majorGroup, missingOfficialText))}</dd>
           </div>
           <div>
-            <dt>Stage</dt>
+            <dt>阶段</dt>
             <dd>${escapeHtml(humanizeToken(experience.stage))}</dd>
           </div>
           <div>
-            <dt>Assessment format</dt>
-            <dd>${escapeHtml(experience.assessmentTypes.map(humanizeToken).join(", "))}</dd>
+            <dt>考核形式</dt>
+            <dd>${escapeHtml(experience.assessmentTypes.map(humanizeToken).join("、"))}</dd>
           </div>
           <div>
-            <dt>Useful count</dt>
+            <dt>有用数</dt>
             <dd>${escapeHtml(experience.usefulCount)}</dd>
           </div>
         </dl>
         ${renderExperienceReferenceNotice(experience)}
-        <a class="text-link" href="${escapeHtml(detailHref)}">Read structured detail</a>
+        <a class="text-link" href="${escapeHtml(detailHref)}">阅读结构化详情</a>
       </article>`;
     })
     .join("");
@@ -1681,17 +2063,17 @@ function booleanResultLabel(value, positive, negative) {
     return negative;
   }
 
-  return "Not disclosed";
+  return "未披露";
 }
 
 function renderRatingPills(experience) {
   const ratings = [
-    ["Difficulty", experience.difficultyScore],
-    ["Pressure", experience.pressureScore],
-    ["Differentiation", experience.differentiationScore]
+    ["难度", experience.difficultyScore],
+    ["压力", experience.pressureScore],
+    ["区分度", experience.differentiationScore]
   ];
 
-  return `<div class="rating-grid" aria-label="Experience ratings">${ratings
+  return `<div class="rating-grid" aria-label="面经评分">${ratings
     .map(([label, value]) => `<div class="rating-pill">
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}/5</strong>
@@ -1702,33 +2084,33 @@ function renderRatingPills(experience) {
 function renderExperienceActionBar(experience) {
   const returnTo = experienceDetailHref(experience);
 
-  return `<section class="experience-action-bar" aria-label="Experience actions">
+  return `<section class="experience-action-bar" aria-label="面经操作">
     ${renderFavoriteExperienceForm(experience.id, returnTo, "experience-detail-favorite")}
-    <form class="experience-action-form" method="post" action="/experiences/${escapeHtml(encodeURIComponent(experience.id))}/useful" aria-label="Mark experience useful">
+    <form class="experience-action-form" method="post" action="/experiences/${escapeHtml(encodeURIComponent(experience.id))}/useful" aria-label="标记面经有用">
       <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
-      <button class="secondary-action" type="submit">Useful (${escapeHtml(experience.usefulCount)})</button>
+      <button class="secondary-action" type="submit">有用（${escapeHtml(experience.usefulCount)}）</button>
     </form>
     <details class="report-details">
-      <summary>Report</summary>
-      <form class="report-form" method="post" action="/reports" aria-label="Report experience">
+      <summary>举报</summary>
+      <form class="report-form" method="post" action="/reports" aria-label="举报面经">
         <input type="hidden" name="targetType" value="experience">
         <input type="hidden" name="targetId" value="${escapeHtml(experience.id)}">
         <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
         <label class="form-field">
-          <span>Report reason</span>
+          <span>举报原因</span>
           <select name="reason" required>
-            <option value="">Select reason</option>
-            <option value="privacy concern">Privacy concern</option>
-            <option value="unverified original question">Unverified original question</option>
-            <option value="external traffic or paid service">External traffic or paid service</option>
-            <option value="other content issue">Other content issue</option>
+            <option value="">选择原因</option>
+            <option value="privacy concern">隐私风险</option>
+            <option value="unverified original question">疑似未核验原题</option>
+            <option value="external traffic or paid service">外部导流或付费服务</option>
+            <option value="other content issue">其他内容问题</option>
           </select>
         </label>
         <label class="form-field">
-          <span>Description</span>
+          <span>说明</span>
           <textarea name="description" rows="3" maxlength="2000"></textarea>
         </label>
-        <button class="secondary-action" type="submit">Submit report</button>
+        <button class="secondary-action" type="submit">提交举报</button>
       </form>
     </details>
   </section>`;
@@ -1743,14 +2125,14 @@ function renderExperienceHeader(experience) {
       <span class="soft-badge">${escapeHtml(experienceVerifiedLabel(experience))}</span>
       <span class="muted-badge">${escapeHtml(humanizeToken(experience.stage))}</span>
     </div>
-    <h1 id="experience-detail-title">${escapeHtml(school?.name ?? "Published school")}</h1>
-    <p>${escapeHtml(displayValue(experience.majorGroup, "Admission group not specified"))} · ${escapeHtml(experience.assessmentTypes.map(humanizeToken).join(", "))}</p>
+    <h1 id="experience-detail-title">${escapeHtml(school?.name ?? "已发布院校")}</h1>
+    <p>${escapeHtml(displayValue(experience.majorGroup, "招生组别未明确"))} · ${escapeHtml(experience.assessmentTypes.map(humanizeToken).join("、"))}</p>
     ${renderExperienceReferenceNotice(experience)}
     ${renderDetailRows([
-      { label: "School", value: school?.name ?? "Published school" },
-      { label: "Year", value: experience.admissionYear },
-      { label: "Stage", value: humanizeToken(experience.stage) },
-      { label: "Useful count", value: experience.usefulCount }
+      { label: "院校", value: school?.name ?? "已发布院校" },
+      { label: "年份", value: experience.admissionYear },
+      { label: "阶段", value: humanizeToken(experience.stage) },
+      { label: "有用数", value: experience.usefulCount }
     ])}
   </section>`;
 }
@@ -1770,52 +2152,52 @@ export function renderExperienceDetailPage(experience) {
   const detailHref = experienceDetailHref(experience);
 
   return renderStudentPage({
-    title: `${school?.name ?? "Experience"} ${experience.admissionYear} | ${productName}`,
+    title: `${school?.name ?? "面经"} ${experience.admissionYear} | ${productName}`,
     currentKey: "experiences",
     topBar: renderStudentTopBar({
       type: "detail",
-      title: "Experience",
+      title: "面经",
       backHref: "/experiences",
-      backLabel: "Back to experiences",
+      backLabel: "返回面经",
       actionHtml: renderFavoriteExperienceForm(experience.id, detailHref)
     }),
     content: `
       ${renderExperienceHeader(experience)}
       ${renderExperienceActionBar(experience)}
 
-      <section class="section detail-card-stack" aria-label="Experience detail">
+      <section class="section detail-card-stack" aria-label="面经详情">
         <article class="detail-panel" data-experience-detail-section="basic-information">
-          <div class="section-heading"><h2>Basic information</h2></div>
+          <div class="section-heading"><h2>基本信息</h2></div>
           ${renderDetailRows([
-            { label: "Major or admission group", value: displayValue(experience.majorGroup) },
-            { label: "Candidate track", value: humanizeToken(displayValue(experience.candidateTrack)) },
-            { label: "Shortlisted result", value: booleanResultLabel(experience.shortlistedStatus, "Shortlisted", "Not shortlisted") },
-            { label: "Admitted result", value: booleanResultLabel(experience.admittedStatus, "Admitted", "Not admitted") },
-            { label: "Assessment format", value: experience.assessmentTypes.map(humanizeToken).join(", ") },
-            { label: "Location", value: displayValue(experience.location) }
+            { label: "专业或招生组", value: displayValue(experience.majorGroup) },
+            { label: "考生科类", value: humanizeToken(displayValue(experience.candidateTrack)) },
+            { label: "入围结果", value: booleanResultLabel(experience.shortlistedStatus, "已入围", "未入围") },
+            { label: "录取结果", value: booleanResultLabel(experience.admittedStatus, "已录取", "未录取") },
+            { label: "考核形式", value: experience.assessmentTypes.map(humanizeToken).join("、") },
+            { label: "地点", value: displayValue(experience.location) }
           ])}
         </article>
 
         <article class="detail-panel" data-experience-detail-section="process">
-          <div class="section-heading"><h2>Process</h2></div>
-          ${renderCollapsibleText(experience.processSummary, "process", pendingSupplementText)}
+          <div class="section-heading"><h2>流程</h2></div>
+          ${renderCollapsibleText(experience.processSummary, "流程", pendingSupplementText)}
         </article>
 
         <article class="detail-panel" data-experience-detail-section="question-types">
-          <div class="section-heading"><h2>Question-type categories</h2></div>
+          <div class="section-heading"><h2>题型类别</h2></div>
           ${renderQuestionTypeCategories(experience)}
         </article>
 
         <article class="detail-panel" data-experience-detail-section="preparation-advice">
-          <div class="section-heading"><h2>Preparation and advice</h2></div>
+          <div class="section-heading"><h2>准备与建议</h2></div>
           ${renderDetailRows([
-            { label: "Preparation", html: renderCollapsibleText(experience.preparationSummary, "preparation", pendingSupplementText) },
-            { label: "Advice", html: renderCollapsibleText(experience.advice, "advice", pendingSupplementText) }
+            { label: "准备", html: renderCollapsibleText(experience.preparationSummary, "准备", pendingSupplementText) },
+            { label: "建议", html: renderCollapsibleText(experience.advice, "建议", pendingSupplementText) }
           ])}
         </article>
 
         <article class="detail-panel" data-experience-detail-section="ratings">
-          <div class="section-heading"><h2>Experience ratings</h2></div>
+          <div class="section-heading"><h2>面经评分</h2></div>
           ${renderRatingPills(experience)}
         </article>
       </section>`
@@ -1823,22 +2205,22 @@ export function renderExperienceDetailPage(experience) {
 }
 
 const assessmentTypeSubmissionOptions = [
-  ["structured_interview", "Structured interview"],
-  ["group_discussion", "Group discussion"],
-  ["machine_test", "Machine test"],
-  ["materials_review", "Materials review"],
-  ["practical_task", "Practical task"]
+  ["structured_interview", "结构化面试"],
+  ["group_discussion", "小组讨论"],
+  ["machine_test", "机试"],
+  ["materials_review", "材料审核"],
+  ["practical_task", "实践任务"]
 ];
 
 const questionTypeSubmissionOptions = [
-  ["motivation", "Motivation"],
-  ["current_affairs", "Current affairs"],
-  ["major_interest", "Major interest"],
-  ["experiment_design", "Experiment design"],
-  ["project_reflection", "Project reflection"],
-  ["math_reasoning", "Math reasoning"],
-  ["teamwork", "Teamwork"],
-  ["learning_plan", "Learning plan"]
+  ["motivation", "报考动机"],
+  ["current_affairs", "时事议题"],
+  ["major_interest", "专业兴趣"],
+  ["experiment_design", "实验设计"],
+  ["project_reflection", "项目复盘"],
+  ["math_reasoning", "数学推理"],
+  ["teamwork", "团队协作"],
+  ["learning_plan", "学习计划"]
 ];
 
 function scalarFormValue(formData, name, fallback = "") {
@@ -1897,7 +2279,7 @@ function submissionSchoolOptions(currentValue = "") {
   );
 
   return [
-    renderOption("", "Select school", currentValue),
+    renderOption("", "选择院校", currentValue),
     ...[...schoolsById.values()].map((school) => renderOption(school.id, school.name, currentValue))
   ].join("");
 }
@@ -1907,20 +2289,20 @@ function submissionYearOptions(currentValue = "") {
     .sort((left, right) => right - left);
 
   return [
-    renderOption("", "Select year", currentValue),
+    renderOption("", "选择年份", currentValue),
     ...years.map((year) => renderOption(year, year, currentValue))
   ].join("");
 }
 
 function ratingOptions(currentValue = "") {
   return [
-    renderOption("", "Select score", currentValue),
+    renderOption("", "选择分值", currentValue),
     ...[1, 2, 3, 4, 5].map((score) => renderOption(score, String(score), currentValue))
   ].join("");
 }
 
 function requiredMarker() {
-  return `<span class="required-marker" aria-label="required">*</span>`;
+  return `<span class="required-marker" aria-label="必填">*</span>`;
 }
 
 function characterHint(name, maxLength) {
@@ -1936,24 +2318,24 @@ function renderSubmissionStatus(submission) {
 
   return `<section class="submission-status" aria-labelledby="submission-status-title">
     <div class="section-heading">
-      <h2 id="submission-status-title">Pending review</h2>
-      <p class="section-kicker">${escapeHtml(submission.verification.materialCount)} verification ${escapeHtml(pluralize(submission.verification.materialCount, "metadata record"))}</p>
+      <h2 id="submission-status-title">待审核</h2>
+      <p class="section-kicker">${escapeHtml(submission.verification.materialCount)} 条认证材料元数据</p>
     </div>
     <dl class="detail-list split-details">
       <div>
-        <dt>School</dt>
-        <dd>${escapeHtml(school?.name ?? "Published school")}</dd>
+        <dt>院校</dt>
+        <dd>${escapeHtml(school?.name ?? "已发布院校")}</dd>
       </div>
       <div>
-        <dt>Year</dt>
+        <dt>年份</dt>
         <dd>${escapeHtml(submission.year)}</dd>
       </div>
       <div>
-        <dt>Stage</dt>
+        <dt>阶段</dt>
         <dd>${escapeHtml(humanizeToken(submission.stage))}</dd>
       </div>
       <div>
-        <dt>Display</dt>
+        <dt>展示身份</dt>
         <dd>${escapeHtml(submission.author.displayName ?? submission.author.nickname)}</dd>
       </div>
     </dl>
@@ -1975,166 +2357,166 @@ export function renderExperienceSubmissionPage({ user, submission = null, error 
   const submissionComplete = submission ? "true" : "false";
 
   return renderStudentPage({
-    title: `Submit experience | ${productName}`,
+    title: `发布面经 | ${productName}`,
     currentKey: "experiences",
     hideBottomNav: true,
     topBar: renderStudentTopBar({
       type: "form",
-      title: "Submit",
+      title: "提交",
       backHref: "/experiences",
-      backLabel: "Back to experiences",
-      submitState: "Review after submit"
+      backLabel: "返回面经",
+      submitState: "提交后审核"
     }),
     content: `
       <section class="page-heading" aria-labelledby="experience-submit-title">
-        <p class="eyebrow">Structured submission</p>
-        <h1 id="experience-submit-title">Submit experience</h1>
-        <p class="lead">Record school assessment details, preparation signals, and optional verification metadata for reviewer approval.</p>
+        <p class="eyebrow">结构化投稿</p>
+        <h1 id="experience-submit-title">发布面经</h1>
+        <p class="lead">记录校测过程、准备经验和可选认证材料元数据，提交审核后再公开。</p>
       </section>
 
       ${renderSubmissionStatus(submission)}
 
       <div class="draft-restore-prompt" hidden data-experience-draft-prompt="true">
-        <p>Saved draft found from this device.</p>
+        <p>发现本设备保存的草稿。</p>
         <div class="actions">
-          <button class="secondary-action" type="button" data-experience-draft-restore="true">Restore draft</button>
-          <button class="secondary-action" type="button" data-experience-draft-clear="true">Clear draft</button>
+          <button class="secondary-action" type="button" data-experience-draft-restore="true">恢复草稿</button>
+          <button class="secondary-action" type="button" data-experience-draft-clear="true">清除草稿</button>
         </div>
       </div>
 
-      <form class="submission-form" method="post" action="/experiences" aria-label="Experience submission form" data-experience-submission-form="true" data-submission-complete="${submissionComplete}">
+      <form class="submission-form" method="post" action="/experiences" aria-label="面经投稿表单" data-experience-submission-form="true" data-submission-complete="${submissionComplete}">
         ${renderSubmissionError(error)}
         <fieldset class="form-section">
-          <legend>School and result</legend>
+          <legend>院校与结果</legend>
           <label class="form-field wide-field">
-            <span>School ${requiredMarker()}</span>
+            <span>院校 ${requiredMarker()}</span>
             <select name="schoolId" required>${submissionSchoolOptions(scalarFormValue(formData, "schoolId"))}</select>
           </label>
           <label class="form-field">
-            <span>Year ${requiredMarker()}</span>
+            <span>年份 ${requiredMarker()}</span>
             <select name="year" required>${submissionYearOptions(scalarFormValue(formData, "year"))}</select>
           </label>
           <label class="form-field">
-            <span>Major group ${requiredMarker()}</span>
+            <span>专业组 ${requiredMarker()}</span>
             <input name="majorGroup" value="${escapeHtml(scalarFormValue(formData, "majorGroup"))}" autocomplete="off" maxlength="160" required>
           </label>
           <label class="form-field">
-            <span>Candidate track ${requiredMarker()}</span>
+            <span>考生科类 ${requiredMarker()}</span>
             <select name="candidateTrack" required>
-              ${renderOption("", "Select track", scalarFormValue(formData, "candidateTrack"))}
-              ${renderOption("physics", "Physics", scalarFormValue(formData, "candidateTrack"))}
-              ${renderOption("history", "History", scalarFormValue(formData, "candidateTrack"))}
-              ${renderOption("general", "General", scalarFormValue(formData, "candidateTrack"))}
+              ${renderOption("", "选择科类", scalarFormValue(formData, "candidateTrack"))}
+              ${renderOption("physics", "物理类", scalarFormValue(formData, "candidateTrack"))}
+              ${renderOption("history", "历史类", scalarFormValue(formData, "candidateTrack"))}
+              ${renderOption("general", "通用", scalarFormValue(formData, "candidateTrack"))}
             </select>
           </label>
           <label class="form-field">
-            <span>Stage ${requiredMarker()}</span>
+            <span>阶段 ${requiredMarker()}</span>
             <select name="stage" required>
-              ${renderOption("", "Select stage", scalarFormValue(formData, "stage"))}
-              ${renderOption("preliminary_review", "Preliminary review", scalarFormValue(formData, "stage"))}
-              ${renderOption("school_assessment", "School assessment", scalarFormValue(formData, "stage"))}
-              ${renderOption("admission_result", "Admission result", scalarFormValue(formData, "stage"))}
+              ${renderOption("", "选择阶段", scalarFormValue(formData, "stage"))}
+              ${renderOption("preliminary_review", "初审", scalarFormValue(formData, "stage"))}
+              ${renderOption("school_assessment", "校测", scalarFormValue(formData, "stage"))}
+              ${renderOption("admission_result", "录取结果", scalarFormValue(formData, "stage"))}
             </select>
           </label>
           <label class="form-field">
-            <span>Shortlisted status ${requiredMarker()}</span>
+            <span>入围状态 ${requiredMarker()}</span>
             <select name="shortlistedStatus" required>
-              ${renderOption("", "Select status", scalarFormValue(formData, "shortlistedStatus"))}
-              ${renderOption("true", "Shortlisted", scalarFormValue(formData, "shortlistedStatus"))}
-              ${renderOption("false", "Not shortlisted", scalarFormValue(formData, "shortlistedStatus"))}
+              ${renderOption("", "选择状态", scalarFormValue(formData, "shortlistedStatus"))}
+              ${renderOption("true", "已入围", scalarFormValue(formData, "shortlistedStatus"))}
+              ${renderOption("false", "未入围", scalarFormValue(formData, "shortlistedStatus"))}
             </select>
           </label>
           <label class="form-field">
-            <span>Admitted status</span>
+            <span>录取状态</span>
             <select name="admittedStatus">
-              ${renderOption("", "Not disclosed", scalarFormValue(formData, "admittedStatus"))}
-              ${renderOption("true", "Admitted", scalarFormValue(formData, "admittedStatus"))}
-              ${renderOption("false", "Not admitted", scalarFormValue(formData, "admittedStatus"))}
+              ${renderOption("", "未披露", scalarFormValue(formData, "admittedStatus"))}
+              ${renderOption("true", "已录取", scalarFormValue(formData, "admittedStatus"))}
+              ${renderOption("false", "未录取", scalarFormValue(formData, "admittedStatus"))}
             </select>
           </label>
           <label class="form-field wide-field">
-            <span>Location</span>
+            <span>地点</span>
             <input name="location" value="${escapeHtml(scalarFormValue(formData, "location"))}" autocomplete="off" maxlength="240">
           </label>
         </fieldset>
 
         <fieldset class="form-section">
-          <legend>Assessment details</legend>
+          <legend>考核详情</legend>
           <div class="form-field wide-field">
-            <span>Assessment types ${requiredMarker()}</span>
+            <span>考核类型 ${requiredMarker()}</span>
             <div class="choice-grid">${renderCheckboxOptions("assessmentTypes", assessmentTypeSubmissionOptions, selectedAssessmentTypes)}</div>
           </div>
           <label class="form-field full-field">
-            <span>Process ${requiredMarker()}</span>
+            <span>流程 ${requiredMarker()}</span>
             <textarea name="processSummary" rows="5" maxlength="5000" data-character-count="true" required>${escapeHtml(scalarFormValue(formData, "processSummary"))}</textarea>
             ${characterHint("processSummary", 5000)}
           </label>
           <div class="form-field full-field">
-            <span>Question types ${requiredMarker()}</span>
+            <span>问题类型 ${requiredMarker()}</span>
             <div class="choice-grid">${renderCheckboxOptions("questionTypes", questionTypeSubmissionOptions, selectedQuestionTypes)}</div>
           </div>
           <label class="form-field full-field">
-            <span>Preparation ${requiredMarker()}</span>
+            <span>准备 ${requiredMarker()}</span>
             <textarea name="preparationSummary" rows="4" maxlength="3000" data-character-count="true" required>${escapeHtml(scalarFormValue(formData, "preparationSummary"))}</textarea>
             ${characterHint("preparationSummary", 3000)}
           </label>
         </fieldset>
 
         <fieldset class="form-section">
-          <legend>Scores and advice</legend>
+          <legend>评分与建议</legend>
           <label class="form-field">
-            <span>Difficulty score ${requiredMarker()}</span>
+            <span>难度评分 ${requiredMarker()}</span>
             <select name="difficultyScore" required>${ratingOptions(scalarFormValue(formData, "difficultyScore"))}</select>
           </label>
           <label class="form-field">
-            <span>Pressure score ${requiredMarker()}</span>
+            <span>压力评分 ${requiredMarker()}</span>
             <select name="pressureScore" required>${ratingOptions(scalarFormValue(formData, "pressureScore"))}</select>
           </label>
           <label class="form-field">
-            <span>Differentiation score ${requiredMarker()}</span>
+            <span>区分度评分 ${requiredMarker()}</span>
             <select name="differentiationScore" required>${ratingOptions(scalarFormValue(formData, "differentiationScore"))}</select>
           </label>
           <label class="form-field">
-            <span>Anonymous preference ${requiredMarker()}</span>
+            <span>匿名偏好 ${requiredMarker()}</span>
             <select name="isAnonymous" required>${anonymousOptions}</select>
           </label>
           <label class="form-field full-field">
-            <span>Advice ${requiredMarker()}</span>
+            <span>建议 ${requiredMarker()}</span>
             <textarea name="advice" rows="4" maxlength="3000" data-character-count="true" required>${escapeHtml(scalarFormValue(formData, "advice"))}</textarea>
             ${characterHint("advice", 3000)}
           </label>
         </fieldset>
 
         <fieldset class="form-section">
-          <legend>Verification metadata</legend>
-          <p class="form-help">Verification metadata helps reviewers check authenticity. It stays reviewer-only and is not shown on student pages.</p>
+          <legend>认证材料元数据</legend>
+          <p class="form-help">认证材料元数据用于帮助审核员核验真实性，仅审核端可见，不会展示在学生端。</p>
           <label class="form-field">
-            <span>Material type</span>
+            <span>材料类型</span>
             <input name="verificationMaterialType" value="${escapeHtml(scalarFormValue(formData, "verificationMaterialType"))}" autocomplete="off" maxlength="80">
           </label>
           <label class="form-field">
-            <span>Storage key</span>
+            <span>存储键</span>
             <input name="verificationObjectStorageKey" value="${escapeHtml(scalarFormValue(formData, "verificationObjectStorageKey"))}" autocomplete="off" maxlength="240">
           </label>
           <label class="form-field">
-            <span>Material title</span>
+            <span>材料标题</span>
             <input name="verificationTitle" value="${escapeHtml(scalarFormValue(formData, "verificationTitle"))}" autocomplete="off" maxlength="160">
           </label>
           <label class="form-field">
-            <span>Source account</span>
+            <span>来源账号</span>
             <input name="verificationSourceAccount" value="${escapeHtml(scalarFormValue(formData, "verificationSourceAccount"))}" autocomplete="off" maxlength="160">
           </label>
           <label class="form-field full-field">
-            <span>Verification notes</span>
+            <span>认证备注</span>
             <textarea name="verificationNotes" rows="3" maxlength="1000" data-character-count="true">${escapeHtml(scalarFormValue(formData, "verificationNotes"))}</textarea>
             ${characterHint("verificationNotes", 1000)}
           </label>
         </fieldset>
 
         <div class="form-actions">
-          <button class="primary-action" type="submit">Submit</button>
-          <button class="secondary-action" type="button" data-experience-draft-clear="true">Clear draft</button>
-          <a class="secondary-action" href="/experiences">Cancel</a>
+          <button class="primary-action" type="submit">提交</button>
+          <button class="secondary-action" type="button" data-experience-draft-clear="true">清除草稿</button>
+          <a class="secondary-action" href="/experiences">取消</a>
         </div>
       </form>
 `
@@ -2146,33 +2528,33 @@ export function renderExperienceListPage(filters = {}) {
   const experiences = listExperiences(filters);
 
   return renderStudentPage({
-    title: `Experiences | ${productName}`,
+    title: `面经 | ${productName}`,
     currentKey: "experiences",
     topBar: renderStudentTopBar({
       type: "list",
-      title: "Experiences",
+      title: "面经",
       filterHref: "#experience-filters",
-      filterLabel: "Open experience filters"
+      filterLabel: "打开面经筛选"
     }),
     content: `
       <section class="page-heading" aria-labelledby="experience-list-title">
-        <p class="eyebrow">Published assessment experiences</p>
-        <h1 id="experience-list-title">Experience list</h1>
-        <p class="lead">Search school, stage, and assessment keywords, then scan structured references with privacy-safe metadata.</p>
+        <p class="eyebrow">已发布校测面经</p>
+        <h1 id="experience-list-title">面经列表</h1>
+        <p class="lead">按院校、阶段和考核关键词搜索，并查看隐私安全的结构化参考。</p>
         <div class="actions">
-          <a class="primary-action" href="/experiences/new">Submit experience</a>
+          <a class="primary-action" href="/experiences/new">发布面经</a>
         </div>
       </section>
 
-      <section class="section" id="experience-filters" aria-label="Experience filters">
+      <section class="section" id="experience-filters" aria-label="面经筛选">
         ${renderExperienceFilters(filters, allExperiences)}
         ${renderSelectedExperienceFilters(filters)}
       </section>
 
       <section class="section" aria-labelledby="experience-results-title">
         <div class="section-heading">
-          <h2 id="experience-results-title">${escapeHtml(experiences.length)} published ${escapeHtml(pluralize(experiences.length, "experience"))}</h2>
-          <p class="section-kicker">Review-only submissions are hidden from visitors</p>
+          <h2 id="experience-results-title">${escapeHtml(experiences.length)} 条已发布面经</h2>
+          <p class="section-kicker">审核中投稿不会对访客展示</p>
         </div>
         <div class="experience-list">${renderExperienceListCards(experiences, filters)}</div>
       </section>`
@@ -2232,7 +2614,7 @@ function resolveCalculatorSelection(filters, entries, cards) {
 }
 
 function compareSchoolNames(left, right) {
-  return left.name.localeCompare(right.name, "en");
+  return left.name.localeCompare(right.name, "zh-CN");
 }
 
 function calculatorOptionsJson(entries) {
@@ -2254,7 +2636,7 @@ function percentageLabel(value) {
 
 function renderCalculatorSelectionForm(entries, selectedSchoolId, selectedYear) {
   if (entries.length === 0) {
-    return `<p class="empty-state">No published school guide data is available for score calculation.</p>`;
+    return `<p class="empty-state">暂无可用于综合分计算的已发布院校简章数据。</p>`;
   }
 
   const selectedEntry = entries.find((entry) => entry.school.id === selectedSchoolId) ?? entries[0];
@@ -2265,18 +2647,18 @@ function renderCalculatorSelectionForm(entries, selectedSchoolId, selectedYear) 
     .map((year) => renderOption(year, year, selectedYear))
     .join("");
 
-  return `<form class="filter-panel calculator-selector" method="get" action="/calculator" aria-label="Score calculator selection">
+  return `<form class="filter-panel calculator-selector" method="get" action="/calculator" aria-label="综合分计算器选择">
     <label class="filter-field wide-field">
-      <span>School</span>
+      <span>院校</span>
       <select name="schoolId" id="calculator-school">${schoolOptions}</select>
     </label>
     <label class="filter-field">
-      <span>Year</span>
+      <span>年份</span>
       <select name="year" id="calculator-year">${yearOptions}</select>
     </label>
     <div class="filter-actions">
-      <button class="primary-action" type="submit">Load formula</button>
-      <a class="secondary-action" href="/calculator">Reset</a>
+      <button class="primary-action" type="submit">加载公式</button>
+      <a class="secondary-action" href="/calculator">重置</a>
     </div>
   </form>`;
 }
@@ -2300,37 +2682,37 @@ function renderCalculatorInput(input) {
       data-max-score="${escapeHtml(input.maxScore)}"
       data-weight="${escapeHtml(input.weight)}"
       aria-describedby="${escapeHtml(inputId)}-hint ${escapeHtml(inputId)}-error">
-    <small id="${escapeHtml(inputId)}-hint">0 to ${escapeHtml(input.maxScore)} - ${escapeHtml(percentageLabel(input.weight))}</small>
+    <small id="${escapeHtml(inputId)}-hint">0 至 ${escapeHtml(input.maxScore)} - ${escapeHtml(percentageLabel(input.weight))}</small>
     <small class="score-error" id="${escapeHtml(inputId)}-error" data-score-error-for="${escapeHtml(input.key)}" aria-live="polite"></small>
   </label>`;
 }
 
 function renderFormulaWeightNotes(formula) {
   const inputs = formula.formulaConfig.inputs
-    .map((input) => `${input.label}: ${percentageLabel(input.weight)} weight, max ${input.maxScore}`)
-    .join("; ");
+    .map((input) => `${input.label}：权重 ${percentageLabel(input.weight)}，满分 ${input.maxScore}`)
+    .join("；");
 
-  return `Weights and max scores: ${inputs}. Output scale: ${formula.formulaConfig.outputMaxScore}.`;
+  return `权重与满分：${inputs}。输出分值：${formula.formulaConfig.outputMaxScore}。`;
 }
 
 function renderCalculatorFormulaForm(detail) {
   if (!detail) {
     return `<div class="calculator-unavailable">
-      <h3>No published guide selected</h3>
-      <p>Calculation form is hidden until a published school guide and year are available.</p>
+      <h3>未选择已发布简章</h3>
+      <p>需要先选择已发布院校简章和年份，才会显示计算表单。</p>
     </div>`;
   }
 
   if (!detail.formula || !detail.formula.officialSourceUrl) {
-    const title = detail.formula ? "No source-backed formula" : "No clear published formula";
+    const title = detail.formula ? "缺少官方来源公式" : "暂无明确已发布公式";
     const copy = detail.formula
-      ? "Calculation form is hidden because the published score formula does not yet have an official source basis."
-      : `Calculation form is hidden because no clear published score formula is available for ${detail.school.name} ${detail.selectedYear}.`;
+      ? "该已发布公式暂缺官方来源依据，计算表单已隐藏。"
+      : `${detail.school.name} ${detail.selectedYear} 年暂无明确已发布综合分公式，计算表单已隐藏。`;
 
     return `<div class="calculator-unavailable" id="score-input-unavailable">
       <h3>${escapeHtml(title)}</h3>
       <p>${escapeHtml(copy)}</p>
-      ${renderDetailLink(detail.guide.officialSourceUrl, "Published guide")}
+      ${renderDetailLink(detail.guide.officialSourceUrl, "已发布简章")}
     </div>`;
   }
 
@@ -2339,16 +2721,16 @@ function renderCalculatorFormulaForm(detail) {
   return `<form class="score-entry-form" id="score-input-form" novalidate data-school-id="${escapeHtml(detail.school.id)}" data-year="${escapeHtml(detail.selectedYear)}">
     <div class="formula-summary">
       <div>
-        <span class="soft-badge">Source-backed formula</span>
+        <span class="soft-badge">有官方来源的公式</span>
         <h3>${escapeHtml(detail.formula.formulaName)}</h3>
         <p>${escapeHtml(detail.formula.explanation)}</p>
         <p>${escapeHtml(renderFormulaWeightNotes(detail.formula))}</p>
       </div>
-      <a class="text-link" href="${escapeHtml(detail.formula.officialSourceUrl)}" target="_blank" rel="noopener">Official source basis</a>
+      <a class="text-link" href="${escapeHtml(detail.formula.officialSourceUrl)}" target="_blank" rel="noopener">官方来源依据</a>
     </div>
     <div class="score-fields">${inputs}</div>
     <div class="calculator-feedback" id="calculator-feedback" role="alert" aria-live="polite"></div>
-    <button class="primary-action" type="submit" data-calculate-score="true" disabled>Calculate score</button>
+    <button class="primary-action" type="submit" data-calculate-score="true" disabled>计算综合分</button>
   </form>`;
 }
 
@@ -2361,40 +2743,40 @@ export function renderScoreCalculatorPage(filters = {}) {
     : null;
 
   return renderStudentPage({
-    title: `Score Calculator | ${productName}`,
+    title: `综合分计算器 | ${productName}`,
     hideBottomNav: true,
     topBar: renderStudentTopBar({
       type: "form",
-      title: "Calculator",
+      title: "计算器",
       backHref: "/schools",
-      backLabel: "Back to schools",
-      submitState: "Source backed"
+      backLabel: "返回院校",
+      submitState: "官方来源"
     }),
     content: `
       <section class="page-heading" aria-labelledby="calculator-title">
-        <p class="eyebrow">Published formula calculator</p>
-        <h1 id="calculator-title">Score calculator</h1>
-        <p class="lead">Calculate a comprehensive score from the selected school's published Guangdong formula and official score fields.</p>
+        <p class="eyebrow">已发布公式计算器</p>
+        <h1 id="calculator-title">综合分计算器</h1>
+        <p class="lead">根据所选院校已发布的广东综评公式和官方成绩字段计算综合分。</p>
       </section>
 
-      <section class="section calculator-steps" aria-label="Score calculation steps">
+      <section class="section calculator-steps" aria-label="综合分计算步骤">
         <article class="calculator-step">
-          <div class="step-marker">Step 1</div>
-          <div class="section-heading"><h2>Choose school and year</h2></div>
+          <div class="step-marker">第 1 步</div>
+          <div class="section-heading"><h2>选择院校和年份</h2></div>
           ${renderCalculatorSelectionForm(entries, selection.schoolId, selection.year)}
         </article>
 
         <article class="calculator-step">
-          <div class="step-marker">Step 2</div>
-          <div class="section-heading"><h2>Enter scores</h2></div>
+          <div class="step-marker">第 2 步</div>
+          <div class="section-heading"><h2>输入成绩</h2></div>
           ${renderCalculatorFormulaForm(detail)}
         </article>
 
         <article class="calculator-step">
-          <div class="step-marker">Step 3</div>
-          <div class="section-heading"><h2>View results</h2></div>
+          <div class="step-marker">第 3 步</div>
+          <div class="section-heading"><h2>查看结果</h2></div>
           <div class="calculator-result" id="calculator-result" aria-live="polite">
-            <p class="inline-empty">Result will appear after calculation.</p>
+            <p class="inline-empty">计算后将在这里显示结果。</p>
           </div>
         </article>
       </section>
@@ -2406,10 +2788,10 @@ export function renderScoreCalculatorPage(filters = {}) {
 }
 
 const gradeLabels = Object.freeze({
-  high_school_g1: "High school grade one",
-  high_school_g2: "High school grade two",
-  high_school_g3: "High school grade three",
-  graduated: "Graduated"
+  high_school_g1: "高一",
+  high_school_g2: "高二",
+  high_school_g3: "高三",
+  graduated: "已毕业"
 });
 
 function gradeLabel(grade) {
@@ -4054,34 +4436,34 @@ export function renderAdminReportReviewPage({ reports, filters = {}, user }) {
 function renderPersonalSummary(personalCenter) {
   const items = [
     {
-      label: "Nickname",
+      label: "昵称",
       value: personalCenter.user.nickname,
       detail: gradeLabel(personalCenter.user.grade)
     },
     {
-      label: "Default anonymous preference",
-      value: personalCenter.preferences.defaultAnonymous ? "Anonymous by default" : "Show nickname by default",
-      detail: "Used for new experience submissions"
+      label: "默认匿名偏好",
+      value: personalCenter.preferences.defaultAnonymous ? "默认匿名" : "默认展示昵称",
+      detail: "用于新的面经投稿"
     },
     {
-      label: "School favorites",
+      label: "院校收藏",
       value: personalCenter.favorites.schools.length,
-      detail: "Saved schools"
+      detail: "已收藏院校"
     },
     {
-      label: "Experience favorites",
+      label: "面经收藏",
       value: personalCenter.favorites.experiences.length,
-      detail: "Saved experiences"
+      detail: "已收藏面经"
     },
     {
-      label: "Submissions",
+      label: "投稿",
       value: personalCenter.submittedExperiences.length,
-      detail: "Review-status tracking"
+      detail: "审核状态跟踪"
     },
     {
-      label: "Site reminders",
+      label: "站内提醒",
       value: personalCenter.notifications.length,
-      detail: "Personal-center only"
+      detail: "仅个人中心展示"
     }
   ];
 
@@ -4096,7 +4478,7 @@ function renderPersonalSummary(personalCenter) {
 
 function renderFavoriteSchoolCards(favorites) {
   if (favorites.length === 0) {
-    return `<p class="empty-state">No favorited schools yet.</p>`;
+    return `<p class="empty-state">还没有收藏院校。</p>`;
   }
 
   return favorites
@@ -4109,15 +4491,15 @@ function renderFavoriteSchoolCards(favorites) {
 
       return `<article class="personal-card">
         <div class="badge-row">
-          <span class="badge">${escapeHtml(guide?.year ?? "School")}</span>
+          <span class="badge">${escapeHtml(guide?.year ?? "院校")}</span>
           <span class="soft-badge">${escapeHtml(humanizeToken(favorite.visibility))}</span>
         </div>
-        <h3><a href="${schoolHref}">${escapeHtml(school?.name ?? "Unavailable school")}</a></h3>
+        <h3><a href="${schoolHref}">${escapeHtml(school?.name ?? "不可用院校")}</a></h3>
         ${renderDetailRows([
-          { label: "City", value: displayValue(school?.city) },
-          { label: "School type", value: school ? humanizeToken(school.schoolType) : missingOfficialText },
-          { label: "Application status", value: guide ? humanizeToken(guide.applicationStatus) : missingOfficialText },
-          { label: "Application deadline", value: guide ? formatDate(guide.applicationDeadlineAt) : missingOfficialText }
+          { label: "城市", value: displayValue(school?.city) },
+          { label: "院校类型", value: school ? humanizeToken(school.schoolType) : missingOfficialText },
+          { label: "报名状态", value: guide ? humanizeToken(guide.applicationStatus) : missingOfficialText },
+          { label: "报名截止", value: guide ? formatDate(guide.applicationDeadlineAt) : missingOfficialText }
         ])}
       </article>`;
     })
@@ -4126,7 +4508,7 @@ function renderFavoriteSchoolCards(favorites) {
 
 function renderFavoriteExperienceCards(favorites) {
   if (favorites.length === 0) {
-    return `<p class="empty-state">No favorited experiences yet.</p>`;
+    return `<p class="empty-state">还没有收藏面经。</p>`;
   }
 
   return favorites
@@ -4136,15 +4518,15 @@ function renderFavoriteExperienceCards(favorites) {
 
       return `<article class="personal-card">
         <div class="badge-row">
-          <span class="badge">${escapeHtml(experience?.year ?? "Experience")}</span>
+          <span class="badge">${escapeHtml(experience?.year ?? "面经")}</span>
           <span class="soft-badge">${escapeHtml(experience?.verifiedLabel ?? humanizeToken(favorite.visibility))}</span>
         </div>
-        <h3>${escapeHtml(school?.name ?? "Unavailable experience")}</h3>
-        <p>${escapeHtml(experience?.summary ?? "This experience is no longer visible on the student side.")}</p>
+        <h3>${escapeHtml(school?.name ?? "不可用面经")}</h3>
+        <p>${escapeHtml(experience?.summary ?? "这条面经已不再对学生端可见。")}</p>
         ${renderDetailRows([
-          { label: "Stage", value: experience ? experience.stageLabel : missingOfficialText },
-          { label: "Assessment format", value: experience ? experience.assessmentFormat : missingOfficialText },
-          { label: "Useful count", value: experience ? experience.usefulCount : missingOfficialText }
+          { label: "阶段", value: experience ? experience.stageLabel : missingOfficialText },
+          { label: "考核形式", value: experience ? experience.assessmentFormat : missingOfficialText },
+          { label: "有用数", value: experience ? experience.usefulCount : missingOfficialText }
         ])}
       </article>`;
     })
@@ -4153,7 +4535,7 @@ function renderFavoriteExperienceCards(favorites) {
 
 function renderNotificationCards(notifications) {
   if (notifications.length === 0) {
-    return `<p class="empty-state">No site reminders for favorited schools or submitted experiences right now.</p>`;
+    return `<p class="empty-state">当前没有收藏院校或投稿相关站内提醒。</p>`;
   }
 
   return notifications
@@ -4161,28 +4543,28 @@ function renderNotificationCards(notifications) {
       if (notification.type === "submission_review") {
         return `<article class="personal-card">
       <div class="badge-row">
-        <span class="site-badge">Site-only</span>
+        <span class="site-badge">仅站内</span>
         <span class="status-badge status-${escapeHtml(notification.status)}">${escapeHtml(notification.statusLabel)}</span>
       </div>
       <h3>${escapeHtml(notification.title)}</h3>
       ${renderDetailRows([
-        { label: "School", value: notification.school?.name ?? "Published school" },
-        { label: "Submission year", value: notification.year },
-        { label: "Next action", value: notification.nextAction?.label ?? "Check the submitted experience group." }
+        { label: "院校", value: notification.school?.name ?? "已发布院校" },
+        { label: "投稿年份", value: notification.year },
+        { label: "下一步", value: notification.nextAction?.label ?? "查看已投稿面经分组。" }
       ])}
     </article>`;
       }
 
       return `<article class="personal-card">
       <div class="badge-row">
-        <span class="site-badge">Site-only</span>
+        <span class="site-badge">仅站内</span>
         <span class="status-badge status-${escapeHtml(notification.status)}">${escapeHtml(notification.statusLabel)}</span>
       </div>
       <h3>${escapeHtml(notification.title)}</h3>
       ${renderDetailRows([
-        { label: "School", value: notification.school?.name ?? "Published school" },
-        { label: "Timeline node", value: humanizeToken(notification.eventKey) },
-        { label: "Due", value: formatDate(notification.dueAt) }
+        { label: "院校", value: notification.school?.name ?? "已发布院校" },
+        { label: "时间线节点", value: humanizeToken(notification.eventKey) },
+        { label: "到期", value: formatDate(notification.dueAt) }
       ])}
     </article>`;
     })
@@ -4208,14 +4590,14 @@ function renderSubmittedExperienceCard(experience) {
         <span class="soft-badge">${escapeHtml(experience.statusLabel)}</span>
         <span class="muted-badge">${escapeHtml(experience.verification.statusLabel)}</span>
       </div>
-      <h3>${escapeHtml(experience.school?.name ?? "Published school")}</h3>
+      <h3>${escapeHtml(experience.school?.name ?? "已发布院校")}</h3>
       <p>${escapeHtml(experience.summary)}</p>
       ${renderDetailRows([
-        { label: "Stage", value: humanizeToken(experience.stage) },
-        { label: "Assessment format", value: experience.assessmentTypes.map(humanizeToken).join(", ") },
-        { label: "Review status", value: experience.statusLabel },
-        { label: "Display", value: experience.author.displayName ?? experience.author.nickname },
-        { label: "Next action", html: renderSubmissionAction(experience.nextAction) }
+        { label: "阶段", value: humanizeToken(experience.stage) },
+        { label: "考核形式", value: experience.assessmentTypes.map(humanizeToken).join("、") },
+        { label: "审核状态", value: experience.statusLabel },
+        { label: "展示身份", value: experience.author.displayName ?? experience.author.nickname },
+        { label: "下一步", html: renderSubmissionAction(experience.nextAction) }
       ])}
     </article>`;
 }
@@ -4224,7 +4606,7 @@ function renderSubmittedExperienceGroups(personalCenter) {
   const experiences = personalCenter.submittedExperiences;
 
   if (experiences.length === 0) {
-    return `<p class="empty-state">No submitted experiences yet.</p>`;
+    return `<p class="empty-state">还没有提交面经。</p>`;
   }
 
   const groups = Array.isArray(personalCenter.submittedExperienceGroups) && personalCenter.submittedExperienceGroups.length > 0
@@ -4232,8 +4614,8 @@ function renderSubmittedExperienceGroups(personalCenter) {
     : [
         {
           key: "submitted",
-          label: "Submitted",
-          nextAction: "Check the latest review status.",
+          label: "已提交",
+          nextAction: "查看最新审核状态。",
           experiences: personalCenter.submittedExperiences
         }
       ];
@@ -4245,7 +4627,7 @@ function renderSubmittedExperienceGroups(personalCenter) {
           <h3 id="submission-group-${escapeHtml(group.key)}">${escapeHtml(group.label)}</h3>
           <p>${escapeHtml(group.nextAction)}</p>
         </div>
-        <span class="muted-badge">${escapeHtml(group.experiences.length)} ${escapeHtml(pluralize(group.experiences.length, "item"))}</span>
+        <span class="muted-badge">${escapeHtml(group.experiences.length)} 项</span>
       </div>
       <div class="personal-list">${group.experiences.map(renderSubmittedExperienceCard).join("")}</div>
     </section>`)
@@ -4258,65 +4640,65 @@ function renderPreferenceForm(personalCenter, feedback) {
     .map(([value, label]) => renderOption(value, label, preferences.grade))
     .join("");
   const anonymousOptions = [
-    renderOption("true", "Anonymous by default", preferences.defaultAnonymous ? "true" : "false"),
-    renderOption("false", "Show nickname by default", preferences.defaultAnonymous ? "true" : "false")
+    renderOption("true", "默认匿名", preferences.defaultAnonymous ? "true" : "false"),
+    renderOption("false", "默认展示昵称", preferences.defaultAnonymous ? "true" : "false")
   ].join("");
 
   return `<div class="preference-stack">
-  <form class="preference-form" method="post" action="/me/preferences" aria-label="Account preferences">
+  <form class="preference-form" method="post" action="/me/preferences" aria-label="账号偏好">
     ${renderPersonalFeedback(feedback)}
     <label class="form-field">
-      <span>Nickname</span>
+      <span>昵称</span>
       <input name="nickname" value="${escapeHtml(preferences.nickname)}" autocomplete="nickname" required>
     </label>
     <label class="form-field">
-      <span>Grade</span>
+      <span>年级</span>
       <select name="grade" required>${gradeOptions}</select>
     </label>
     <label class="form-field">
-      <span>Default anonymous preference</span>
+      <span>默认匿名偏好</span>
       <select name="defaultAnonymous" required>${anonymousOptions}</select>
     </label>
     <div class="form-actions">
-      <button class="primary-action" type="submit">Update preferences</button>
+      <button class="primary-action" type="submit">更新偏好</button>
     </div>
   </form>
-  <form class="preference-form logout-form" method="post" action="/logout" aria-label="Logout">
+  <form class="preference-form logout-form" method="post" action="/logout" aria-label="退出登录">
     <input type="hidden" name="returnTo" value="/me">
-    <button class="secondary-action" type="submit" data-clear-experience-drafts="true">Logout</button>
+    <button class="secondary-action" type="submit" data-clear-experience-drafts="true">退出登录</button>
   </form>
   </div>`;
 }
 
 export function renderPersonalCenterLoginGuidePage({ returnTo = "/me" } = {}) {
   return renderStudentPage({
-    title: `My | ${productName}`,
+    title: `我的 | ${productName}`,
     currentKey: "me",
     topBar: renderStudentTopBar({
       type: "list",
-      title: "My"
+      title: "我的"
     }),
     content: `
       <section class="page-heading" aria-labelledby="personal-login-title">
-        <p class="eyebrow">Personal center</p>
-        <h1 id="personal-login-title">My</h1>
-        <p class="lead">Log in when you are ready to keep student-owned admissions work in one place.</p>
+        <p class="eyebrow">个人中心</p>
+        <h1 id="personal-login-title">我的</h1>
+        <p class="lead">登录后可以集中管理收藏、投稿、站内提醒和账号偏好。</p>
       </section>
 
-      <section class="section" aria-label="Login guide">
+      <section class="section" aria-label="登录引导">
         <article class="personal-login-guide">
           <div class="login-heading">
-            <p class="eyebrow">Login guide</p>
-            <h2>Log in to use My page</h2>
-            <p>Login enables school favorites, experience publishing, and review-status tracking.</p>
+            <p class="eyebrow">登录引导</p>
+            <h2>登录后使用我的页面</h2>
+            <p>登录后可使用院校收藏、面经发布和审核状态跟踪。</p>
           </div>
           <div class="form-actions">
-            <a class="primary-action" href="/login?returnTo=${escapeHtml(encodeURIComponent(safeReturnHref(returnTo)))}">Login</a>
+            <a class="primary-action" href="/login?returnTo=${escapeHtml(encodeURIComponent(safeReturnHref(returnTo)))}">登录</a>
           </div>
           <ul class="tip-list">
-            <li>Save Guangdong comprehensive evaluation schools for a personal timeline.</li>
-            <li>Publish structured experiences after reviewer approval.</li>
-            <li>Check submitted experience review status from this page.</li>
+            <li>收藏广东综评院校，生成个人时间线。</li>
+            <li>审核通过后发布结构化面经。</li>
+            <li>在本页查看已投稿面经的审核状态。</li>
           </ul>
         </article>
       </section>`
@@ -4325,54 +4707,54 @@ export function renderPersonalCenterLoginGuidePage({ returnTo = "/me" } = {}) {
 
 export function renderPersonalCenterPage({ personalCenter, notice = "", error = "" }) {
   return renderStudentPage({
-    title: `Personal Center | ${productName}`,
+    title: `个人中心 | ${productName}`,
     currentKey: "me",
     topBar: renderStudentTopBar({
       type: "list",
-      title: "My"
+      title: "我的"
     }),
     content: `
       <section class="page-heading" aria-labelledby="personal-center-title">
-        <p class="eyebrow">Logged-in workspace</p>
-        <h1 id="personal-center-title">Personal center</h1>
-        <p class="lead">Review saved admissions content, submitted experiences, site reminders, and account preferences.</p>
+        <p class="eyebrow">已登录工作区</p>
+        <h1 id="personal-center-title">个人中心</h1>
+        <p class="lead">查看已收藏招生内容、已提交面经、站内提醒和账号偏好。</p>
       </section>
 
-      <section class="section" aria-label="Personal summary">
+      <section class="section" aria-label="个人摘要">
         ${renderPersonalSummary(personalCenter)}
       </section>
 
-      <section class="section personal-grid" aria-label="Personal center content">
+      <section class="section personal-grid" aria-label="个人中心内容">
         <div class="personal-panel">
           <div class="section-heading">
-            <h2>Site reminders</h2>
-            <p class="section-kicker">${escapeHtml(personalCenter.notifications.length)} site-only ${escapeHtml(pluralize(personalCenter.notifications.length, "reminder"))}</p>
+            <h2>站内提醒</h2>
+            <p class="section-kicker">${escapeHtml(personalCenter.notifications.length)} 个站内提醒</p>
           </div>
           <div class="personal-list">${renderNotificationCards(personalCenter.notifications)}</div>
         </div>
 
         <div class="personal-panel">
           <div class="section-heading">
-            <h2>Account preferences</h2>
+            <h2>账号偏好</h2>
             <p class="section-kicker">${escapeHtml(gradeLabel(personalCenter.preferences.grade))}</p>
           </div>
           ${renderPreferenceForm(personalCenter, { notice, error })}
         </div>
       </section>
 
-      <section class="section personal-grid" aria-label="Favorites and submissions">
+      <section class="section personal-grid" aria-label="收藏与投稿">
         <div class="personal-panel">
           <div class="section-heading">
-            <h2>Favorited schools</h2>
-            <p class="section-kicker">${escapeHtml(personalCenter.favorites.schools.length)} saved ${escapeHtml(pluralize(personalCenter.favorites.schools.length, "school"))}</p>
+            <h2>收藏院校</h2>
+            <p class="section-kicker">${escapeHtml(personalCenter.favorites.schools.length)} 所已收藏院校</p>
           </div>
           <div class="personal-list">${renderFavoriteSchoolCards(personalCenter.favorites.schools)}</div>
         </div>
 
         <div class="personal-panel">
           <div class="section-heading">
-            <h2>Favorited experiences</h2>
-            <p class="section-kicker">${escapeHtml(personalCenter.favorites.experiences.length)} saved ${escapeHtml(pluralize(personalCenter.favorites.experiences.length, "experience"))}</p>
+            <h2>收藏面经</h2>
+            <p class="section-kicker">${escapeHtml(personalCenter.favorites.experiences.length)} 条已收藏面经</p>
           </div>
           <div class="personal-list">${renderFavoriteExperienceCards(personalCenter.favorites.experiences)}</div>
         </div>
@@ -4380,8 +4762,8 @@ export function renderPersonalCenterPage({ personalCenter, notice = "", error = 
 
       <section class="section" aria-labelledby="submitted-experiences-title">
         <div class="section-heading">
-          <h2 id="submitted-experiences-title">Submitted experiences</h2>
-          <p class="section-kicker">${escapeHtml(personalCenter.submittedExperiences.length)} user-owned ${escapeHtml(pluralize(personalCenter.submittedExperiences.length, "submission"))}</p>
+          <h2 id="submitted-experiences-title">已提交面经</h2>
+          <p class="section-kicker">${escapeHtml(personalCenter.submittedExperiences.length)} 条本人投稿</p>
         </div>
         <div class="personal-list submitted-list">${renderSubmittedExperienceGroups(personalCenter)}</div>
       </section>`
@@ -4390,26 +4772,26 @@ export function renderPersonalCenterPage({ personalCenter, notice = "", error = 
 
 const homeTaskEntries = Object.freeze([
   {
-    title: "Schools",
-    label: "Browse schools",
+    title: "院校",
+    label: "查院校",
     href: "/schools",
     icon: "school"
   },
   {
-    title: "Timeline",
-    label: "Key dates",
+    title: "时间线",
+    label: "看日期",
     href: "/timeline",
     icon: "calendar"
   },
   {
-    title: "Score Calculator",
-    label: "Calculate score",
+    title: "综合分",
+    label: "算分数",
     href: "/calculator",
     icon: "calculator"
   },
   {
-    title: "Experiences",
-    label: "Read stories",
+    title: "面经",
+    label: "看经验",
     href: "/experiences",
     icon: "experience"
   }
@@ -4417,24 +4799,24 @@ const homeTaskEntries = Object.freeze([
 
 const gradePreparationTips = Object.freeze({
   high_school_g1: [
-    "Understand the comprehensive evaluation path.",
-    "Watch subject choices and school scope.",
-    "Start saving material examples."
+    "了解综评整体路径。",
+    "关注选科要求和可报院校范围。",
+    "开始保存可用于材料准备的经历案例。"
   ],
   high_school_g2: [
-    "Check academic test and subject requirements.",
-    "Compare target school guide changes.",
-    "Track assessment formats before application year."
+    "核对学考和选科要求。",
+    "比较目标院校近年简章变化。",
+    "提前跟踪校测形式和准备节奏。"
   ],
   high_school_g3: [
-    "Watch current guide releases.",
-    "Keep deadline and confirmation dates visible.",
-    "Prepare school assessment examples."
+    "关注当年简章发布。",
+    "留意报名截止、确认和缴费时间。",
+    "准备校测可用的经历和案例。"
   ],
   graduated: [
-    "Use current guides as official reference.",
-    "Check school-year changes before acting.",
-    "Read experiences by year and stage."
+    "以当年已发布简章作为官方参考。",
+    "行动前核对院校年度变化。",
+    "按年份和阶段阅读面经。"
   ]
 });
 
@@ -4487,7 +4869,7 @@ function nearestHomeTimelineNodes({ user, interactionStore, year, now, nodesOver
 
 function renderHomeTimelineRows(nodes) {
   if (nodes.length === 0) {
-    return `<p class="empty-state">No clear timeline nodes yet. We will update when published.</p>`;
+    return `<p class="empty-state">暂无明确时间线节点，发布后会更新。</p>`;
   }
 
   return nodes
@@ -4497,7 +4879,7 @@ function renderHomeTimelineRows(nodes) {
 
       return `<article class="home-list-row" data-home-timeline-row="true">
         <div>
-          <span class="row-label">${escapeHtml(school?.name ?? "Published school")}</span>
+          <span class="row-label">${escapeHtml(school?.name ?? "已发布院校")}</span>
           <strong>${escapeHtml(node.title)}</strong>
         </div>
         <div class="row-side">
@@ -4511,7 +4893,7 @@ function renderHomeTimelineRows(nodes) {
 
 function renderHomeGuideRows(guides) {
   if (guides.length === 0) {
-    return `<p class="empty-state">Current-year guides are not published yet. Start with previous official rules.</p>`;
+    return `<p class="empty-state">当年简章暂未发布，可先参考往年官方规则。</p>`;
   }
 
   return guides
@@ -4522,7 +4904,7 @@ function renderHomeGuideRows(guides) {
         <strong>${escapeHtml(guide.admissionYear)} ${escapeHtml(humanizeToken(guide.status))}</strong>
       </div>
       <div class="row-side">
-        <span>Deadline ${escapeHtml(formatDate(guide.applicationDeadlineAt))}</span>
+        <span>截止 ${escapeHtml(formatDate(guide.applicationDeadlineAt))}</span>
         <em>${escapeHtml(humanizeToken(guide.sourceType ?? "official_source"))}</em>
       </div>
     </a>`)
@@ -4531,18 +4913,18 @@ function renderHomeGuideRows(guides) {
 
 function renderHomeExperienceRows(experiences) {
   if (experiences.length === 0) {
-    return `<p class="empty-state">No published experiences yet. Check school guides first.</p>`;
+    return `<p class="empty-state">暂无已发布面经，可先查看院校简章。</p>`;
   }
 
   return experiences
     .slice(0, 3)
     .map((experience) => {
       const school = getSchoolById(experience.schoolId);
-      const assessmentFormat = experience.assessmentTypes.map(humanizeToken).join(", ");
+      const assessmentFormat = experience.assessmentTypes.map(humanizeToken).join("、");
 
       return `<a class="home-list-row" href="/schools/${escapeHtml(encodeURIComponent(experience.schoolId))}?year=${escapeHtml(experience.admissionYear)}" data-home-experience-row="true">
         <div>
-          <span class="row-label">${escapeHtml(school?.name ?? "Published school")}</span>
+          <span class="row-label">${escapeHtml(school?.name ?? "已发布院校")}</span>
           <strong>${escapeHtml(experience.admissionYear)} ${escapeHtml(humanizeToken(experience.stage))}</strong>
         </div>
         <div class="row-side">
@@ -4581,9 +4963,9 @@ export function renderStudentHome({
   const latestExperiences = (
     Array.isArray(homeData.experiences) ? homeData.experiences : listExperiences({ sort: "newest" })
   ).slice(0, 3);
-  const timelineSource = timeline.favoriteScoped ? "Favorited schools" : "Site-wide published nodes";
+  const timelineSource = timeline.favoriteScoped ? "已收藏院校" : "全站已发布节点";
   const guestPrompt = !user
-    ? `<p class="login-prompt">Log in to favorite schools and view your personal timeline.</p>`
+    ? `<p class="login-prompt">登录后可收藏院校并查看个人时间线。</p>`
     : "";
 
   return renderStudentPage({
@@ -4598,17 +4980,17 @@ export function renderStudentHome({
       <section class="home-first-screen" aria-labelledby="home-title">
         <article class="home-greeting-card">
           <p class="eyebrow">${escapeHtml(gradeLabel(selectedGrade))}</p>
-          <h1 id="home-title">Guangdong Comprehensive Evaluation</h1>
-          <p>Use your grade to move quickly between schools, dates, score tools, and structured experiences.</p>
+          <h1 id="home-title">广东综合评价招生</h1>
+          <p>按年级快速查看院校、时间节点、综合分工具和结构化面经。</p>
         </article>
 
-        <nav class="home-task-grid" aria-label="Core student tasks">
+        <nav class="home-task-grid" aria-label="核心任务">
           ${renderHomeTasks()}
         </nav>
 
         <section class="home-panel" aria-labelledby="nearest-nodes-title">
           <div class="section-heading">
-            <h2 id="nearest-nodes-title">Nearest timeline nodes</h2>
+            <h2 id="nearest-nodes-title">最近时间节点</h2>
             <p class="section-kicker">${escapeHtml(timelineSource)}</p>
           </div>
           <div class="home-list">${renderHomeTimelineRows(timeline.nodes)}</div>
@@ -4618,23 +5000,23 @@ export function renderStudentHome({
 
       <section class="section home-panel" aria-labelledby="latest-guides-title">
         <div class="section-heading">
-          <h2 id="latest-guides-title">Latest guides</h2>
-          <a class="text-link" href="/schools">All schools</a>
+          <h2 id="latest-guides-title">最新简章</h2>
+          <a class="text-link" href="/schools">全部院校</a>
         </div>
         <div class="home-list">${renderHomeGuideRows(latestGuides)}</div>
       </section>
 
       <section class="section home-panel" aria-labelledby="latest-experiences-title">
         <div class="section-heading">
-          <h2 id="latest-experiences-title">Latest experiences</h2>
-          <a class="text-link" href="/experiences">All experiences</a>
+          <h2 id="latest-experiences-title">最新面经</h2>
+          <a class="text-link" href="/experiences">全部面经</a>
         </div>
         <div class="home-list">${renderHomeExperienceRows(latestExperiences)}</div>
       </section>
 
       <section class="section home-panel" aria-labelledby="grade-tips-title">
         <div class="section-heading">
-          <h2 id="grade-tips-title">Grade preparation tips</h2>
+          <h2 id="grade-tips-title">年级准备建议</h2>
           <p class="section-kicker">${escapeHtml(gradeLabel(selectedGrade))}</p>
         </div>
         <ul class="tip-list">${renderGradeTips(selectedGrade)}</ul>
@@ -4664,31 +5046,31 @@ export function renderLoginPage({
   const disabled = agreement ? "" : " disabled";
 
   return renderStudentPage({
-    title: `Login | ${productName}`,
+    title: `登录 | ${productName}`,
     hideBottomNav: true,
     topBar: renderStudentTopBar({
       type: "form",
-      title: "Login",
+      title: "登录",
       backHref: safeReturnHref(returnTo),
-      backLabel: "Back"
+      backLabel: "返回"
     }),
     content: `
       <section class="login-card" aria-labelledby="login-title">
         <div class="login-heading">
-          <p class="eyebrow">Phone OTP</p>
-          <h1 id="login-title">Login Guangdong CE</h1>
-          <p>Log in to favorite schools, publish experiences, and track review status.</p>
+          <p class="eyebrow">手机号验证码</p>
+          <h1 id="login-title">登录广东综评</h1>
+          <p>登录后可收藏院校、发布面经并跟踪审核状态。</p>
         </div>
 
         ${notice ? `<p class="form-success" role="status">${escapeHtml(notice)}</p>` : ""}
         ${error ? `<p class="form-error" role="alert">${escapeHtml(error)}</p>` : ""}
 
-        <form class="login-form" method="post" action="/login" data-login-form="true" aria-label="Phone OTP login">
+        <form class="login-form" method="post" action="/login" data-login-form="true" aria-label="手机号验证码登录">
           <input type="hidden" name="returnTo" value="${escapeHtml(safeReturnHref(returnTo))}">
           <input type="hidden" name="pendingAction" value="${escapeHtml(pendingAction)}">
 
           <label class="form-field">
-            <span>Mainland China phone</span>
+            <span>中国大陆手机号</span>
             <input
               name="phoneNumber"
               type="tel"
@@ -4701,7 +5083,7 @@ export function renderLoginPage({
           </label>
 
           <label class="form-field">
-            <span>Verification code</span>
+            <span>验证码</span>
             <div class="otp-row">
               <input
                 name="otpCode"
@@ -4709,7 +5091,7 @@ export function renderLoginPage({
                 autocomplete="one-time-code"
                 value="${escapeHtml(otpCode)}"
                 required>
-              <button class="secondary-action otp-send-button" type="button" data-send-otp="true">Send code</button>
+              <button class="secondary-action otp-send-button" type="button" data-send-otp="true">发送验证码</button>
             </div>
           </label>
 
@@ -4717,11 +5099,11 @@ export function renderLoginPage({
 
           <label class="checkbox-field login-agreement">
             <input type="checkbox" name="agreement" value="accepted"${checked} data-login-agreement="true">
-            <span>I agree to the user agreement and privacy policy.</span>
+            <span>我同意用户协议和隐私政策。</span>
           </label>
 
           <div class="form-actions">
-            <button class="primary-action" type="submit" data-login-submit="true"${disabled}>Login</button>
+            <button class="primary-action" type="submit" data-login-submit="true"${disabled}>登录</button>
           </div>
         </form>
       </section>
@@ -4741,27 +5123,27 @@ export function renderAdminPage({ user } = {}) {
     .join("");
 
   return renderAdminShell({
-    title: `Admin | ${productName}`,
+    title: `管理后台 | ${productName}`,
     currentKey: "overview",
-    eyebrow: "Audited workflow foundation",
-    heading: "Admin console",
-    description: "The MVP admin area is reserved for reviewed official data, structured extraction tasks, experience moderation, and report handling.",
+    eyebrow: "审计工作流基础",
+    heading: "管理后台",
+    description: "MVP 管理区用于已审核官方数据、结构化抽取任务、面经审核和举报处理。",
     user,
     content: `
       <section class="admin-section" aria-labelledby="admin-routes-title">
         <div class="section-heading">
-          <h2 id="admin-routes-title">Desktop workflow overview</h2>
-          <p class="section-kicker">All admin workflows use left navigation, a global status bar, tables, and right-side review panels.</p>
+          <h2 id="admin-routes-title">桌面工作流总览</h2>
+          <p class="section-kicker">所有管理流程使用左侧导航、全局状态栏、表格和右侧审核面板。</p>
         </div>
         <div class="admin-overview-grid">${workflowItems}</div>
       </section>`,
     detailPanel: renderAdminPanel({
       id: "admin-overview-detail",
-      title: "Review workflow rules",
-      kicker: "Student-visible changes stay audited.",
+      title: "审核工作流规则",
+      kicker: "学生端可见变更必须保留审计记录。",
       sections: [
-        renderAdminPanelSection("Student-visible preview", `<p class="section-kicker">Official guide, formula, experience, verification, and report actions show what students can see before publication or hiding.</p>`),
-        renderAdminPanelSection("Audit requirement", `<p class="section-kicker">Publishing, returning, hiding, deleting, rejecting, and account-limiting actions record operator identity and operation time.</p>`)
+        renderAdminPanelSection("学生端预览", `<p class="section-kicker">官方简章、公式、面经、认证和举报动作在发布或隐藏前展示学生端可见内容。</p>`),
+        renderAdminPanelSection("审计要求", `<p class="section-kicker">发布、退回、隐藏、删除、拒绝和限制账号操作必须记录操作人和操作时间。</p>`)
       ]
     })
   });
@@ -4769,20 +5151,20 @@ export function renderAdminPage({ user } = {}) {
 
 export function renderNotFound() {
   return renderStudentPage({
-    title: `Not Found | ${productName}`,
+    title: `页面不存在 | ${productName}`,
     hideBottomNav: true,
     topBar: renderStudentTopBar({
       type: "detail",
-      title: "Not found",
+      title: "页面不存在",
       backHref: "/",
-      backLabel: "Back to home"
+      backLabel: "返回首页"
     }),
     content: `
       <section class="hero-copy">
         <p class="eyebrow">404</p>
-        <h1>Route not found</h1>
-        <p class="lead">This scaffold currently exposes the student home route, admin placeholder, and health API.</p>
-        <div class="actions"><a class="primary-action" href="/">Return home</a></div>
+        <h1>页面不存在</h1>
+        <p class="lead">当前页面不存在或暂未开放。</p>
+        <div class="actions"><a class="primary-action" href="/">返回首页</a></div>
       </section>`
   });
 }

@@ -10,8 +10,8 @@ import {
 
 describe("product metadata", () => {
   it("defines a student-facing product name and description", () => {
-    assert.equal(productName, "Guangdong Comprehensive Evaluation");
-    assert.match(productDescription, /Guangdong high school students/);
+    assert.equal(productName, "广东综评");
+    assert.match(productDescription, /广东高中生/);
   });
 
   it("keeps foundational student and admin navigation routes available", () => {

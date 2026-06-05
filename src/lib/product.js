@@ -1,22 +1,22 @@
-export const productName = "Guangdong Comprehensive Evaluation";
+export const productName = "广东综评";
 
 export const productDescription =
-  "Mobile-first admissions guide, timeline, calculator, and structured experience platform for Guangdong high school students.";
+  "面向广东高中生的综合评价招生指南、时间线、综合分计算器和结构化面经平台。";
 
 export const studentNavigation = [
-  { href: "/", label: "Home", key: "home", icon: "home" },
-  { href: "/schools", label: "Schools", key: "schools", icon: "school" },
-  { href: "/experiences", label: "Experiences", key: "experiences", icon: "experience" },
-  { href: "/me", label: "My", key: "me", icon: "user" }
+  { href: "/", label: "首页", key: "home", icon: "home" },
+  { href: "/schools", label: "院校", key: "schools", icon: "school" },
+  { href: "/experiences", label: "面经", key: "experiences", icon: "experience" },
+  { href: "/me", label: "我的", key: "me", icon: "user" }
 ];
 
 export const adminNavigation = [
-  { href: "/admin", label: "Overview", key: "overview" },
-  { href: "/admin/ingestion-runs", label: "Data Ingestion", key: "ingestion" },
-  { href: "/admin/guides", label: "Guide Review", key: "guides" },
-  { href: "/admin/timeline", label: "Timeline Management", key: "timeline" },
-  { href: "/admin/formulas", label: "Formula Management", key: "formulas" },
-  { href: "/admin/experiences", label: "Experience Review", key: "experiences" },
-  { href: "/admin/verifications", label: "Verification Review", key: "verifications" },
-  { href: "/admin/reports", label: "Report Handling", key: "reports" }
+  { href: "/admin", label: "总览", key: "overview" },
+  { href: "/admin/ingestion-runs", label: "AI 入库", key: "ingestion" },
+  { href: "/admin/guides", label: "简章审核", key: "guides" },
+  { href: "/admin/timeline", label: "时间线管理", key: "timeline" },
+  { href: "/admin/formulas", label: "公式管理", key: "formulas" },
+  { href: "/admin/experiences", label: "面经审核", key: "experiences" },
+  { href: "/admin/verifications", label: "认证审核", key: "verifications" },
+  { href: "/admin/reports", label: "举报处理", key: "reports" }
 ];

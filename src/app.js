@@ -108,44 +108,44 @@ const verificationReviewActions = new Set(["approve", "reject", "return"]);
 const reportResolutionActions = new Set(["keep", "hide", "delete", "limit_account", "reject"]);
 const timelineNodeTypes = new Set(timelineEventDefinitions.map((definition) => definition.eventKey));
 const submissionStatusLabels = Object.freeze({
-  draft: "Draft",
-  pending_review: "Pending Review",
-  published: "Published",
-  rejected: "Rejected",
-  returned: "Returned",
-  hidden: "Hidden",
-  banned: "Rejected"
+  draft: "草稿",
+  pending_review: "待审核",
+  published: "已发布",
+  rejected: "已拒绝",
+  returned: "已退回",
+  hidden: "已隐藏",
+  banned: "已拒绝"
 });
 const submissionGroupDefinitions = Object.freeze([
   {
     key: "pending_review",
-    label: "Pending Review",
-    nextAction: "No action needed while reviewers check student-safe details."
+    label: "待审核",
+    nextAction: "审核员正在核对可公开内容，暂时无需操作。"
   },
   {
     key: "published",
-    label: "Published",
-    nextAction: "View the student-safe public detail."
+    label: "已发布",
+    nextAction: "查看学生端公开详情。"
   },
   {
     key: "returned",
-    label: "Returned",
-    nextAction: "Submit a revised experience with private details removed."
+    label: "已退回",
+    nextAction: "删除隐私细节后重新提交。"
   },
   {
     key: "hidden",
-    label: "Hidden",
-    nextAction: "Prepare a new student-safe version before publishing again."
+    label: "已隐藏",
+    nextAction: "整理新的学生安全版本后再发布。"
   },
   {
     key: "rejected",
-    label: "Rejected",
-    nextAction: "Prepare a new student-safe version before publishing again."
+    label: "已拒绝",
+    nextAction: "整理新的学生安全版本后再发布。"
   },
   {
     key: "draft",
-    label: "Draft",
-    nextAction: "Finish the required fields before submitting for review."
+    label: "草稿",
+    nextAction: "补全必填字段后提交审核。"
   }
 ]);
 const submissionGroupKeys = new Set(submissionGroupDefinitions.map((group) => group.key));
@@ -177,7 +177,59 @@ function sendJson(response, statusCode, payload, headers = {}) {
 }
 
 function sendError(response, statusCode, error, message, extra = {}) {
-  sendJson(response, statusCode, { error, message, ...extra });
+  sendJson(response, statusCode, { error, message: localizeMessage(message), ...extra });
+}
+
+function localizeMessage(message) {
+  const messages = new Map([
+    ["Request body must be valid JSON.", "请求体必须是有效 JSON。"],
+    ["Request body is too large.", "请求体过大。"],
+    ["Request body must use JSON or URL-encoded form data.", "请求体必须使用 JSON 或表单编码数据。"],
+    ["Year must be a four-digit admission year.", "年份必须是四位招生年份。"],
+    ["Guide status is not supported.", "不支持该简章状态。"],
+    ["School list sort is not supported.", "不支持该院校列表排序。"],
+    ["Formula status is not supported.", "不支持该公式状态。"],
+    ["Ingestion run status is not supported.", "不支持该入库任务状态。"],
+    ["Experience moderation status is not supported.", "不支持该面经审核状态。"],
+    ["Verification status is not supported.", "不支持该认证状态。"],
+    ["Report status is not supported.", "不支持该举报状态。"],
+    ["Report target type is not supported.", "不支持该举报对象类型。"],
+    ["Timeline node type is not supported.", "不支持该时间线节点类型。"],
+    ["Experience list sort is not supported.", "不支持该面经列表排序。"],
+    ["Login is required for this action.", "需要登录后才能执行此操作。"],
+    ["This account cannot perform restricted actions.", "当前账号无法执行受限操作。"],
+    ["This account does not have access to this API.", "当前账号无权访问该接口。"],
+    ["Resolution note is required.", "必须填写处理说明。"],
+    ["Report resolution action is not supported.", "不支持该举报处理动作。"],
+    ["Favorites can target schools or experiences.", "收藏对象只能是院校或面经。"],
+    ["Favorite target id is required.", "必须提供收藏对象 ID。"],
+    ["No published school was found for this favorite.", "未找到可收藏的已发布院校。"],
+    ["No published experience was found for this favorite.", "未找到可收藏的已发布面经。"],
+    ["Reports can target experiences or users.", "举报对象只能是面经或用户。"],
+    ["Report target id is required.", "必须提供举报对象 ID。"],
+    ["No published experience was found for this report.", "未找到可举报的已发布面经。"],
+    ["No user was found for this report.", "未找到可举报用户。"],
+    ["No published experience was found.", "未找到已发布面经。"],
+    ["Login action is no longer valid.", "登录后的待处理操作已失效。"],
+    ["Verification code is invalid. Please re-enter.", "验证码无效，请重新输入。"],
+    ["Enter a mainland China phone number.", "请输入中国大陆手机号。"],
+    ["Agreement consent is required before login.", "登录前必须同意用户协议和隐私政策。"],
+    ["Login failed. Please try again.", "登录失败，请重试。"],
+    ["Profile updates must be provided as an object.", "资料更新内容必须是对象。"],
+    ["Admin guide action is not supported.", "不支持该简章管理操作。"],
+    ["No published admission guide was found.", "未找到已发布招生简章。"],
+    ["No published school guide was found for this school and year.", "未找到该院校该年份的已发布简章。"],
+    ["Method not allowed", "不支持该请求方法。"]
+  ]);
+
+  if (messages.has(message)) {
+    return messages.get(message);
+  }
+
+  return String(message ?? "")
+    .replace(" must be true or false.", " 必须为 true 或 false。")
+    .replace(" is required.", " 为必填项。")
+    .replace(/ must be (\d+) characters or fewer\./, " 最多 $1 个字符。");
 }
 
 function errorStatus(error) {
@@ -1005,7 +1057,7 @@ function adminExperienceJson(experience) {
     shortlistedStatus: experience.shortlistedStatus,
     admittedStatus: experience.admittedStatus,
     assessmentTypes: experience.assessmentTypes,
-    assessmentFormat: experience.assessmentTypes.map(humanizeToken).join(", "),
+    assessmentFormat: experience.assessmentTypes.map(humanizeToken).join("、"),
     location: experience.location,
     summary: experience.summary,
     processSummary: experience.processSummary,
@@ -1073,19 +1125,54 @@ function adminReportJson(report, authService) {
 
 function formatTimelineDateLabel(node) {
   if (!node.startsAt && !node.endsAt) {
-    return "To be announced";
+    return "待公布";
   }
 
   return node.endsAt ?? node.startsAt;
 }
 
 function timelineStatusLabel(status) {
-  return status
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const labels = {
+    not_started: "未开始",
+    active: "进行中",
+    due_soon: "即将截止",
+    ended: "已结束"
+  };
+
+  return labels[status] ?? humanizeToken(status);
 }
 
 function humanizeToken(value) {
+  const labels = {
+    active: "进行中",
+    admission_publication: "录取公布",
+    application_deadline: "报名截止",
+    application_start: "报名开始",
+    confirmation_or_payment: "确认或缴费",
+    draft: "草稿",
+    due_soon: "即将截止",
+    ended: "已结束",
+    guide_publication: "简章发布",
+    group_discussion: "小组讨论",
+    hidden: "已隐藏",
+    machine_test: "机试",
+    not_started: "未开始",
+    pending_review: "待审核",
+    preliminary_review_result: "初审结果",
+    published: "已发布",
+    rejected: "已拒绝",
+    returned: "已退回",
+    school_assessment: "校测",
+    shortlist_publication: "入围名单",
+    structured_interview: "结构化面试",
+    verified: "已认证",
+    volunteer_application: "志愿填报"
+  };
+
+  if (Object.hasOwn(labels, value)) {
+    return labels[value];
+  }
+
   return String(value)
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -1098,7 +1185,7 @@ function latestPublishedAdmissionYear() {
 }
 
 function experienceVerifiedLabel(experience) {
-  return experience.verificationStatus === "verified" ? "Verified experience" : "Verification pending";
+  return experience.verificationStatus === "verified" ? "已认证面经" : "认证待审核";
 }
 
 function experienceHistoricalReferenceNotice(experience) {
@@ -1106,7 +1193,7 @@ function experienceHistoricalReferenceNotice(experience) {
     return null;
   }
 
-  return `Historical reference: this ${experience.admissionYear} experience may not reflect current assessment rules.`;
+  return `历史参考：${experience.admissionYear} 年面经可能不完全适用于当前校测规则。`;
 }
 
 function timelineNodeJson(node) {
@@ -1163,7 +1250,7 @@ function experienceListItemJson(experience) {
     stage: experience.stage,
     stageLabel: humanizeToken(experience.stage),
     assessmentTypes: experience.assessmentTypes,
-    assessmentFormat: experience.assessmentTypes.map(humanizeToken).join(", "),
+    assessmentFormat: experience.assessmentTypes.map(humanizeToken).join("、"),
     summary: experience.summary,
     verificationStatus: experience.verificationStatus,
     verified: experience.verificationStatus === "verified",
@@ -2095,18 +2182,18 @@ function applyPendingLoginAction({ action, user, interactionStore, authService }
 
 function loginErrorMessage(error) {
   if (error?.code === "invalid_otp") {
-    return "Verification code is invalid. Please re-enter.";
+    return "验证码无效，请重新输入。";
   }
 
   if (error?.code === "invalid_phone") {
-    return "Enter a mainland China phone number.";
+    return "请输入中国大陆手机号。";
   }
 
   if (error?.code === "missing_agreement") {
-    return "Agreement consent is required before login.";
+    return "登录前必须同意用户协议和隐私政策。";
   }
 
-  return error?.message ?? "Login failed. Please try again.";
+  return localizeMessage(error?.message ?? "Login failed. Please try again.");
 }
 
 function scalarBodyValue(value) {
@@ -2153,7 +2240,7 @@ function profileUpdateFromBody(body) {
   }
 
   if (Object.hasOwn(body, "defaultAnonymous")) {
-    profile.defaultAnonymous = profileBoolean(body.defaultAnonymous, "Default anonymous preference");
+    profile.defaultAnonymous = profileBoolean(body.defaultAnonymous, "默认匿名偏好");
   }
 
   return profile;
@@ -2502,7 +2589,7 @@ export async function handleRequest(request, response, context = {}) {
 
       sendHtml(response, 200, renderPersonalCenterPage({
         personalCenter,
-        notice: "Preferences updated"
+        notice: "偏好已更新"
       }));
     } catch (error) {
       if (!shouldSendPersonalCenterJson(request, url)) {

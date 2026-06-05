@@ -104,7 +104,7 @@
     const rawValue = field.value.trim();
 
     if (rawValue.length === 0) {
-      const message = `${label} is required.`;
+      const message = `${label}必填。`;
       setFieldError(field, requireValue ? message : "");
       return { valid: !requireValue, score: null, message };
     }
@@ -112,13 +112,13 @@
     const value = Number(rawValue);
 
     if (!Number.isFinite(value)) {
-      const message = `${label} must be a number.`;
+      const message = `${label}必须是数字。`;
       setFieldError(field, message);
       return { valid: false, score: null, message };
     }
 
     if (value < 0 || value > maxScore) {
-      const message = `${label} must be between 0 and ${maxScore}.`;
+      const message = `${label}必须在 0 到 ${maxScore} 之间。`;
       setFieldError(field, message);
       return { valid: false, score: null, message };
     }
@@ -160,7 +160,7 @@
 
     clearNode(resultPanel);
     resultPanel.dataset.empty = "true";
-    appendText(resultPanel, "p", "Result will appear after calculation.", "inline-empty");
+    appendText(resultPanel, "p", "计算后将在这里显示结果。", "inline-empty");
   }
 
   function clearCalculationState() {
@@ -180,12 +180,12 @@
     appendText(
       listItem,
       "strong",
-      `${item.contribution} points from ${item.score}/${item.maxScore}`
+      `${item.score}/${item.maxScore} 贡献 ${item.contribution} 分`
     );
     appendText(
       listItem,
       "em",
-      `${Math.round(item.weight * 1000) / 10}% weight, normalized ${item.normalizedScore}`
+      `权重 ${Math.round(item.weight * 1000) / 10}%，折算分 ${item.normalizedScore}`
     );
 
     return listItem;
@@ -197,12 +197,12 @@
 
     const scoreBlock = document.createElement("div");
     scoreBlock.className = "result-score";
-    appendText(scoreBlock, "span", "Comprehensive score");
+    appendText(scoreBlock, "span", "综合分");
     appendText(scoreBlock, "strong", `${data.totalScore} / ${data.outputMaxScore}`);
     resultPanel.appendChild(scoreBlock);
 
     appendText(resultPanel, "p", data.formulaName, "result-formula-name");
-    appendText(resultPanel, "h3", "Contribution breakdown");
+    appendText(resultPanel, "h3", "分项贡献");
     const breakdownList = document.createElement("ul");
     breakdownList.className = "result-breakdown";
     data.breakdown.map(renderBreakdownItem).forEach((item) => breakdownList.appendChild(item));
@@ -214,7 +214,7 @@
     sourceLink.className = "text-link";
     sourceLink.href = data.officialSourceUrl;
     sourceLink.rel = "noopener";
-    sourceLink.textContent = "Official source";
+    sourceLink.textContent = "官方来源";
     resultPanel.appendChild(sourceLink);
 
     appendText(resultPanel, "p", data.disclaimer, "result-disclaimer");
@@ -228,11 +228,11 @@
       scores: validateScores()
     };
 
-    setFeedback("Calculating...", "loading");
+    setFeedback("正在计算...", "loading");
     if (calculateButton) {
       calculateButton.disabled = true;
       calculateButton.dataset.loading = "true";
-      calculateButton.textContent = "Calculating...";
+      calculateButton.textContent = "正在计算...";
     }
 
     const response = await fetch("/api/score/calculate", {
@@ -243,7 +243,7 @@
     const body = await response.json();
 
     if (!response.ok) {
-      throw new Error(body.message ?? "Score calculation failed.");
+      throw new Error(body.message ?? "综合分计算失败。");
     }
 
     renderResult(body);
@@ -276,7 +276,7 @@
       }).finally(() => {
         if (calculateButton) {
           calculateButton.dataset.loading = "false";
-          calculateButton.textContent = "Calculate score";
+          calculateButton.textContent = "计算综合分";
         }
         refreshSubmitState();
       });

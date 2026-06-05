@@ -20,45 +20,45 @@ const verificationReviewActions = new Set(["approve", "reject", "return"]);
 const moderationRules = Object.freeze([
   {
     code: "ongoing_exam_content",
-    label: "Ongoing exam content",
+    label: "进行中考试内容",
     pattern: /\b(ongoing exam|exam in progress|assessment still running|still in the exam|current live exam)\b/i,
-    message: "Content from an ongoing exam must not be published."
+    message: "进行中考试内容不得发布。"
   },
   {
     code: "undisclosed_original_question",
-    label: "Undisclosed original question",
+    label: "未公开原题",
     pattern: /\b(exact original question|undisclosed original question|leaked prompt|verbatim question|original exam question)\b/i,
-    message: "Undisclosed specific original questions require rewrite before approval."
+    message: "未公开具体原题必须改写后才可审核通过。"
   },
   {
     code: "true_question_sales",
-    label: "True-question sales",
+    label: "真题售卖",
     pattern: /\b(true[- ]?question sales?|sell(?:ing)? real questions?|paid real question|buy real questions?)\b/i,
-    message: "True-question sales or paid real-question traffic must be blocked."
+    message: "真题售卖或付费真题导流必须拦截。"
   },
   {
     code: "material_ghostwriting",
-    label: "Material ghostwriting",
+    label: "材料代写",
     pattern: /\b(ghostwrite|ghostwriting|write your materials?|personal statement writing service|application material writing)\b/i,
-    message: "Material ghostwriting offers require rewrite or removal."
+    message: "材料代写内容必须改写或移除。"
   },
   {
     code: "guaranteed_admission_claim",
-    label: "Guaranteed admission claim",
+    label: "保录承诺",
     pattern: /\b(guaranteed admission|100% admission|sure admit|admission guaranteed|guarantee offer)\b/i,
-    message: "Guaranteed admission claims are prohibited."
+    message: "禁止保录承诺。"
   },
   {
     code: "external_traffic_scam",
-    label: "External traffic scam",
+    label: "外部导流风险",
     pattern: /\b(add my wechat|wechat group|qq group|telegram group|scan qr|paid consulting|private traffic|dm me)\b/i,
-    message: "External traffic or paid consulting scam signals must be blocked."
+    message: "外部导流或付费咨询风险信号必须拦截。"
   },
   {
     code: "personal_sensitive_information",
-    label: "Personal sensitive information",
+    label: "个人敏感信息",
     pattern: /(?:\b(?:\+?86)?1[3-9]\d{9}\b|\b\d{17}[\dXx]\b|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|id card|身份证|real name)/i,
-    message: "Personal sensitive information must be removed before approval."
+    message: "个人敏感信息必须移除后才能审核通过。"
   }
 ]);
 
@@ -101,11 +101,11 @@ function requiredText(body, keys, label, maxLength = 2000) {
   const text = normalizeText(firstDefined(body, keys));
 
   if (text.length === 0) {
-    throw new ExperienceSubmissionError("missing_required_field", `${label} is required.`);
+    throw new ExperienceSubmissionError("missing_required_field", `${label}为必填项。`);
   }
 
   if (text.length > maxLength) {
-    throw new ExperienceSubmissionError("field_too_long", `${label} must be ${maxLength} characters or fewer.`);
+    throw new ExperienceSubmissionError("field_too_long", `${label}最多 ${maxLength} 个字符。`);
   }
 
   return text;
@@ -115,7 +115,7 @@ function optionalText(body, keys, label, maxLength = 1000) {
   const text = normalizeText(firstDefined(body, keys));
 
   if (text.length > maxLength) {
-    throw new ExperienceSubmissionError("field_too_long", `${label} must be ${maxLength} characters or fewer.`);
+    throw new ExperienceSubmissionError("field_too_long", `${label}最多 ${maxLength} 个字符。`);
   }
 
   return text || null;
@@ -125,7 +125,7 @@ function normalizeYear(value) {
   const year = Number(scalarValue(value));
 
   if (!Number.isInteger(year) || year < 2020 || year > 2100) {
-    throw new ExperienceSubmissionError("invalid_year", "Year must be a four-digit admission year.");
+    throw new ExperienceSubmissionError("invalid_year", "年份必须是四位招生年份。");
   }
 
   return year;
@@ -135,7 +135,7 @@ function normalizeRequiredYear(body) {
   const value = firstDefined(body, ["year", "admissionYear"]);
 
   if (value === undefined || value === null || normalizeText(value).length === 0) {
-    throw new ExperienceSubmissionError("missing_required_field", "Year is required.");
+    throw new ExperienceSubmissionError("missing_required_field", "年份为必填项。");
   }
 
   return normalizeYear(value);
@@ -150,11 +150,11 @@ function normalizeArray(value, label) {
   const unique = [...new Set(normalized)];
 
   if (unique.length === 0) {
-    throw new ExperienceSubmissionError("missing_required_field", `${label} is required.`);
+    throw new ExperienceSubmissionError("missing_required_field", `${label}为必填项。`);
   }
 
   if (unique.some((item) => item.length > 80)) {
-    throw new ExperienceSubmissionError("field_too_long", `${label} entries must be 80 characters or fewer.`);
+    throw new ExperienceSubmissionError("field_too_long", `${label}条目最多 80 个字符。`);
   }
 
   return unique;
@@ -176,7 +176,7 @@ function normalizeBoolean(value, label, options = {}) {
       return options.defaultValue;
     }
 
-    throw new ExperienceSubmissionError("missing_required_field", `${label} is required.`);
+    throw new ExperienceSubmissionError("missing_required_field", `${label}为必填项。`);
   }
 
   if (typeof rawValue === "boolean") {
@@ -197,7 +197,7 @@ function normalizeBoolean(value, label, options = {}) {
     return null;
   }
 
-  throw new ExperienceSubmissionError("invalid_boolean", `${label} must be true or false.`);
+  throw new ExperienceSubmissionError("invalid_boolean", `${label}必须为 true 或 false。`);
 }
 
 function requiredBoolean(body, keys, label) {
@@ -219,13 +219,13 @@ function normalizeRating(body, keys, label) {
   const value = firstDefined(body, keys);
 
   if (value === undefined || value === null || normalizeText(value).length === 0) {
-    throw new ExperienceSubmissionError("missing_required_field", `${label} is required.`);
+    throw new ExperienceSubmissionError("missing_required_field", `${label}为必填项。`);
   }
 
   const rating = Number(scalarValue(value));
 
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-    throw new ExperienceSubmissionError("invalid_rating", `${label} must be an integer from 1 to 5.`);
+    throw new ExperienceSubmissionError("invalid_rating", `${label}必须是 1 到 5 的整数。`);
   }
 
   return rating;
@@ -269,7 +269,7 @@ function assertOperator(operator) {
   if (!operator?.id || !operator?.nickname || !operator?.role) {
     throw new ExperienceSubmissionError(
       "operator_required",
-      "Operator identity is required for moderation.",
+      "审核操作必须提供操作人身份。",
       403
     );
   }
@@ -290,7 +290,7 @@ function normalizeModerationNote(note) {
   if (text.length > 1000) {
     throw new ExperienceSubmissionError(
       "moderation_note_too_long",
-      "Moderation note must be 1000 characters or fewer."
+      "审核备注最多 1000 个字符。"
     );
   }
 
@@ -334,10 +334,10 @@ function scanModerationWarnings(experience) {
   if (/(sourceAccount|source account|realName|real name|id card|身份证|\b(?:\+?86)?1[3-9]\d{9}\b)/i.test(privateText)) {
     warnings.push({
       code: "verification_privacy_warning",
-      label: "Verification privacy warning",
+      label: "认证隐私风险",
       severity: "warning",
       action: "review_private_material",
-      message: "Verification metadata contains private identity or source-account signals and must remain reviewer-only."
+      message: "认证元数据包含身份或来源账号信号，必须仅审核端可见。"
     });
   }
 
@@ -355,7 +355,7 @@ function moderationSummary(experience) {
 
 function normalizeVerificationMaterial(material) {
   if (!material || typeof material !== "object" || Array.isArray(material)) {
-    throw new ExperienceSubmissionError("invalid_verification_material", "Verification material metadata is invalid.");
+    throw new ExperienceSubmissionError("invalid_verification_material", "认证材料元数据无效。");
   }
 
   const metadata = normalizeMetadata(material.metadata);
@@ -386,12 +386,12 @@ function normalizeVerificationMaterial(material) {
   if (!materialType) {
     throw new ExperienceSubmissionError(
       "missing_required_field",
-      "Verification material type is required when verification metadata is provided."
+      "提供认证元数据时必须填写材料类型。"
     );
   }
 
   if (materialType.length > 80 || objectStorageKey.length > 240) {
-    throw new ExperienceSubmissionError("field_too_long", "Verification material metadata is too long.");
+    throw new ExperienceSubmissionError("field_too_long", "认证材料元数据过长。");
   }
 
   return {
@@ -421,7 +421,7 @@ function parseVerificationMaterials(value) {
     } catch {
       throw new ExperienceSubmissionError(
         "invalid_verification_material",
-        "Verification materials must be valid JSON when sent as text."
+        "认证材料以文本发送时必须是有效 JSON。"
       );
     }
   }
@@ -455,7 +455,7 @@ function assertSchoolExists(schoolId) {
   const school = getSchoolById(schoolId);
 
   if (!school) {
-    throw new ExperienceSubmissionError("school_not_found", "A published school is required.", 404);
+    throw new ExperienceSubmissionError("school_not_found", "必须选择已发布院校。", 404);
   }
 
   return school;
@@ -463,44 +463,44 @@ function assertSchoolExists(schoolId) {
 
 export function buildExperienceSubmission({ body, user, now, id = randomUUID() }) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new ExperienceSubmissionError("invalid_submission", "Experience submission must be an object.");
+    throw new ExperienceSubmissionError("invalid_submission", "面经投稿必须是对象。");
   }
 
   if (!user?.id) {
-    throw new ExperienceSubmissionError("login_required", "Login is required for this action.", 401);
+    throw new ExperienceSubmissionError("login_required", "需要登录后才能执行此操作。", 401);
   }
 
-  const schoolId = requiredText(body, ["schoolId"], "School", 120);
+  const schoolId = requiredText(body, ["schoolId"], "院校", 120);
   assertSchoolExists(schoolId);
 
-  const processSummary = requiredText(body, ["processSummary", "process"], "Process", 5000);
-  const advice = requiredText(body, ["advice"], "Advice", 3000);
+  const processSummary = requiredText(body, ["processSummary", "process"], "流程", 5000);
+  const advice = requiredText(body, ["advice"], "建议", 3000);
   const createdAt = currentDate(now).toISOString();
 
   return {
     id,
     userId: user.id,
-    authorNickname: user.nickname ?? "Guangdong student",
+    authorNickname: user.nickname ?? "广东考生",
     schoolId,
     admissionYear: normalizeRequiredYear(body),
     provinceScope: "guangdong",
     status: "pending_review",
-    majorGroup: requiredText(body, ["majorGroup"], "Major group", 160),
-    candidateTrack: requiredText(body, ["candidateTrack"], "Candidate track", 120),
-    stage: requiredText(body, ["stage"], "Stage", 120),
-    shortlistedStatus: requiredBoolean(body, ["shortlistedStatus", "shortlisted"], "Shortlisted status"),
-    admittedStatus: optionalBoolean(body, ["admittedStatus", "admitted"], "Admitted status"),
-    assessmentTypes: requiredArray(body, ["assessmentTypes", "assessmentType"], "Assessment type"),
-    location: optionalText(body, ["location"], "Location", 240),
+    majorGroup: requiredText(body, ["majorGroup"], "专业组", 160),
+    candidateTrack: requiredText(body, ["candidateTrack"], "考生科类", 120),
+    stage: requiredText(body, ["stage"], "阶段", 120),
+    shortlistedStatus: requiredBoolean(body, ["shortlistedStatus", "shortlisted"], "入围状态"),
+    admittedStatus: optionalBoolean(body, ["admittedStatus", "admitted"], "录取状态"),
+    assessmentTypes: requiredArray(body, ["assessmentTypes", "assessmentType"], "考核类型"),
+    location: optionalText(body, ["location"], "地点", 240),
     summary: summarizeExperience(processSummary, advice),
     processSummary,
-    questionTypes: requiredArray(body, ["questionTypes", "questionType"], "Question type"),
-    preparationSummary: requiredText(body, ["preparationSummary", "preparation"], "Preparation", 3000),
-    difficultyScore: normalizeRating(body, ["difficultyScore"], "Difficulty score"),
-    pressureScore: normalizeRating(body, ["pressureScore"], "Pressure score"),
-    differentiationScore: normalizeRating(body, ["differentiationScore"], "Differentiation score"),
+    questionTypes: requiredArray(body, ["questionTypes", "questionType"], "问题类型"),
+    preparationSummary: requiredText(body, ["preparationSummary", "preparation"], "准备", 3000),
+    difficultyScore: normalizeRating(body, ["difficultyScore"], "难度评分"),
+    pressureScore: normalizeRating(body, ["pressureScore"], "压力评分"),
+    differentiationScore: normalizeRating(body, ["differentiationScore"], "区分度评分"),
     advice,
-    isAnonymous: defaultedBoolean(body, ["isAnonymous", "anonymous", "anonymousPreference"], "Anonymous preference", user.defaultAnonymous ?? true),
+    isAnonymous: defaultedBoolean(body, ["isAnonymous", "anonymous", "anonymousPreference"], "匿名偏好", user.defaultAnonymous ?? true),
     verificationStatus: "pending_review",
     verificationMaterials: normalizeVerificationMaterials(body),
     usefulCount: 0,
@@ -533,7 +533,7 @@ export function publicExperienceSubmission(experience) {
     advice: experience.advice,
     isAnonymous: experience.isAnonymous,
     author: experience.isAnonymous
-      ? { anonymous: true, displayName: "Anonymous student" }
+      ? { anonymous: true, displayName: "匿名考生" }
       : { anonymous: false, id: experience.userId, nickname: experience.authorNickname },
     verification: {
       status: experience.verificationStatus,
@@ -640,7 +640,7 @@ export function createExperienceSubmissionStore(options = {}) {
     const experience = submissionsById.get(experienceId);
 
     if (!experience) {
-      throw new ExperienceSubmissionError("experience_not_found", "No submitted experience was found.", 404);
+      throw new ExperienceSubmissionError("experience_not_found", "未找到已提交面经。", 404);
     }
 
     return experience;
@@ -657,7 +657,7 @@ export function createExperienceSubmissionStore(options = {}) {
 
     throw new ExperienceSubmissionError(
       "verification_not_found",
-      "No verification material was found.",
+      "未找到认证材料。",
       404
     );
   }
@@ -725,7 +725,7 @@ export function createExperienceSubmissionStore(options = {}) {
       if (!experienceReviewActions.has(action)) {
         throw new ExperienceSubmissionError(
           "invalid_review_action",
-          "Experience review action is not supported."
+          "不支持该面经审核动作。"
         );
       }
 
@@ -737,7 +737,7 @@ export function createExperienceSubmissionStore(options = {}) {
       if (action === "approve" && moderation.approvalBlocked) {
         const error = new ExperienceSubmissionError(
           "moderation_blocked",
-          "This experience must be rewritten before approval.",
+          "该面经必须改写后才能通过审核。",
           422
         );
         error.moderation = moderation;
@@ -789,7 +789,7 @@ export function createExperienceSubmissionStore(options = {}) {
       if (!verificationReviewActions.has(action)) {
         throw new ExperienceSubmissionError(
           "invalid_verification_action",
-          "Verification review action is not supported."
+          "不支持该认证审核动作。"
         );
       }
 

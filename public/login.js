@@ -3,14 +3,14 @@ const countdownSeconds = 60;
 
 function loginErrorText(error) {
   if (error === "invalid_phone") {
-    return "Enter a mainland China phone number.";
+    return "请输入中国大陆手机号。";
   }
 
   if (error === "phone_verification_unavailable") {
-    return "Sending failed. Please try again later.";
+    return "发送失败，请稍后重试。";
   }
 
-  return "Sending failed. Please try again.";
+  return "发送失败，请重试。";
 }
 
 function updateSubmitState(form) {
@@ -44,7 +44,7 @@ function startCountdown(button) {
     if (remaining <= 0) {
       window.clearInterval(timer);
       button.disabled = false;
-      button.textContent = "Send code";
+      button.textContent = "发送验证码";
     }
   }, 1000);
 }
@@ -54,14 +54,14 @@ async function sendOtp(form, button) {
   const phoneNumber = String(phoneInput?.value ?? "").trim();
 
   if (!mainlandPhonePattern.test(phoneNumber)) {
-    setInlineError(form, "Enter a mainland China phone number.");
+    setInlineError(form, "请输入中国大陆手机号。");
     phoneInput?.focus();
     return;
   }
 
   setInlineError(form, "");
   button.disabled = true;
-  button.textContent = "Sending";
+  button.textContent = "发送中";
 
   try {
     const response = await fetch("/api/auth/otp", {
@@ -74,15 +74,15 @@ async function sendOtp(form, button) {
     if (!response.ok) {
       setInlineError(form, loginErrorText(body.error));
       button.disabled = false;
-      button.textContent = "Retry code";
+      button.textContent = "重新发送";
       return;
     }
 
     startCountdown(button);
   } catch {
-    setInlineError(form, "Sending failed. Please try again.");
+    setInlineError(form, "发送失败，请重试。");
     button.disabled = false;
-    button.textContent = "Retry code";
+    button.textContent = "重新发送";
   }
 }
 
@@ -110,7 +110,7 @@ function bindLoginForm() {
   form.addEventListener("submit", () => {
     if (submit) {
       submit.disabled = true;
-      submit.textContent = "Logging in";
+      submit.textContent = "登录中";
     }
   });
 }

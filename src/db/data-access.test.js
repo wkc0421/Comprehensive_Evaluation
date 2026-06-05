@@ -128,15 +128,15 @@ describe("student-facing data access helpers", () => {
 
   it("filters schools by year and keyword using published guide data", () => {
     assert.deepEqual(ids(listSchools({ year: 2026 })), [seedIds.schools.sysu]);
-    assert.deepEqual(ids(listSchools({ keyword: "shenzhen" })), [seedIds.schools.sustech]);
+    assert.deepEqual(ids(listSchools({ keyword: "深圳" })), [seedIds.schools.sustech]);
   });
 
   it("builds published school guide cards with filters and availability signals", () => {
     const cards = listSchoolGuideCards({
       year: 2025,
-      keyword: "Technology",
+      keyword: "华南理工",
       applicationStatus: "closed",
-      schoolType: "985 science and engineering university"
+      schoolType: "985 理工类大学"
     });
 
     assert.equal(cards.length, 1);
@@ -198,7 +198,7 @@ describe("student-facing data access helpers", () => {
       seedIds.guides.sysu2026,
       seedIds.guides.sysu2025
     ]);
-    assert.deepEqual(ids(listGuides({ year: 2026, keyword: "score conversion" })), [
+    assert.deepEqual(ids(listGuides({ year: 2026, keyword: "成绩折算" })), [
       seedIds.guides.sysu2026
     ]);
   });
@@ -235,7 +235,7 @@ describe("student-facing data access helpers", () => {
 
     const previous = result?.guides.find((guide) => guide.id === seedIds.guides.scut2025);
 
-    assert.equal(original?.summary, "Published guide with timeline data but no explicit score formula.");
+    assert.equal(original?.summary, "已发布简章，包含时间线信息，但未明确公开综合分公式。");
     assert.equal(result?.guide.version, 2);
     assert.equal(result?.guide.isCurrent, true);
     assert.equal(result?.guide.summary, "Corrected published guide summary.");
@@ -426,10 +426,10 @@ describe("student-facing data access helpers", () => {
   });
 
   it("reads only visible records by id", () => {
-    assert.equal(getSchoolById(seedIds.schools.sysu)?.name, "Sun Yat-sen University");
+    assert.equal(getSchoolById(seedIds.schools.sysu)?.name, "中山大学");
     assert.equal(getGuideById(seedIds.guides.sysu2026)?.admissionYear, 2026);
     assert.equal(getTimelineEventById("40000000-0000-4000-8000-000000000001")?.eventKey, "guide_publication");
-    assert.equal(getScoreFormulaById(seedIds.formulas.sysu2026)?.formulaName, "60/30/10 comprehensive score");
+    assert.equal(getScoreFormulaById(seedIds.formulas.sysu2026)?.formulaName, "60/30/10 综合成绩");
     assert.equal(getExperienceById(seedIds.experiences.sysu2026)?.verificationStatus, "verified");
   });
 
@@ -440,7 +440,7 @@ describe("student-facing data access helpers", () => {
 
     assert.equal(
       getScoreFormula({ schoolId: seedIds.schools.sysu, year: 2026 })?.formulaName,
-      "60/30/10 comprehensive score"
+      "60/30/10 综合成绩"
     );
     assert.equal(getScoreFormula({ schoolId: seedIds.schools.scut, year: 2025 }), null);
 
@@ -495,13 +495,13 @@ describe("student-facing data access helpers", () => {
       }
     });
 
-    assert.equal(result.formulaName, "60/30/10 comprehensive score");
+    assert.equal(result.formulaName, "60/30/10 综合成绩");
     assert.equal(result.totalScore, 88.2);
     assert.equal(result.outputMaxScore, 100);
     assert.deepEqual(result.breakdown.map((input) => input.contribution), [55.2, 24, 9]);
     assert.deepEqual(result.breakdown.map((input) => input.normalizedScore), [92, 80, 90]);
     assert.equal(result.officialSourceUrl, "https://example.edu/sysu/2026-comprehensive-evaluation-guide");
-    assert.match(result.disclaimer, /not an admission probability/i);
+    assert.match(result.disclaimer, /不代表录取概率/);
   });
 
   it("calculates 85/15 weighted formula scores", () => {
@@ -514,7 +514,7 @@ describe("student-facing data access helpers", () => {
       }
     });
 
-    assert.equal(result.formulaName, "85/15 comprehensive score");
+    assert.equal(result.formulaName, "85/15 综合成绩");
     assert.equal(result.totalScore, 93.4);
     assert.deepEqual(result.breakdown.map((input) => input.weight), [0.85, 0.15]);
     assert.deepEqual(result.breakdown.map((input) => input.contribution), [79.9, 13.5]);
@@ -530,7 +530,7 @@ describe("student-facing data access helpers", () => {
       }
     });
 
-    assert.equal(result.formulaName, "70/30 comprehensive score");
+    assert.equal(result.formulaName, "70/30 综合成绩");
     assert.equal(result.totalScore, 82.4);
     assert.deepEqual(result.breakdown.map((input) => input.weight), [0.7, 0.3]);
     assert.deepEqual(result.breakdown.map((input) => input.contribution), [56, 26.4]);

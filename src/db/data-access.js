@@ -26,15 +26,15 @@ let publishedExperienceRecords = [];
 const moderatedExperienceActions = new Map();
 
 export const timelineEventDefinitions = Object.freeze([
-  { eventKey: "guide_publication", title: "Guide published", dateField: "publishedAt" },
-  { eventKey: "application_start", title: "Application opens", dateField: "applicationStartAt" },
-  { eventKey: "application_deadline", title: "Application deadline", dateField: "applicationDeadlineAt" },
-  { eventKey: "preliminary_review_result", title: "Preliminary review result", dateField: null },
-  { eventKey: "confirmation_or_payment", title: "Confirmation or payment", dateField: null },
-  { eventKey: "school_assessment", title: "School assessment", dateField: null },
-  { eventKey: "shortlist_publication", title: "Shortlist publication", dateField: null },
-  { eventKey: "volunteer_application", title: "Volunteer application", dateField: null },
-  { eventKey: "admission_publication", title: "Admission publication", dateField: null }
+  { eventKey: "guide_publication", title: "简章发布", dateField: "publishedAt" },
+  { eventKey: "application_start", title: "报名开始", dateField: "applicationStartAt" },
+  { eventKey: "application_deadline", title: "报名截止", dateField: "applicationDeadlineAt" },
+  { eventKey: "preliminary_review_result", title: "初审结果", dateField: null },
+  { eventKey: "confirmation_or_payment", title: "确认或缴费", dateField: null },
+  { eventKey: "school_assessment", title: "校测", dateField: null },
+  { eventKey: "shortlist_publication", title: "入围名单", dateField: null },
+  { eventKey: "volunteer_application", title: "志愿填报", dateField: null },
+  { eventKey: "admission_publication", title: "录取公布", dateField: null }
 ]);
 const timelineEventDefinitionOrder = new Map(
   timelineEventDefinitions.map((definition, index) => [definition.eventKey, index])
@@ -134,7 +134,7 @@ function isPublished(record) {
 }
 
 function compareSchoolNames(left, right) {
-  return left.name.localeCompare(right.name, "en");
+  return left.name.localeCompare(right.name, "zh-CN");
 }
 
 function compareGuideRecency(left, right) {
@@ -149,7 +149,7 @@ function compareGuideRecency(left, right) {
   const leftSchool = getPublishedSchoolById(left.schoolId);
   const rightSchool = getPublishedSchoolById(right.schoolId);
 
-  return (leftSchool?.name ?? "").localeCompare(rightSchool?.name ?? "", "en");
+  return (leftSchool?.name ?? "").localeCompare(rightSchool?.name ?? "", "zh-CN");
 }
 
 function compareEventTime(left, right) {
@@ -160,7 +160,7 @@ function compareEventTime(left, right) {
     return leftTime.localeCompare(rightTime);
   }
 
-  return left.title.localeCompare(right.title, "en");
+  return left.title.localeCompare(right.title, "zh-CN");
 }
 
 function compareExperienceRecency(left, right) {
@@ -650,7 +650,7 @@ function classifyIngestionSource(sourceType, sourceUrl, title) {
     return {
       sourceType: "guangdong_education_exam_authority",
       priority: 1,
-      priorityLabel: "Guangdong Education Examination Authority",
+      priorityLabel: "广东省教育考试院",
       authorityRole: "final_authority"
     };
   }
@@ -663,7 +663,7 @@ function classifyIngestionSource(sourceType, sourceUrl, title) {
     return {
       sourceType: "chsi_yangguang_gaokao",
       priority: 2,
-      priorityLabel: "CHSI/Yangguang Gaokao",
+      priorityLabel: "学信网/阳光高考",
       authorityRole: "final_authority"
     };
   }
@@ -679,7 +679,7 @@ function classifyIngestionSource(sourceType, sourceUrl, title) {
     return {
       sourceType: "university_admissions",
       priority: 3,
-      priorityLabel: "University undergraduate admissions site",
+      priorityLabel: "高校本科招生官网",
       authorityRole: "final_authority"
     };
   }
@@ -695,7 +695,7 @@ function classifyIngestionSource(sourceType, sourceUrl, title) {
     return {
       sourceType: "third_party_info",
       priority: 99,
-      priorityLabel: "Third-party discovery clue",
+      priorityLabel: "第三方线索",
       authorityRole: "discovery_clue"
     };
   }
@@ -703,7 +703,7 @@ function classifyIngestionSource(sourceType, sourceUrl, title) {
   return {
     sourceType: "other_official",
     priority: 4,
-    priorityLabel: "Other official source",
+    priorityLabel: "其他官方来源",
     authorityRole: "final_authority"
   };
 }
@@ -1791,7 +1791,7 @@ function normalizeCalculationYear(year) {
   const numericYear = Number(year);
 
   if (!Number.isInteger(numericYear) || numericYear < 2000 || numericYear > 2100) {
-    throw new ScoreCalculationError("invalid_year", "Year must be a four-digit admission year.");
+    throw new ScoreCalculationError("invalid_year", "年份必须是四位招生年份。");
   }
 
   return numericYear;
@@ -1799,7 +1799,7 @@ function normalizeCalculationYear(year) {
 
 function assertCalculationScores(scores) {
   if (!scores || typeof scores !== "object" || Array.isArray(scores)) {
-    throw new ScoreCalculationError("invalid_scores", "Scores must be provided as an object keyed by formula input.");
+    throw new ScoreCalculationError("invalid_scores", "成绩必须按公式输入项提供。");
   }
 
   return scores;
@@ -1836,13 +1836,13 @@ function assertWeightedFormulaConfig(formula) {
   }
 
   if (!Array.isArray(formula.formulaConfig.inputs) || formula.formulaConfig.inputs.length === 0) {
-    throw new ScoreCalculationError("invalid_formula_config", "The score formula has no configured inputs.", 422);
+    throw new ScoreCalculationError("invalid_formula_config", "成绩公式没有配置输入项。", 422);
   }
 
   const outputMaxScore = Number(formula.formulaConfig.outputMaxScore);
 
   if (!Number.isFinite(outputMaxScore) || outputMaxScore <= 0) {
-    throw new ScoreCalculationError("invalid_formula_config", "The score formula output scale is invalid.", 422);
+    throw new ScoreCalculationError("invalid_formula_config", "成绩公式输出满分配置无效。", 422);
   }
 
   for (const input of formula.formulaConfig.inputs) {
@@ -1850,11 +1850,11 @@ function assertWeightedFormulaConfig(formula) {
     const weight = Number(input.weight);
 
     if (!input.key || !input.label || !Number.isFinite(maxScore) || maxScore <= 0) {
-      throw new ScoreCalculationError("invalid_formula_config", "A score formula input is invalid.", 422);
+      throw new ScoreCalculationError("invalid_formula_config", "成绩公式输入项无效。", 422);
     }
 
     if (!Number.isFinite(weight) || weight < 0) {
-      throw new ScoreCalculationError("invalid_formula_config", "A score formula weight is invalid.", 422);
+      throw new ScoreCalculationError("invalid_formula_config", "成绩公式权重无效。", 422);
     }
   }
 
@@ -3164,7 +3164,7 @@ export function calculateScore(input = {}) {
   const scores = assertCalculationScores(input.scores);
 
   if (!schoolId) {
-    throw new ScoreCalculationError("missing_school", "School id is required.");
+    throw new ScoreCalculationError("missing_school", "院校 ID 必填。");
   }
 
   const formula = getScoreFormula({ schoolId, year });
@@ -3172,7 +3172,7 @@ export function calculateScore(input = {}) {
   if (!formula) {
     throw new ScoreCalculationError(
       "formula_not_available",
-      "No published score formula is available for this school and year.",
+      "该院校年份暂无已发布综合分公式。",
       404
     );
   }
@@ -3190,7 +3190,7 @@ export function calculateScore(input = {}) {
     breakdown: calculation.breakdown,
     explanation: formula.explanation,
     officialSourceUrl: formula.officialSourceUrl,
-    disclaimer: "This calculation follows published formula fields for reference only and is not an admission probability."
+    disclaimer: "本计算仅按已发布公式字段提供参考，不代表录取概率。"
   };
 }
 

@@ -54,7 +54,7 @@ function currentDate(now) {
 
 function normalizePhoneNumber(phoneNumber) {
   if (typeof phoneNumber !== "string") {
-    throw new AuthError("invalid_phone", "A valid phone number is required.");
+    throw new AuthError("invalid_phone", "手机号为必填项。");
   }
 
   const compact = phoneNumber.trim().replace(/[\s-]/g, "");
@@ -67,7 +67,7 @@ function normalizePhoneNumber(phoneNumber) {
         : compact;
 
   if (!/^\+861[3-9]\d{9}$/.test(normalized)) {
-    throw new AuthError("invalid_phone", "A mainland China phone number is required.");
+    throw new AuthError("invalid_phone", "请输入中国大陆手机号。");
   }
 
   return normalized;
@@ -102,17 +102,17 @@ function assertAccountStatus(accountStatus) {
 
 function normalizeNickname(nickname) {
   if (nickname === undefined || nickname === null || nickname === "") {
-    return "Guangdong student";
+    return "广东考生";
   }
 
   if (typeof nickname !== "string") {
-    throw new AuthError("invalid_profile", "Nickname must be text.");
+    throw new AuthError("invalid_profile", "昵称必须是文本。");
   }
 
   const normalized = nickname.trim();
 
   if (normalized.length === 0 || normalized.length > 80) {
-    throw new AuthError("invalid_profile", "Nickname must be 1 to 80 characters.");
+    throw new AuthError("invalid_profile", "昵称必须为 1 到 80 个字符。");
   }
 
   return normalized;
@@ -124,7 +124,7 @@ function normalizeGrade(grade) {
   }
 
   if (!studentGradeSet.has(grade)) {
-    throw new AuthError("invalid_profile", "Grade is not supported.");
+    throw new AuthError("invalid_profile", "不支持该年级。");
   }
 
   return grade;
@@ -136,7 +136,7 @@ function normalizeDefaultAnonymous(defaultAnonymous) {
   }
 
   if (typeof defaultAnonymous !== "boolean") {
-    throw new AuthError("invalid_profile", "Default anonymous preference must be boolean.");
+    throw new AuthError("invalid_profile", "默认匿名偏好必须是布尔值。");
   }
 
   return defaultAnonymous;

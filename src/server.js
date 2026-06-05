@@ -14,5 +14,5 @@ const server = createServer((request, response) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`Guangdong Comprehensive Evaluation app listening on http://${host}:${port}`);
+  console.log(`广东综评服务已启动：http://${host}:${port}`);
 });

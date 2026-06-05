@@ -1,11 +1,11 @@
 const toastMessages = new Map([
-  ["logged_in", "Logged in"],
-  ["favorite_saved", "Favorite saved"],
-  ["already_favorited", "Already in favorites"],
-  ["useful_saved", "Marked useful"],
-  ["report_submitted", "Report submitted for review"],
-  ["publish_ready", "Continue publishing your experience"],
-  ["logged_out", "Logged out"]
+  ["logged_in", "已登录"],
+  ["favorite_saved", "已收藏"],
+  ["already_favorited", "已在收藏中"],
+  ["useful_saved", "已标记有用"],
+  ["report_submitted", "举报已提交审核"],
+  ["publish_ready", "继续发布面经"],
+  ["logged_out", "已退出登录"]
 ]);
 const experienceDraftKey = "gce:experience-submission-draft";
 const experienceDraftTtlMs = 7 * 24 * 60 * 60 * 1000;
@@ -59,7 +59,7 @@ function setSchoolListStatus(message, options = {}) {
   status.dataset.state = options.state ?? "info";
 
   if (options.retry) {
-    status.innerHTML = `${message} <button type="button" data-school-filter-retry="true">Retry</button>`;
+    status.innerHTML = `${message} <button type="button" data-school-filter-retry="true">重试</button>`;
     return;
   }
 
@@ -110,7 +110,7 @@ function replaceSchoolListSections(html) {
   const nextResults = nextDocument.querySelector("[data-school-results-section='true']");
 
   if (!currentFilters || !currentResults || !nextFilters || !nextResults) {
-    throw new Error("School list response was incomplete.");
+    throw new Error("院校列表响应不完整。");
   }
 
   currentFilters.innerHTML = nextFilters.innerHTML;
@@ -119,7 +119,7 @@ function replaceSchoolListSections(html) {
 
 async function loadSchoolFilters(url, options = {}) {
   lastSchoolFilterUrl = url.toString();
-  setSchoolListStatus("Loading schools...", { state: "loading" });
+  setSchoolListStatus("正在加载院校...", { state: "loading" });
   setSchoolListLoading(true);
 
   try {
@@ -130,7 +130,7 @@ async function loadSchoolFilters(url, options = {}) {
     });
 
     if (!response.ok) {
-      throw new Error("School list loading failed.");
+      throw new Error("院校列表加载失败。");
     }
 
     replaceSchoolListSections(await response.text());
@@ -143,11 +143,11 @@ async function loadSchoolFilters(url, options = {}) {
     setSchoolListStatus("");
     setSchoolListLoading(false);
   } catch {
-    setSchoolListStatus("Could not load schools.", { state: "error", retry: true });
+    setSchoolListStatus("院校加载失败。", { state: "error", retry: true });
     setSchoolListLoading(false);
 
     if (options.throwOnError) {
-      throw new Error("Could not load schools.");
+      throw new Error("院校加载失败。");
     }
   }
 }
