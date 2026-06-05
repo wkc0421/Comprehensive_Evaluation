@@ -33,13 +33,13 @@ const entryPoints = [
 ];
 
 const workflowPlaceholders = [
-  { title: "Official guide review", status: "Data review active" },
-  { title: "AI ingestion drafts", status: "Draft-only workflow active" },
-  { title: "Timeline management", status: "Override workflow active" },
-  { title: "Formula management", status: "Draft and publish workflow active" },
-  { title: "Experience moderation", status: "Content review active" },
-  { title: "Verification review", status: "Material metadata review active" },
-  { title: "Report handling", status: "Resolution workflow active" }
+  { title: "Data Ingestion", status: "Draft-only workflow active" },
+  { title: "Guide Review", status: "Official source review active" },
+  { title: "Timeline Management", status: "Override workflow active" },
+  { title: "Formula Management", status: "Draft and publish workflow active" },
+  { title: "Experience Review", status: "Content review active" },
+  { title: "Verification Review", status: "Material metadata review active" },
+  { title: "Report Handling", status: "Resolution workflow active" }
 ];
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
@@ -291,10 +291,93 @@ ${content}
   });
 }
 
-function renderAdminNav() {
+function renderAdminNav(currentKey = "") {
   return adminNavigation
-    .map((item) => `<a class="badge" href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a>`)
+    .map((item) => `<a class="admin-nav-link" href="${escapeHtml(item.href)}"${item.key === currentKey ? ` aria-current="page"` : ""}>
+      <span>${escapeHtml(item.label)}</span>
+    </a>`)
     .join("");
+}
+
+function renderAdminShell({
+  title,
+  currentKey,
+  eyebrow,
+  heading,
+  description,
+  user,
+  content,
+  detailPanel = "",
+  statusText = "Global status: manual review required before student-visible changes"
+}) {
+  return htmlPage({
+    title,
+    body: `    <div class="admin-workspace" data-admin-shell="desktop">
+      <aside class="admin-sidebar" aria-label="Admin left navigation">
+        <a class="brand admin-brand" href="/admin">
+          <span class="brand-mark">Admin</span>
+          <span class="brand-name">${productName}</span>
+        </a>
+        <nav class="admin-side-nav" aria-label="Admin left navigation">${renderAdminNav(currentKey)}</nav>
+      </aside>
+      <div class="admin-surface">
+        <header class="admin-topbar" aria-label="Admin global status bar">
+          <div>
+            <p class="eyebrow">${escapeHtml(eyebrow)}</p>
+            <h1>${escapeHtml(heading)}</h1>
+            <p>${escapeHtml(description)}</p>
+          </div>
+          <div class="admin-topbar-meta">
+            <span>${escapeHtml(statusText)}</span>
+            ${user ? `<strong>Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</strong>` : ""}
+          </div>
+        </header>
+        <main class="admin-content" aria-label="Admin main content">
+          <div class="admin-main-region">${content}</div>
+          ${detailPanel}
+        </main>
+      </div>
+    </div>`
+  });
+}
+
+function renderAdminTable({ caption, headers, rows, emptyText }) {
+  if (rows.length === 0) {
+    return `<p class="empty-state">${escapeHtml(emptyText)}</p>`;
+  }
+
+  return `<div class="admin-table-wrap">
+    <table class="admin-table">
+      <caption>${escapeHtml(caption)}</caption>
+      <thead><tr>${headers.map((header) => `<th scope="col">${escapeHtml(header)}</th>`).join("")}</tr></thead>
+      <tbody>${rows.join("")}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderAdminPanel({ id, title, kicker, sections, actions = "", footer = "" }) {
+  return `<aside class="admin-detail-panel" id="${escapeHtml(id)}" aria-label="${escapeHtml(title)}">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Detail drawer</p>
+        <h2>${escapeHtml(title)}</h2>
+        ${kicker ? `<p class="section-kicker">${escapeHtml(kicker)}</p>` : ""}
+      </div>
+    </div>
+    ${sections.join("")}
+    ${actions ? `<section class="admin-review-section" aria-label="${escapeHtml(title)} actions">
+      <h3>Action bar</h3>
+      ${actions}
+    </section>` : ""}
+    ${footer}
+  </aside>`;
+}
+
+function renderAdminPanelSection(title, body, ariaLabel = title) {
+  return `<section class="admin-review-section" aria-label="${escapeHtml(ariaLabel)}">
+    <h3>${escapeHtml(title)}</h3>
+    ${body}
+  </section>`;
 }
 
 function renderStatusCards({ currentYear, annualGuideCount, annualTimelineCount, annualExperienceCount }) {
@@ -2408,21 +2491,130 @@ function renderAdminGuideActions(guide) {
 
   return `<div class="admin-action-row" aria-label="Guide review actions">
     <form method="post" action="/admin/guides/${encodedId}/submit-review">
+      <input type="hidden" name="note" value="Submitted from admin guide detail drawer after source and field review.">
       <button class="secondary-action" type="submit">Submit review</button>
     </form>
     <form method="post" action="/admin/guides/${encodedId}/publish">
+      <input type="hidden" name="note" value="Published from admin guide detail drawer with student-visible preview checked.">
       <button class="primary-action" type="submit">Publish</button>
     </form>
     <form method="post" action="/admin/guides/${encodedId}/return">
+      <input type="hidden" name="note" value="Returned from admin guide detail drawer; reviewer reason required in workflow notes.">
       <button class="secondary-action" type="submit">Return</button>
     </form>
     <form method="post" action="/admin/guides/${encodedId}/pending-supplement">
+      <input type="hidden" name="note" value="Marked pending supplement from admin guide detail drawer.">
       <button class="secondary-action" type="submit">Pending supplement</button>
     </form>
     <form method="post" action="/admin/guides/${encodedId}/archive">
+      <input type="hidden" name="note" value="Archived from admin guide detail drawer after reviewer check.">
       <button class="secondary-action" type="submit">Archive</button>
     </form>
   </div>`;
+}
+
+function guideMissingFieldCount(guide) {
+  const requiredFields = [
+    guide.officialSourceUrl,
+    guide.sourceTitle,
+    guide.sourcePublishedAt ?? guide.sourceUpdatedAt,
+    guide.applicationUrl,
+    guide.applicationDeadlineAt,
+    guide.majors,
+    guide.subjectRequirements,
+    guide.academicTestRequirements,
+    guide.assessmentMethod,
+    guide.admissionRule
+  ];
+
+  return requiredFields.filter((value) => {
+    if (Array.isArray(value)) {
+      return value.length === 0;
+    }
+
+    return !value;
+  }).length;
+}
+
+function guideFieldState(value) {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? "Confirmed" : "Pending supplement";
+  }
+
+  return value ? "Confirmed" : "Pending supplement";
+}
+
+function renderAdminGuideFieldConfirmationRows(guide) {
+  return renderDetailRows([
+    { label: "Application URL", value: guideFieldState(guide.applicationUrl) },
+    { label: "Application deadline", value: guideFieldState(guide.applicationDeadlineAt) },
+    { label: "Majors", value: guideFieldState(guide.majors) },
+    { label: "Subject requirements", value: guideFieldState(guide.subjectRequirements) },
+    { label: "Assessment method", value: guideFieldState(guide.assessmentMethod) },
+    { label: "Admission rule", value: guideFieldState(guide.admissionRule) }
+  ]);
+}
+
+function renderAdminGuideTable(reviews) {
+  return renderAdminTable({
+    caption: "Guide review queue table",
+    headers: ["School", "Guide", "Year", "Status", "Source type", "Missing fields", "Updated", "Detail"],
+    emptyText: "No guide records match this review queue.",
+    rows: reviews.map(({ guide, school }) => `<tr>
+      <th scope="row">${escapeHtml(school.name)}</th>
+      <td>${escapeHtml(guide.guideTitle)}</td>
+      <td>${escapeHtml(guide.admissionYear)}</td>
+      <td><span class="soft-badge">${escapeHtml(humanizeToken(guide.status))}</span></td>
+      <td>${escapeHtml(humanizeToken(guide.sourceType))}</td>
+      <td>${escapeHtml(guideMissingFieldCount(guide))}</td>
+      <td>${escapeHtml(formatDate(guide.updatedAt))}</td>
+      <td><a class="text-link" href="#admin-guide-detail">Open detail drawer</a></td>
+    </tr>`)
+  });
+}
+
+function renderAdminGuidePreview(guide, school) {
+  return renderDetailRows([
+    { label: "Student title", value: `${school.name} ${guide.admissionYear}` },
+    { label: "Guide summary", value: guide.summary },
+    { label: "Application deadline", value: formatDate(guide.applicationDeadlineAt) },
+    { label: "Missing fields", value: `${guideMissingFieldCount(guide)} pending supplement` }
+  ]);
+}
+
+function renderAdminGuideDetailPanel(reviews) {
+  const selected = reviews[0];
+
+  if (!selected) {
+    return renderAdminPanel({
+      id: "admin-guide-detail",
+      title: "Guide detail review",
+      kicker: "Select a queue row after records are available.",
+      sections: [
+        renderAdminPanelSection("Student-visible preview", `<p class="inline-empty">No guide record selected.</p>`)
+      ]
+    });
+  }
+
+  const { guide, school } = selected;
+
+  return renderAdminPanel({
+    id: "admin-guide-detail",
+    title: "Guide detail review",
+    kicker: `${school.name} - ${guide.admissionYear} - ${guide.guideTitle} - version ${guide.version}`,
+    sections: [
+      renderAdminPanelSection("Student-visible preview", renderAdminGuidePreview(guide, school)),
+      renderAdminPanelSection("Extracted fields", renderAdminStructuredRows(guide), "Structured fields beside official source"),
+      renderAdminPanelSection("Official source preview or link", renderAdminSourceRows(guide)),
+      renderAdminPanelSection("Field-level confirmation state", renderAdminGuideFieldConfirmationRows(guide)),
+      renderAdminPanelSection("Review audit", renderAdminAuditTrail(guide))
+    ],
+    actions: `<label class="form-field admin-reason-field">
+        <span>Reason / audit note for publish, return, supplement, or archive</span>
+        <textarea rows="2" required placeholder="Official source checked; missing fields are marked for students."></textarea>
+      </label>
+      ${renderAdminGuideActions(guide)}`
+  });
 }
 
 function renderAdminGuideCards(reviews) {
@@ -2463,33 +2655,25 @@ function renderAdminGuideCards(reviews) {
 }
 
 export function renderAdminGuideReviewPage({ reviews, filters = {}, user }) {
-  return htmlPage({
+  return renderAdminShell({
     title: `Guide Review | ${productName}`,
-    body: `    <main class="app-shell admin-main admin-review-main">
-      <header class="admin-header">
-        <a class="brand" href="/admin">
-          <span class="brand-mark">Admin</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <p class="eyebrow">Official guide review</p>
-        <h1>Guide review queue</h1>
-        <p class="lead">Review draft and pending official guide records before they become visible to students.</p>
-        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
-        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
-      </header>
-
-      <section class="section" aria-label="Admin guide filters">
+    currentKey: "guides",
+    eyebrow: "Official guide review",
+    heading: "Guide review queue",
+    description: "Review draft and pending official guide records before they become visible to students.",
+    user,
+    content: `
+      <section class="admin-section" aria-label="Admin guide filters">
         ${renderAdminGuideFilters(filters)}
       </section>
-
-      <section class="section" aria-labelledby="admin-guide-results-title">
+      <section class="admin-section" aria-labelledby="admin-guide-results-title">
         <div class="section-heading">
           <h2 id="admin-guide-results-title">${escapeHtml(reviews.length)} ${escapeHtml(pluralize(reviews.length, "guide"))} in review</h2>
-          <p class="section-kicker">Draft and pending_review official data</p>
+          <p class="section-kicker">Queue table includes school, year, status, source type, missing-field count, and update time</p>
         </div>
-        <div class="admin-review-list">${renderAdminGuideCards(reviews)}</div>
-      </section>
-    </main>`
+        ${renderAdminGuideTable(reviews)}
+      </section>`,
+    detailPanel: renderAdminGuideDetailPanel(reviews)
   });
 }
 
@@ -2592,34 +2776,87 @@ function renderAdminTimelineCards(timelineNodes) {
     .join("");
 }
 
-export function renderAdminTimelineManagementPage({ timelineNodes, filters = {}, user }) {
-  return htmlPage({
-    title: `Timeline Management | ${productName}`,
-    body: `    <main class="app-shell admin-main admin-review-main">
-      <header class="admin-header">
-        <a class="brand" href="/admin">
-          <span class="brand-mark">Admin</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <p class="eyebrow">Timeline management</p>
-        <h1>Timeline overrides</h1>
-        <p class="lead">Review guide-generated timeline events and apply audited manual overrides for dates, titles, and descriptions.</p>
-        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
-        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
-      </header>
+function renderAdminTimelineTable(timelineNodes) {
+  return renderAdminTable({
+    caption: "Timeline management generated nodes table",
+    headers: ["School", "Year", "Node type", "Date", "Date precision", "Source", "Manual override", "Student status", "Detail"],
+    emptyText: "No generated timeline nodes match these filters.",
+    rows: timelineNodes.map((node) => `<tr>
+      <th scope="row">${escapeHtml(node.school.name)}</th>
+      <td>${escapeHtml(node.guide.admissionYear)}</td>
+      <td>${escapeHtml(humanizeToken(node.eventKey))}</td>
+      <td>${escapeHtml(formatDate(node.startsAt ?? node.endsAt))}</td>
+      <td>${escapeHtml(node.isDateKnown ? "Date known" : "Date unknown")}</td>
+      <td>${escapeHtml(humanizeToken(node.source))}</td>
+      <td>${escapeHtml(node.override ? "Manual override" : "Generated")}</td>
+      <td><span class="soft-badge">${escapeHtml(humanizeToken(node.status))}</span></td>
+      <td><a class="text-link" href="#admin-timeline-detail">Open detail drawer</a></td>
+    </tr>`)
+  });
+}
 
-      <section class="section" aria-label="Admin timeline filters">
+function renderAdminTimelineDetailPanel(timelineNodes) {
+  const node = timelineNodes[0];
+
+  if (!node) {
+    return renderAdminPanel({
+      id: "admin-timeline-detail",
+      title: "Timeline node detail",
+      kicker: "Select a generated node after records are available.",
+      sections: [
+        renderAdminPanelSection("Student-side status", `<p class="inline-empty">No timeline node selected.</p>`)
+      ]
+    });
+  }
+
+  return renderAdminPanel({
+    id: "admin-timeline-detail",
+    title: "Timeline node detail",
+    kicker: `${node.school.name} - ${node.guide.admissionYear} - ${humanizeToken(node.eventKey)}`,
+    sections: [
+      renderAdminPanelSection("Student-side status", renderDetailRows([
+        { label: "Student label", value: node.title },
+        { label: "Date shown to students", value: formatDate(node.startsAt ?? node.endsAt) },
+        { label: "Status", value: humanizeToken(node.status) },
+        { label: "Unknown-date handling", value: node.isDateKnown ? "Date shown" : "To be announced" }
+      ])),
+      renderAdminPanelSection("Original generated data", renderDetailRows([
+        { label: "Generated title", value: node.generated.title },
+        { label: "Generated start", value: formatDate(node.generated.startsAt) },
+        { label: "Generated end", value: formatDate(node.generated.endsAt) },
+        { label: "Guide", value: node.guide.guideTitle }
+      ])),
+      renderAdminPanelSection("Manual override state", renderDetailRows([
+        { label: "Override source", value: humanizeToken(node.source) },
+        { label: "Last reason", value: displayValue(node.override?.reason) },
+        { label: "Override updated", value: node.override?.updatedAt ? formatDate(node.override.updatedAt) : missingOfficialText }
+      ])),
+      renderAdminPanelSection("Timeline audit", renderAdminAuditTrail({ reviewAudit: node.override?.reviewAudit ?? [] }))
+    ],
+    actions: renderAdminTimelineOverrideForm(node)
+  });
+}
+
+export function renderAdminTimelineManagementPage({ timelineNodes, filters = {}, user }) {
+  return renderAdminShell({
+    title: `Timeline Management | ${productName}`,
+    currentKey: "timeline",
+    eyebrow: "Timeline management",
+    heading: "Timeline overrides",
+    description: "Review guide-generated timeline events and apply audited manual overrides for dates, titles, and descriptions.",
+    user,
+    content: `
+      <section class="admin-section" aria-label="Admin timeline filters">
         ${renderAdminTimelineFilters(filters)}
       </section>
-
-      <section class="section" aria-labelledby="admin-timeline-results-title">
+      <section class="admin-section" aria-labelledby="admin-timeline-results-title">
         <div class="section-heading">
           <h2 id="admin-timeline-results-title">${escapeHtml(timelineNodes.length)} ${escapeHtml(pluralize(timelineNodes.length, "timeline node"))}</h2>
-          <p class="section-kicker">Generated from current published guide fields</p>
+          <p class="section-kicker">Generated nodes preserve original data when a manual override is applied</p>
         </div>
-        <div class="admin-review-list">${renderAdminTimelineCards(timelineNodes)}</div>
-      </section>
-    </main>`
+        ${renderAdminTimelineTable(timelineNodes)}
+      </section>`,
+    detailPanel: renderAdminTimelineDetailPanel(timelineNodes)
   });
 }
 
@@ -2774,6 +3011,7 @@ function renderAdminFormulaActions(formula) {
 
   return `<div class="admin-action-row" aria-label="Formula actions">
     <form method="post" action="/admin/formulas/${encodedId}/publish">
+      <input type="hidden" name="note" value="Published from formula detail drawer after source link and sample tests were checked.">
       <button class="primary-action" type="submit">Publish formula</button>
     </form>
   </div>`;
@@ -2820,42 +3058,99 @@ function renderAdminFormulaCards(formulas) {
     .join("");
 }
 
-export function renderAdminFormulaManagementPage({ formulas, filters = {}, user }) {
-  return htmlPage({
-    title: `Formula Management | ${productName}`,
-    body: `    <main class="app-shell admin-main admin-review-main">
-      <header class="admin-header">
-        <a class="brand" href="/admin">
-          <span class="brand-mark">Admin</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <p class="eyebrow">Formula management</p>
-        <h1>Score formula drafts</h1>
-        <p class="lead">Create, update, sample-test, and publish score formula records before they appear in the student calculator.</p>
-        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
-        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
-      </header>
+function formulaHasPassingSample(sampleResults = []) {
+  return sampleResults.some((sample) => sample.passed);
+}
 
-      <section class="section" aria-label="Formula draft editor">
+function renderAdminFormulaTable(formulas) {
+  return renderAdminTable({
+    caption: "Formula management list table",
+    headers: ["School", "Year", "Formula", "Status", "Source", "Passing sample", "Updated", "Detail"],
+    emptyText: "No formulas match these filters.",
+    rows: formulas.map(({ formula, school, sampleResults }) => `<tr>
+      <th scope="row">${escapeHtml(school.name)}</th>
+      <td>${escapeHtml(formula.admissionYear)}</td>
+      <td>${escapeHtml(formula.formulaName)}</td>
+      <td><span class="soft-badge">${escapeHtml(humanizeToken(formula.status))}</span></td>
+      <td>${formula.officialSourceUrl ? "Official source linked" : "Source required"}</td>
+      <td>${escapeHtml(formulaHasPassingSample(sampleResults) ? "Passed" : "Required before publication")}</td>
+      <td>${escapeHtml(formatDate(formula.updatedAt))}</td>
+      <td><a class="text-link" href="#admin-formula-detail">Open detail drawer</a></td>
+    </tr>`)
+  });
+}
+
+function renderAdminFormulaStudentPreview({ formula, school }) {
+  return renderDetailRows([
+    { label: "Calculator school", value: school.name },
+    { label: "Student formula name", value: formula.formulaName },
+    { label: "Student formula explanation", value: formula.explanation },
+    { label: "Student availability", value: formula.status === "published" ? "Visible in calculator" : "Hidden until published" }
+  ]);
+}
+
+function renderAdminFormulaDetailPanel(formulas) {
+  const detail = formulas[0];
+
+  if (!detail) {
+    return renderAdminPanel({
+      id: "admin-formula-detail",
+      title: "Formula detail review",
+      kicker: "Select a formula after records are available.",
+      sections: [
+        renderAdminPanelSection("Student-side preview", `<p class="inline-empty">No formula selected.</p>`)
+      ]
+    });
+  }
+
+  const { formula, school, guide, sampleResults } = detail;
+
+  return renderAdminPanel({
+    id: "admin-formula-detail",
+    title: "Formula detail review",
+    kicker: `${school.name} - ${formula.admissionYear} - version ${formula.version}`,
+    sections: [
+      renderAdminPanelSection("Student-side preview", renderAdminFormulaStudentPreview({ formula, school })),
+      renderAdminPanelSection("Formula configuration", renderFormulaInputRows(formula)),
+      renderAdminPanelSection("Test sample area", renderFormulaSampleResults(sampleResults)),
+      renderAdminPanelSection("Official source and publication gate", renderDetailRows([
+        { label: "Guide", value: guide.guideTitle },
+        { label: "Official source", html: renderDetailLink(formula.officialSourceUrl, "Open source") },
+        { label: "Publication requirement", value: formulaHasPassingSample(sampleResults) ? "At least one sample calculation passed" : "A passing sample calculation is required" }
+      ])),
+      renderAdminPanelSection("Formula audit", renderAdminAuditTrail(formula))
+    ],
+    actions: renderAdminFormulaActions(formula)
+  });
+}
+
+export function renderAdminFormulaManagementPage({ formulas, filters = {}, user }) {
+  return renderAdminShell({
+    title: `Formula Management | ${productName}`,
+    currentKey: "formulas",
+    eyebrow: "Formula management",
+    heading: "Score formula drafts",
+    description: "Create, update, sample-test, and publish score formula records before they appear in the student calculator.",
+    user,
+    content: `
+      <section class="admin-section" aria-label="Formula editor">
         <div class="section-heading">
-          <h2>Create or update formula draft</h2>
+          <h2>Formula editor</h2>
           <p class="section-kicker">Inputs schema, max scores, weights, source URL, status, and sample tests</p>
         </div>
         ${renderFormulaDraftForm()}
       </section>
-
-      <section class="section" aria-label="Admin formula filters">
+      <section class="admin-section" aria-label="Admin formula filters">
         ${renderAdminFormulaFilters(filters)}
       </section>
-
-      <section class="section" aria-labelledby="admin-formula-results-title">
+      <section class="admin-section" aria-labelledby="admin-formula-results-title">
         <div class="section-heading">
           <h2 id="admin-formula-results-title">${escapeHtml(formulas.length)} ${escapeHtml(pluralize(formulas.length, "formula"))}</h2>
           <p class="section-kicker">Drafts stay hidden until publication has a passing sample test</p>
         </div>
-        <div class="admin-review-list">${renderAdminFormulaCards(formulas)}</div>
-      </section>
-    </main>`
+        ${renderAdminFormulaTable(formulas)}
+      </section>`,
+    detailPanel: renderAdminFormulaDetailPanel(formulas)
   });
 }
 
@@ -2928,7 +3223,7 @@ function renderAdminIngestionFilters(filters = {}) {
 }
 
 function renderIngestionCreateForm() {
-  return `<form class="admin-draft-form" method="post" action="/admin/ingestion-runs" aria-label="Create ingestion run">
+  return `<form class="admin-draft-form" id="admin-ingestion-create-form" method="post" action="/admin/ingestion-runs" aria-label="Create ingestion run">
     <div class="admin-form-grid">
       <label class="form-field">
         <span>Year</span>
@@ -2966,8 +3261,12 @@ function renderIngestionCreateForm() {
         <span>Review note</span>
         <textarea name="reviewNote" rows="2" placeholder="Manual checks needed before publishing"></textarea>
       </label>
+      <label class="form-field checkbox-field admin-wide-field">
+        <input type="checkbox" name="createDraft" value="true" checked>
+        <span>Generate guide draft from accepted official source and extracted fields</span>
+      </label>
       <div class="form-actions admin-wide-field">
-        <button class="primary-action" type="submit">Create draft run</button>
+        <button class="primary-action" type="submit">Create run and draft guide</button>
       </div>
     </div>
   </form>`;
@@ -3084,42 +3383,112 @@ function renderIngestionRunCards(ingestionRuns) {
     .join("");
 }
 
-export function renderAdminIngestionRunPage({ ingestionRuns, filters = {}, user }) {
-  return htmlPage({
-    title: `AI Ingestion | ${productName}`,
-    body: `    <main class="app-shell admin-main admin-review-main">
-      <header class="admin-header">
-        <a class="brand" href="/admin">
-          <span class="brand-mark">Admin</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <p class="eyebrow">AI-assisted official source ingestion</p>
-        <h1>Ingestion draft workflow</h1>
-        <p class="lead">Store official source candidates, extracted fields, timeline candidates, formula candidates, confidence, and review notes as draft-only review material.</p>
-        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
-        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
-      </header>
+function renderIngestionRunTable(ingestionRuns) {
+  return renderAdminTable({
+    caption: "Data ingestion task list",
+    headers: ["Task", "Status", "Sources", "Extraction confidence", "Creator", "Created", "Detail"],
+    emptyText: "No ingestion runs match these filters.",
+    rows: ingestionRuns.map((run) => `<tr>
+      <th scope="row">${escapeHtml(run.keyword || run.school?.name || run.id)}</th>
+      <td><span class="soft-badge">${escapeHtml(humanizeToken(run.status))}</span></td>
+      <td>${escapeHtml(run.sourceDocuments.length)}</td>
+      <td>${escapeHtml(run.confidenceScore ?? "Manual review required")}</td>
+      <td>${escapeHtml(run.createdBy?.operatorNickname ?? "Unknown creator")}</td>
+      <td>${escapeHtml(formatDate(run.createdAt))}</td>
+      <td><a class="text-link" href="#admin-ingestion-detail">Open detail drawer</a></td>
+    </tr>`)
+  });
+}
 
-      <section class="section" aria-label="Create ingestion run">
+function renderIngestionManualConfirmationItems(run) {
+  const items = Object.entries(run.extractedGuideFields)
+    .filter(([, field]) => field.trace?.manualNote || (field.confidence !== null && field.confidence < 0.88))
+    .map(([fieldName, field]) => `<li>
+      <strong>${escapeHtml(fieldName)}</strong>
+      <span>${escapeHtml(field.trace?.manualNote ?? "Low confidence extraction needs reviewer confirmation")}</span>
+      <em>Confidence ${escapeHtml(field.confidence ?? "not set")}</em>
+    </li>`);
+
+  if (items.length === 0) {
+    return `<p class="inline-empty">No manual-confirmation items detected for this run.</p>`;
+  }
+
+  return `<ol class="admin-audit-list">${items.join("")}</ol>`;
+}
+
+function renderIngestionDraftCreationState(run) {
+  return run.draftGuide
+    ? renderDetailRows([
+        { label: "Draft guide", value: run.draftGuide.guideTitle },
+        { label: "Draft status", value: humanizeToken(run.draftGuide.status) },
+        { label: "Student visibility", value: "Hidden until manual guide review publishes it" }
+      ])
+    : `<div class="admin-inline-form">
+        <p class="section-kicker">No draft guide is attached. Use the create task form with draft generation enabled after source checks.</p>
+        <button class="secondary-action" type="submit" form="admin-ingestion-create-form">Generate guide draft</button>
+      </div>`;
+}
+
+function renderAdminIngestionDetailPanel(ingestionRuns) {
+  const run = ingestionRuns[0];
+
+  if (!run) {
+    return renderAdminPanel({
+      id: "admin-ingestion-detail",
+      title: "Ingestion detail",
+      kicker: "Select a run after records are available.",
+      sections: [
+        renderAdminPanelSection("Source candidates", `<p class="inline-empty">No ingestion run selected.</p>`)
+      ]
+    });
+  }
+
+  return renderAdminPanel({
+    id: "admin-ingestion-detail",
+    title: "Ingestion detail",
+    kicker: `${run.keyword || run.school?.name || run.id} - ${humanizeToken(run.status)}`,
+    sections: [
+      renderAdminPanelSection("Run status and confidence", renderDetailRows([
+        { label: "Status", value: humanizeToken(run.status) },
+        { label: "Extraction confidence", value: run.confidenceScore ?? "Manual review required" },
+        { label: "Created by", value: run.createdBy?.operatorNickname ?? "Unknown creator" },
+        { label: "Created", value: formatDate(run.createdAt) }
+      ])),
+      renderAdminPanelSection("Source document candidates", renderIngestionSourceDocuments(run.sourceDocuments)),
+      renderAdminPanelSection("Traceable extracted guide fields", renderTraceableFieldRows(run.extractedGuideFields)),
+      renderAdminPanelSection("Manual-confirmation items", renderIngestionManualConfirmationItems(run)),
+      renderAdminPanelSection("Draft-guide creation", renderIngestionDraftCreationState(run))
+    ]
+  });
+}
+
+export function renderAdminIngestionRunPage({ ingestionRuns, filters = {}, user }) {
+  return renderAdminShell({
+    title: `AI Ingestion | ${productName}`,
+    currentKey: "ingestion",
+    eyebrow: "AI-assisted official source ingestion",
+    heading: "Ingestion draft workflow",
+    description: "Store official source candidates, extracted fields, timeline candidates, formula candidates, confidence, and review notes as draft-only review material.",
+    user,
+    content: `
+      <section class="admin-section" aria-label="Create ingestion run">
         <div class="section-heading">
           <h2>Create ingestion run</h2>
           <p class="section-kicker">AI and extraction output can create drafts only; publishing stays in manual guide review</p>
         </div>
         ${renderIngestionCreateForm()}
       </section>
-
-      <section class="section" aria-label="Ingestion filters">
+      <section class="admin-section" aria-label="Ingestion filters">
         ${renderAdminIngestionFilters(filters)}
       </section>
-
-      <section class="section" aria-labelledby="admin-ingestion-results-title">
+      <section class="admin-section" aria-labelledby="admin-ingestion-results-title">
         <div class="section-heading">
           <h2 id="admin-ingestion-results-title">${escapeHtml(ingestionRuns.length)} ${escapeHtml(pluralize(ingestionRuns.length, "ingestion run"))}</h2>
           <p class="section-kicker">Source priority: GEEA, CHSI/Yangguang Gaokao, university admissions, other official, discovery clues</p>
         </div>
-        <div class="admin-review-list">${renderIngestionRunCards(ingestionRuns)}</div>
-      </section>
-    </main>`
+        ${renderIngestionRunTable(ingestionRuns)}
+      </section>`,
+    detailPanel: renderAdminIngestionDetailPanel(ingestionRuns)
   });
 }
 
@@ -3168,7 +3537,7 @@ function renderAdminExperienceActions(experience) {
     { action: "approve", label: "Approve", className: "primary-action" },
     { action: "return", label: "Return for rewrite", className: "secondary-action" },
     { action: "hide", label: "Hide", className: "secondary-action" },
-    { action: "ban", label: "Ban", className: "secondary-action" }
+    { action: "ban", label: "Limit account", className: "secondary-action" }
   ];
 
   return `<div class="admin-action-row" aria-label="Experience moderation actions">${actions
@@ -3178,6 +3547,81 @@ function renderAdminExperienceActions(experience) {
       <button class="${escapeHtml(item.className)}" type="submit">${escapeHtml(item.label)}</button>
     </form>`)
     .join("")}</div>`;
+}
+
+function moderationRiskLabels(moderation) {
+  const warnings = moderation?.warnings ?? [];
+
+  if (warnings.length === 0) {
+    return "No sensitive risk";
+  }
+
+  return warnings.map((warning) => warning.label).join(", ");
+}
+
+function renderAdminExperienceTable(experiences) {
+  return renderAdminTable({
+    caption: "Experience moderation pending queue",
+    headers: ["School", "Year", "Stage", "Submitted", "Sensitive risk tags", "Detail"],
+    emptyText: "No submitted experiences match this moderation queue.",
+    rows: experiences.map((experience) => `<tr>
+      <th scope="row">${escapeHtml(experience.school?.name ?? "Submitted experience")}</th>
+      <td>${escapeHtml(experience.year)}</td>
+      <td>${escapeHtml(humanizeToken(experience.stage))}</td>
+      <td>${escapeHtml(formatDate(experience.createdAt))}</td>
+      <td>${escapeHtml(moderationRiskLabels(experience.moderation))}</td>
+      <td><a class="text-link" href="#admin-experience-detail">Open detail drawer</a></td>
+    </tr>`)
+  });
+}
+
+function renderAdminExperienceStudentPreview(experience) {
+  return renderDetailRows([
+    { label: "School", value: experience.school?.name ?? missingOfficialText },
+    { label: "Year and stage", value: `${experience.year} ${humanizeToken(experience.stage)}` },
+    { label: "Assessment format", value: experience.assessmentFormat },
+    { label: "Public summary", value: experience.summary },
+    { label: "Verification label", value: experience.verificationStatus }
+  ]);
+}
+
+function renderAdminExperienceDetailPanel(experiences) {
+  const experience = experiences[0];
+
+  if (!experience) {
+    return renderAdminPanel({
+      id: "admin-experience-detail",
+      title: "Experience review detail",
+      kicker: "Select a pending submission after records are available.",
+      sections: [
+        renderAdminPanelSection("Student-side preview", `<p class="inline-empty">No submitted experience selected.</p>`)
+      ]
+    });
+  }
+
+  return renderAdminPanel({
+    id: "admin-experience-detail",
+    title: "Experience review detail",
+    kicker: `${experience.school?.name ?? "Submitted experience"} - ${experience.year}`,
+    sections: [
+      renderAdminPanelSection("Student-side preview", renderAdminExperienceStudentPreview(experience)),
+      renderAdminPanelSection("Submitted structured fields", renderDetailRows([
+        { label: "Summary", value: experience.summary },
+        { label: "Process", value: experience.processSummary },
+        { label: "Question types", value: experience.questionTypes.join(", ") },
+        { label: "Preparation", value: experience.preparationSummary },
+        { label: "Advice", value: experience.advice }
+      ])),
+      renderAdminPanelSection("Sensitive content and privacy warnings", renderAdminModerationWarnings(experience.moderation)),
+      renderAdminPanelSection("Blocked content boundaries", `<p class="section-kicker">Ongoing-exam content, undisclosed original questions, sales, ghostwriting, guaranteed admission claims, external traffic scams, and personal sensitive information must be returned, hidden, or account-limited before publication.</p>`),
+      renderAdminPanelSection("Moderation audit", renderAdminAuditTrail({ reviewAudit: experience.reviewAudit }))
+    ],
+    actions: `<label class="form-field admin-reason-field">
+        <span>Reason for return, hide, or account limit</span>
+        <textarea rows="2" required placeholder="Explain the rewrite request or risk decision for the audit trail."></textarea>
+      </label>
+      ${renderAdminExperienceActions(experience)}`
+  });
 }
 
 function renderAdminExperienceCards(experiences) {
@@ -3224,33 +3668,25 @@ function renderAdminExperienceCards(experiences) {
 }
 
 export function renderAdminExperienceModerationPage({ experiences, filters = {}, user }) {
-  return htmlPage({
+  return renderAdminShell({
     title: `Experience Moderation | ${productName}`,
-    body: `    <main class="app-shell admin-main admin-review-main">
-      <header class="admin-header">
-        <a class="brand" href="/admin">
-          <span class="brand-mark">Admin</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <p class="eyebrow">Experience moderation</p>
-        <h1>Experience moderation queue</h1>
-        <p class="lead">Review pending structured experiences, prohibited-content signals, and privacy warnings before student publication.</p>
-        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
-        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
-      </header>
-
-      <section class="section" aria-label="Experience moderation filters">
+    currentKey: "experiences",
+    eyebrow: "Experience moderation",
+    heading: "Experience moderation queue",
+    description: "Review pending structured experiences, prohibited-content signals, and privacy warnings before student publication.",
+    user,
+    content: `
+      <section class="admin-section" aria-label="Experience moderation filters">
         ${renderAdminExperienceFilters(filters)}
       </section>
-
-      <section class="section" aria-labelledby="admin-experience-results-title">
+      <section class="admin-section" aria-labelledby="admin-experience-results-title">
         <div class="section-heading">
           <h2 id="admin-experience-results-title">${escapeHtml(experiences.length)} ${escapeHtml(pluralize(experiences.length, "experience"))} in moderation</h2>
           <p class="section-kicker">Approval is blocked when rewrite-required warnings are present</p>
         </div>
-        <div class="admin-review-list">${renderAdminExperienceCards(experiences)}</div>
-      </section>
-    </main>`
+        ${renderAdminExperienceTable(experiences)}
+      </section>`,
+    detailPanel: renderAdminExperienceDetailPanel(experiences)
   });
 }
 
@@ -3334,34 +3770,85 @@ function renderAdminVerificationCards(verifications) {
     .join("");
 }
 
-export function renderAdminVerificationReviewPage({ verifications, filters = {}, user }) {
-  return htmlPage({
-    title: `Verification Review | ${productName}`,
-    body: `    <main class="app-shell admin-main admin-review-main">
-      <header class="admin-header">
-        <a class="brand" href="/admin">
-          <span class="brand-mark">Admin</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <p class="eyebrow">Verification review</p>
-        <h1>Verification material queue</h1>
-        <p class="lead">Review verification material metadata and privacy warnings without exposing raw material URLs to student pages.</p>
-        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
-        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
-      </header>
+function renderAdminVerificationTable(verifications) {
+  return renderAdminTable({
+    caption: "Verification material queue table",
+    headers: ["Material", "School", "Experience year", "Status", "Backend material", "Detail"],
+    emptyText: "No verification materials match this review queue.",
+    rows: verifications.map(({ material, experience }) => `<tr>
+      <th scope="row">${escapeHtml(material.materialType)}</th>
+      <td>${escapeHtml(experience.school?.name ?? "Submitted experience")}</td>
+      <td>${escapeHtml(experience.year)}</td>
+      <td><span class="soft-badge">${escapeHtml(humanizeToken(material.status))}</span></td>
+      <td>${escapeHtml(material.storageKeyPresent ? "Raw material backend-only" : "Metadata only")}</td>
+      <td><a class="text-link" href="#admin-verification-detail">Open detail drawer</a></td>
+    </tr>`)
+  });
+}
 
-      <section class="section" aria-label="Verification filters">
+function renderAdminVerificationDetailPanel(verifications) {
+  const review = verifications[0];
+
+  if (!review) {
+    return renderAdminPanel({
+      id: "admin-verification-detail",
+      title: "Verification review detail",
+      kicker: "Select a material after records are available.",
+      sections: [
+        renderAdminPanelSection("Student-side verification label preview", `<p class="inline-empty">No verification material selected.</p>`)
+      ]
+    });
+  }
+
+  const { material, experience, moderation } = review;
+
+  return renderAdminPanel({
+    id: "admin-verification-detail",
+    title: "Verification review detail",
+    kicker: `${material.materialType} - ${experience.school?.name ?? "Submitted experience"}`,
+    sections: [
+      renderAdminPanelSection("Student-side verification label preview", renderDetailRows([
+        { label: "Public label only", value: material.status === "verified" ? "Verified" : "Verification pending" },
+        { label: "Student material visibility", value: "Raw materials are never shown on student pages" }
+      ])),
+      renderAdminPanelSection("Backend-only material preview", renderDetailRows([
+        { label: "Material id", value: material.id },
+        { label: "Experience id", value: material.experienceId },
+        { label: "Raw material", value: material.storageKeyPresent ? "Reviewer-only private storage reference present" : "No private storage reference" },
+        { label: "Metadata", value: Object.keys(material.metadata).length > 0 ? JSON.stringify(material.metadata) : missingOfficialText }
+      ])),
+      renderAdminPanelSection("Associated experience", renderAdminExperienceStudentPreview(experience)),
+      renderAdminPanelSection("Privacy warning results", renderAdminModerationWarnings(moderation)),
+      renderAdminPanelSection("Verification audit", renderAdminAuditTrail({ reviewAudit: material.reviewAudit }))
+    ],
+    actions: `<label class="form-field admin-reason-field">
+        <span>Reason required when refusing verification</span>
+        <textarea rows="2" required placeholder="Explain why the verification material is rejected or returned."></textarea>
+      </label>
+      ${renderAdminVerificationActions(material)}`
+  });
+}
+
+export function renderAdminVerificationReviewPage({ verifications, filters = {}, user }) {
+  return renderAdminShell({
+    title: `Verification Review | ${productName}`,
+    currentKey: "verifications",
+    eyebrow: "Verification review",
+    heading: "Verification material queue",
+    description: "Review verification material metadata and privacy warnings without exposing raw material URLs to student pages.",
+    user,
+    content: `
+      <section class="admin-section" aria-label="Verification filters">
         ${renderAdminVerificationFilters(filters)}
       </section>
-
-      <section class="section" aria-labelledby="admin-verification-results-title">
+      <section class="admin-section" aria-labelledby="admin-verification-results-title">
         <div class="section-heading">
           <h2 id="admin-verification-results-title">${escapeHtml(verifications.length)} ${escapeHtml(pluralize(verifications.length, "material"))} in verification review</h2>
           <p class="section-kicker">Student routes only receive material count and status</p>
         </div>
-        <div class="admin-review-list">${renderAdminVerificationCards(verifications)}</div>
-      </section>
-    </main>`
+        ${renderAdminVerificationTable(verifications)}
+      </section>`,
+    detailPanel: renderAdminVerificationDetailPanel(verifications)
   });
 }
 
@@ -3398,7 +3885,8 @@ function renderAdminReportActions(report) {
     { action: "keep", label: "Keep target", className: "secondary-action" },
     { action: "hide", label: "Hide target", className: "secondary-action" },
     { action: "delete", label: "Delete target", className: "secondary-action" },
-    { action: "limit_account", label: "Limit account", className: "primary-action" }
+    { action: "limit_account", label: "Limit account", className: "primary-action" },
+    { action: "reject", label: "Reject report", className: "secondary-action" }
   ];
 
   return `<div class="admin-action-row" aria-label="Report resolution actions">${actions
@@ -3467,34 +3955,94 @@ function renderAdminReportCards(reports) {
     .join("");
 }
 
-export function renderAdminReportReviewPage({ reports, filters = {}, user }) {
-  return htmlPage({
-    title: `Report Review | ${productName}`,
-    body: `    <main class="app-shell admin-main admin-review-main">
-      <header class="admin-header">
-        <a class="brand" href="/admin">
-          <span class="brand-mark">Admin</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <p class="eyebrow">Report handling</p>
-        <h1>Report resolution queue</h1>
-        <p class="lead">Resolve reports by keeping, hiding, deleting, or limiting the target account with an audited note.</p>
-        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
-        <p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>
-      </header>
+function renderAdminReportTable(reports) {
+  return renderAdminTable({
+    caption: "Report handling list table",
+    headers: ["Reason", "Target", "Status", "Created", "History", "Detail"],
+    emptyText: "No reports match this queue.",
+    rows: reports.map((report) => `<tr>
+      <th scope="row">${escapeHtml(report.reason)}</th>
+      <td>${escapeHtml(humanizeToken(report.targetType))}</td>
+      <td><span class="soft-badge">${escapeHtml(humanizeToken(report.status))}</span></td>
+      <td>${escapeHtml(formatDate(report.createdAt))}</td>
+      <td>${escapeHtml(report.resolution ? `${humanizeToken(report.resolution.action)} by ${report.resolution.operatorNickname}` : "No resolution recorded")}</td>
+      <td><a class="text-link" href="#admin-report-detail">Open detail drawer</a></td>
+    </tr>`)
+  });
+}
 
-      <section class="section" aria-label="Report filters">
+function renderAdminReportHistory(report) {
+  if (!report.resolution) {
+    return `<p class="inline-empty">No resolution recorded.</p>`;
+  }
+
+  return renderDetailRows([
+    { label: "Action", value: humanizeToken(report.resolution.action) },
+    { label: "Note", value: report.resolution.note },
+    { label: "Operator", value: report.resolution.operatorNickname },
+    { label: "Operation time", value: formatDate(report.resolution.resolvedAt) }
+  ]);
+}
+
+function renderAdminReportDetailPanel(reports) {
+  const report = reports[0];
+
+  if (!report) {
+    return renderAdminPanel({
+      id: "admin-report-detail",
+      title: "Report handling detail",
+      kicker: "Select a report after records are available.",
+      sections: [
+        renderAdminPanelSection("Target preview", `<p class="inline-empty">No report selected.</p>`)
+      ]
+    });
+  }
+
+  return renderAdminPanel({
+    id: "admin-report-detail",
+    title: "Report handling detail",
+    kicker: `${humanizeToken(report.targetType)} report - ${humanizeToken(report.status)}`,
+    sections: [
+      renderAdminPanelSection("Target preview", renderDetailRows([
+        { label: "Target summary", value: renderReportTargetSummary(report) },
+        { label: "Target id", value: report.targetId },
+        { label: "Target visibility", value: report.target?.visible ? "Currently visible" : "Not student-visible" }
+      ])),
+      renderAdminPanelSection("Report reason", renderDetailRows([
+        { label: "Reason", value: report.reason },
+        { label: "Description", value: displayValue(report.description) },
+        { label: "Created", value: formatDate(report.createdAt) }
+      ])),
+      renderAdminPanelSection("History and operator record", renderAdminReportHistory(report))
+    ],
+    actions: `<label class="form-field admin-reason-field">
+        <span>Resolution reason</span>
+        <textarea rows="2" required placeholder="Record why the report is kept, rejected, hidden, deleted, or account-limited."></textarea>
+      </label>
+      ${renderAdminReportActions(report)}`
+  });
+}
+
+export function renderAdminReportReviewPage({ reports, filters = {}, user }) {
+  return renderAdminShell({
+    title: `Report Review | ${productName}`,
+    currentKey: "reports",
+    eyebrow: "Report handling",
+    heading: "Report resolution queue",
+    description: "Resolve reports by keeping, rejecting, hiding, deleting, or limiting the target account with an audited note.",
+    user,
+    content: `
+      <section class="admin-section" aria-label="Report filters">
         ${renderAdminReportFilters(filters)}
       </section>
-
-      <section class="section" aria-labelledby="admin-report-results-title">
+      <section class="admin-section" aria-labelledby="admin-report-results-title">
         <div class="section-heading">
           <h2 id="admin-report-results-title">${escapeHtml(reports.length)} ${escapeHtml(pluralize(reports.length, "report"))} awaiting handling</h2>
           <p class="section-kicker">Resolution notes are required for every report action</p>
         </div>
-        <div class="admin-review-list">${renderAdminReportCards(reports)}</div>
-      </section>
-    </main>`
+        ${renderAdminReportTable(reports)}
+      </section>`,
+    detailPanel: renderAdminReportDetailPanel(reports)
   });
 }
 
@@ -4180,36 +4728,37 @@ export function renderLoginPage({
 export function renderAdminPage({ user } = {}) {
   const workflowItems = workflowPlaceholders
     .map(
-      (item) => `<li>
+      (item) => `<article class="admin-overview-card">
         <strong>${item.title}</strong>
         <span>${item.status}</span>
-      </li>`
+      </article>`
     )
     .join("");
 
-  return htmlPage({
+  return renderAdminShell({
     title: `Admin | ${productName}`,
-    body: `    <main class="app-shell admin-main">
-      <header class="admin-header">
-        <a class="brand" href="/">
-          <span class="brand-mark">Admin</span>
-          <span class="brand-name">${productName}</span>
-        </a>
-        <p class="eyebrow">Audited workflow foundation</p>
-        <h1>Admin console placeholder</h1>
-        <p class="lead">
-          The MVP admin area is reserved for reviewed official data, structured extraction
-          tasks, experience moderation, and report handling.
-        </p>
-        ${user ? `<p class="section-kicker">Signed in as ${escapeHtml(user.nickname)} (${escapeHtml(user.role)})</p>` : ""}
-      </header>
-
-      <section class="admin-panel" aria-labelledby="admin-routes-title">
-        <div class="section-heading"><h2 id="admin-routes-title">Initial admin routes</h2></div>
-        <nav class="badge-row" aria-label="Admin navigation">${renderAdminNav()}</nav>
-        <ul class="admin-list">${workflowItems}</ul>
-      </section>
-    </main>`
+    currentKey: "overview",
+    eyebrow: "Audited workflow foundation",
+    heading: "Admin console",
+    description: "The MVP admin area is reserved for reviewed official data, structured extraction tasks, experience moderation, and report handling.",
+    user,
+    content: `
+      <section class="admin-section" aria-labelledby="admin-routes-title">
+        <div class="section-heading">
+          <h2 id="admin-routes-title">Desktop workflow overview</h2>
+          <p class="section-kicker">All admin workflows use left navigation, a global status bar, tables, and right-side review panels.</p>
+        </div>
+        <div class="admin-overview-grid">${workflowItems}</div>
+      </section>`,
+    detailPanel: renderAdminPanel({
+      id: "admin-overview-detail",
+      title: "Review workflow rules",
+      kicker: "Student-visible changes stay audited.",
+      sections: [
+        renderAdminPanelSection("Student-visible preview", `<p class="section-kicker">Official guide, formula, experience, verification, and report actions show what students can see before publication or hiding.</p>`),
+        renderAdminPanelSection("Audit requirement", `<p class="section-kicker">Publishing, returning, hiding, deleting, rejecting, and account-limiting actions record operator identity and operation time.</p>`)
+      ]
+    })
   });
 }
 

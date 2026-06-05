@@ -6,6 +6,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - The app scaffold is dependency-free Node.js ESM; keep routing in `src/app.js` and server startup in `src/server.js`.
 - Server-rendered HTML is composed in `src/pages.js`, shared product metadata is in `src/lib/product.js`, and global mobile-first CSS is in `public/styles.css`.
 - Student-facing HTML should use the shared student shell helpers in `src/pages.js`; keep the four-tab Home/Schools/Experiences/My bottom nav in `src/lib/product.js`, use page-type top bars, and hide the bottom nav only on task pages with a clear back entry.
+- Admin-facing HTML should use the shared desktop admin shell helpers in `src/pages.js`; keep Data Ingestion/Guide Review/Timeline Management/Formula Management/Experience Review/Verification Review/Report Handling navigation in `src/lib/product.js`, and verify admin UI changes through the admin desktop section of `scripts/browser-core-pages.mjs`.
 - Quality scripts live in `scripts/` and intentionally avoid scanning Ralph run logs or source PRD docs.
 - MVP-wide quality gates live in `src/e2e.test.js`, `scripts/data-quality.mjs`, and `scripts/browser-core-pages.mjs`; run `npm test`, `npm run data-quality`, and `npm run browser-test` for end-to-end acceptance.
 - `npm run build` creates `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`, and `dist/` is generated and ignored.
@@ -931,4 +932,48 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Treat HTML `/me` differently from API-style personal endpoints: browser visitors get the logged-out My guide, while `/api/me`, `/api/me/favorites`, `/api/me/experiences`, and non-HTML `/me` requests should still return JSON `login_required`.
   - Submitted-experience status values can include `banned` from moderation actions; the student My page groups that outcome under a safer "Rejected" label while preserving reviewer-only details outside student output.
   - Browser checks that exercise logout should avoid reusing the same session for later logged-in assertions because `authService.destroySession()` invalidates the token even if the Playwright context keeps sending the old Cookie header.
+---
+
+## Fri Jun  5 08:58:07 AM CST 2026 - Ralph runner
+- Iteration: 5
+- Story: US-026
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260605-073123/iteration-5
+---
+
+## Fri Jun  5 09:16:46 AM CST 2026 - US-027
+- What was implemented
+  - Redesigned all admin HTML workflows around a shared desktop shell with left navigation, top global status bar, main queue/list region, and right-side detail panels.
+  - Added PRD admin navigation labels for Data Ingestion, Guide Review, Timeline Management, Formula Management, Experience Review, Verification Review, and Report Handling.
+  - Reworked ingestion, guide review, timeline, formula, experience moderation, verification review, and report handling pages to show queue tables, student-side previews where applicable, source/trace/warning/audit detail panels, and reason/audit controls.
+  - Added an audited `reject` report resolution action and extended route/browser checks for the redesigned admin desktop workflows.
+- Files changed
+  - `AGENTS.md`
+  - `public/styles.css`
+  - `scripts/browser-core-pages.mjs`
+  - `src/app.js`, `src/app.test.js`, `src/lib/product.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `node --test src/app.test.js` passed
+  - `npm test` passed
+  - `npm run data-quality` passed and reported annual guide coverage 3/3, 100.00% against the 95.00% target, with school-year guide coverage 6/9
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `npm run build` passed
+  - `BROWSER_SCREENSHOT_DIR=/home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260605-073123/iteration-6 npm run browser-test` passed
+  - `git diff --check` passed
+- Acceptance matrix summary
+  - Desktop shell, left navigation, top global status bar, main content region, and right-side detail panels map to `renderAdminShell()`/admin CSS, `adminNavigation`, route tests, and browser checks across `/admin` plus all admin workflow pages.
+  - Data ingestion maps to `renderAdminIngestionRunPage()` with create task form, task table, source count/confidence/creator/time, source candidates, traceable fields, manual-confirmation items, and draft-guide creation state.
+  - Guide review maps to `renderAdminGuideReviewPage()` with school/year/status/source/missing-field/update table, structured extracted fields beside official source, field confirmation states, student-visible preview, and audited action notes.
+  - Timeline and formula management map to their admin renderers with generated node/formula tables, manual override original data preservation, source links, sample-test gate, formula editor, test sample area, and student-side previews.
+  - Experience, verification, and report handling map to moderation/verification/report renderers with sensitive/privacy warnings, backend-only material preview, student-side label or content previews, report history, reject report action, and privacy-negative route checks.
+- Browser verification result, if this was a UI story
+  - Playwright Chromium passed existing student mobile checks at 375px, 390px, and 430px plus desktop student frame checks at 1280px.
+  - Playwright Chromium passed admin desktop checks at 1280px for `/admin`, `/admin/ingestion-runs`, `/admin/guides`, `/admin/timeline?year=2026`, `/admin/formulas`, `/admin/experiences`, `/admin/verifications`, and `/admin/reports`; each verified shell structure, required workflow text, table/detail-panel presence, no student shell elements, and no document-level horizontal overflow.
+  - Admin screenshots were saved to `scripts/ralph/runs/20260605-073123/iteration-6/admin-overview-desktop-1280.png`, `admin-ingestion-desktop-1280.png`, `admin-guide-review-desktop-1280.png`, `admin-timeline-desktop-1280.png`, `admin-formulas-desktop-1280.png`, `admin-experiences-desktop-1280.png`, `admin-verifications-desktop-1280.png`, and `admin-reports-desktop-1280.png`.
+- **Learnings for future iterations:**
+  - Admin pages now have a shared `renderAdminShell()` in `src/pages.js`; new admin HTML should plug queue/list content into the main region and detail/review content into the side panel instead of recreating headers.
+  - `scripts/browser-core-pages.mjs` seeds both data-reviewer and content-reviewer sessions, plus ingestion/report/moderation fixtures, so admin browser checks can verify protected desktop pages without external services.
+  - Report handling accepts audited `reject` resolutions with no target side effect; keep/hide/delete/limit-account continue to drive the existing side-effect paths.
 ---

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 
 import { createAuthService } from "../src/auth.js";
 import { handleRequest } from "../src/app.js";
+import { createAdminIngestionRun } from "../src/db/data-access.js";
 import { seedIds } from "../src/db/seed-data.js";
 import { createExperienceSubmissionStore } from "../src/experience-submissions.js";
 import { createInteractionStore } from "../src/interactions.js";
@@ -50,6 +51,8 @@ scut_school_id = os.environ["SCUT_SCHOOL_ID"]
 sysu_experience_id = os.environ["SYSU_EXPERIENCE_ID"]
 logged_in_cookie = os.environ["LOGGED_IN_COOKIE"]
 no_favorite_cookie = os.environ["NO_FAVORITE_COOKIE"]
+admin_data_cookie = os.environ["ADMIN_DATA_COOKIE"]
+admin_content_cookie = os.environ["ADMIN_CONTENT_COOKIE"]
 
 core_pages = [
     ("/", "home", True, "/"),
@@ -165,6 +168,61 @@ async def verify_login_favorite_continuation(page):
     toast_text = await page.locator("[data-student-toast='true']").inner_text()
     if toast_text != "Favorite saved":
         raise AssertionError(f"Favorite continuation toast was wrong: {toast_text}")
+
+async def verify_admin_desktop_page(browser, path, cookie, screenshot_name, required_text):
+    context = await browser.new_context(
+        viewport={"width": 1280, "height": 940},
+        extra_http_headers={"Cookie": cookie}
+    )
+    page = await context.new_page()
+    await page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
+    await page.locator("[data-admin-shell='desktop']").wait_for()
+    metrics = await page.evaluate("""() => {
+        const navLabels = Array.from(document.querySelectorAll(".admin-side-nav a"))
+            .map((item) => item.innerText.trim());
+        const tableCount = document.querySelectorAll(".admin-table").length;
+        const panelText = document.querySelector(".admin-detail-panel")?.innerText ?? "";
+        return {
+            bodyText: document.body.innerText,
+            navLabels,
+            hasTopbar: Boolean(document.querySelector(".admin-topbar")),
+            hasMain: Boolean(document.querySelector(".admin-content")),
+            hasPanel: Boolean(document.querySelector(".admin-detail-panel")),
+            tableCount,
+            panelText,
+            hasStudentFrame: Boolean(document.querySelector(".student-frame")),
+            hasStudentNav: Boolean(document.querySelector(".student-bottom-nav")),
+            scrollWidth: document.documentElement.scrollWidth,
+            clientWidth: document.documentElement.clientWidth
+        };
+    }""")
+    expected_nav = [
+        "Data Ingestion",
+        "Guide Review",
+        "Timeline Management",
+        "Formula Management",
+        "Experience Review",
+        "Verification Review",
+        "Report Handling",
+    ]
+    for label in expected_nav:
+        if label not in metrics["navLabels"]:
+            raise AssertionError(f"Admin nav missing {label}: {metrics['navLabels']}")
+    if not metrics["hasTopbar"] or not metrics["hasMain"] or not metrics["hasPanel"]:
+        raise AssertionError(f"Admin shell missing topbar/main/panel: {metrics}")
+    if metrics["tableCount"] < 1 and path != "/admin":
+        raise AssertionError(f"Admin page missing queue/list table: {path}")
+    for expected in required_text:
+        if expected.lower() not in metrics["bodyText"].lower():
+            raise AssertionError(f"Admin page {path} missing {expected}")
+    if "Student-visible preview".lower() in metrics["bodyText"].lower() and "Student-visible preview".lower() not in metrics["panelText"].lower():
+        raise AssertionError(f"Student preview is not in the admin detail panel for {path}")
+    if metrics["hasStudentFrame"] or metrics["hasStudentNav"]:
+        raise AssertionError(f"Admin page rendered student shell elements: {path}")
+    if metrics["scrollWidth"] > metrics["clientWidth"]:
+        raise AssertionError(f"Admin page overflows horizontally: {path} {metrics}")
+    await page.screenshot(path=screenshot_dir / screenshot_name, full_page=True)
+    await context.close()
 
 async def ajax_count(page):
     return await page.evaluate("() => window.__schoolFilterAjaxCount || 0")
@@ -855,10 +913,67 @@ async def main():
             await desktop_school_page.screenshot(path=screenshot_dir / screenshot_name, full_page=True)
         await desktop_school_page.close()
 
+        admin_pages = [
+            ("/admin", admin_data_cookie, "admin-overview-desktop-1280.png", [
+                "Desktop workflow overview",
+                "Review workflow rules",
+                "Data Ingestion",
+                "Report Handling",
+            ]),
+            ("/admin/ingestion-runs", admin_data_cookie, "admin-ingestion-desktop-1280.png", [
+                "Data ingestion task list",
+                "Source document candidates",
+                "Traceable extracted guide fields",
+                "Manual-confirmation items",
+                "Draft-guide creation",
+            ]),
+            ("/admin/guides", admin_data_cookie, "admin-guide-review-desktop-1280.png", [
+                "Guide review queue table",
+                "Student-visible preview",
+                "Official source preview or link",
+                "Field-level confirmation state",
+            ]),
+            ("/admin/timeline?year=2026", admin_data_cookie, "admin-timeline-desktop-1280.png", [
+                "Timeline management generated nodes table",
+                "Date precision",
+                "Student-side status",
+                "Manual override state",
+            ]),
+            ("/admin/formulas", admin_data_cookie, "admin-formulas-desktop-1280.png", [
+                "Formula editor",
+                "Formula management list table",
+                "Test sample area",
+                "Student-side preview",
+                "Official source and publication gate",
+            ]),
+            ("/admin/experiences", admin_content_cookie, "admin-experiences-desktop-1280.png", [
+                "Experience moderation pending queue",
+                "Sensitive content and privacy warnings",
+                "Student-side preview",
+                "Blocked content boundaries",
+                "Limit account",
+            ]),
+            ("/admin/verifications", admin_content_cookie, "admin-verifications-desktop-1280.png", [
+                "Verification material queue table",
+                "Backend-only material preview",
+                "Student-side verification label preview",
+                "Reason required when refusing verification",
+            ]),
+            ("/admin/reports", admin_content_cookie, "admin-reports-desktop-1280.png", [
+                "Report handling list table",
+                "Target preview",
+                "Report reason",
+                "History and operator record",
+                "Reject report",
+            ]),
+        ]
+        for path, cookie, screenshot_name, required_text in admin_pages:
+            await verify_admin_desktop_page(browser, path, cookie, screenshot_name, required_text)
+
         await browser.close()
 
 asyncio.run(main())
-print("Core browser verification passed at 375px, 390px, 430px, timeline/calculator/experience/My flows, school list/detail interactions, home/login states, personal-center actions, and desktop student school frames")
+print("Core browser verification passed at 375px, 390px, 430px, timeline/calculator/experience/My flows, school list/detail interactions, home/login states, personal-center actions, desktop student school frames, and admin desktop workflows")
 `;
 }
 
@@ -977,12 +1092,72 @@ function startServer() {
   const noFavoriteCookie = authService.serializeSessionCookie(
     authService.createSessionForUser(noFavoriteUser.id)
   ).split(";")[0];
+  const dataReviewer = authService.createUserForTesting({
+    phoneNumber: "+8613900003401",
+    nickname: "Browser data reviewer",
+    role: "data_reviewer"
+  });
+  const contentReviewer = authService.createUserForTesting({
+    phoneNumber: "+8613900003402",
+    nickname: "Browser content admin",
+    role: "content_reviewer"
+  });
+  const adminDataCookie = authService.serializeSessionCookie(
+    authService.createSessionForUser(dataReviewer.id)
+  ).split(";")[0];
+  const adminContentCookie = authService.serializeSessionCookie(
+    authService.createSessionForUser(contentReviewer.id)
+  ).split(";")[0];
 
   seedBrowserPersonalCenterData({
     authService,
     experienceSubmissionStore,
     interactionStore,
     user: loggedInUser
+  });
+  createAdminIngestionRun({
+    operator: dataReviewer,
+    now,
+    body: {
+      id: "browser-admin-ingestion-run",
+      schoolId: seedIds.schools.sysu,
+      year: 2030,
+      keyword: "Browser SYSU official guide",
+      confidenceScore: 0.86,
+      sourceDocuments: [
+        {
+          id: "browser-admin-source-geea",
+          sourceUrl: "https://eea.gd.gov.cn/browser/2030-guide",
+          title: "Browser Guangdong Education Examination Authority source",
+          sourceType: "guangdong_education_exam_authority",
+          status: "accepted"
+        }
+      ],
+      extractedGuideFields: {
+        guideTitle: {
+          value: "Browser 2030 Guangdong Comprehensive Evaluation Guide",
+          sourceDocumentId: "browser-admin-source-geea",
+          confidence: 0.92
+        },
+        summary: {
+          value: "Browser admin ingestion draft for manual review.",
+          sourceDocumentId: "browser-admin-source-geea",
+          confidence: 0.87
+        },
+        applicationStatus: {
+          value: "open",
+          manualNote: "Browser reviewer confirms status after source check."
+        }
+      },
+      reviewNote: "Browser admin workflow verification seed."
+    }
+  });
+  interactionStore.createReport({
+    reporterId: noFavoriteUser.id,
+    targetType: "experience",
+    targetId: seedIds.experiences.sysu2026,
+    reason: "Browser report handling",
+    description: "Browser report seed for admin desktop workflow verification."
   });
 
   const server = createServer((request, response) => {
@@ -1004,7 +1179,9 @@ function startServer() {
         server,
         baseUrl: `http://127.0.0.1:${address.port}`,
         loggedInCookie,
-        noFavoriteCookie
+        noFavoriteCookie,
+        adminDataCookie,
+        adminContentCookie
       });
     });
   });
@@ -1023,7 +1200,14 @@ async function closeServer(server) {
   });
 }
 
-async function runBrowserVerification({ python, baseUrl, loggedInCookie, noFavoriteCookie }) {
+async function runBrowserVerification({
+  python,
+  baseUrl,
+  loggedInCookie,
+  noFavoriteCookie,
+  adminDataCookie,
+  adminContentCookie
+}) {
   await new Promise((resolve, reject) => {
     const child = spawn(python, ["-c", pythonBrowserScript()], {
       env: {
@@ -1034,7 +1218,9 @@ async function runBrowserVerification({ python, baseUrl, loggedInCookie, noFavor
         SCUT_SCHOOL_ID: seedIds.schools.scut,
         SYSU_EXPERIENCE_ID: seedIds.experiences.sysu2026,
         LOGGED_IN_COOKIE: loggedInCookie,
-        NO_FAVORITE_COOKIE: noFavoriteCookie
+        NO_FAVORITE_COOKIE: noFavoriteCookie,
+        ADMIN_DATA_COOKIE: adminDataCookie,
+        ADMIN_CONTENT_COOKIE: adminContentCookie
       },
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -1060,11 +1246,25 @@ async function runBrowserVerification({ python, baseUrl, loggedInCookie, noFavor
 }
 
 const python = findPlaywrightPython();
-const { server, baseUrl, loggedInCookie, noFavoriteCookie } = await startServer();
+const {
+  server,
+  baseUrl,
+  loggedInCookie,
+  noFavoriteCookie,
+  adminDataCookie,
+  adminContentCookie
+} = await startServer();
 
 try {
   await mkdir(screenshotDir, { recursive: true });
-  await runBrowserVerification({ python, baseUrl, loggedInCookie, noFavoriteCookie });
+  await runBrowserVerification({
+    python,
+    baseUrl,
+    loggedInCookie,
+    noFavoriteCookie,
+    adminDataCookie,
+    adminContentCookie
+  });
 } finally {
   await closeServer(server);
 }

@@ -462,8 +462,8 @@
         "Report handling shows report list, target preview, reason, history, and actions to keep, hide, delete display, limit account, or reject report, with operator and time recorded."
       ],
       "priority": 27,
-      "passes": false,
-      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+      "passes": true,
+      "notes": "Redesigned admin HTML workflows around a desktop shell with left navigation, global status bar, queue tables, right-side detail panels, student-visible previews, audit reason notes, report rejection, route tests, and Playwright browser coverage for all admin workflow pages."
     },
     {
       "id": "US-028",

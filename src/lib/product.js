@@ -11,12 +11,12 @@ export const studentNavigation = [
 ];
 
 export const adminNavigation = [
-  { href: "/admin", label: "Overview" },
-  { href: "/admin/guides", label: "Guide review" },
-  { href: "/admin/ingestion-runs", label: "Ingestion" },
-  { href: "/admin/timeline", label: "Timeline" },
-  { href: "/admin/formulas", label: "Formulas" },
-  { href: "/admin/experiences", label: "Experience review" },
-  { href: "/admin/verifications", label: "Verifications" },
-  { href: "/admin/reports", label: "Reports" }
+  { href: "/admin", label: "Overview", key: "overview" },
+  { href: "/admin/ingestion-runs", label: "Data Ingestion", key: "ingestion" },
+  { href: "/admin/guides", label: "Guide Review", key: "guides" },
+  { href: "/admin/timeline", label: "Timeline Management", key: "timeline" },
+  { href: "/admin/formulas", label: "Formula Management", key: "formulas" },
+  { href: "/admin/experiences", label: "Experience Review", key: "experiences" },
+  { href: "/admin/verifications", label: "Verification Review", key: "verifications" },
+  { href: "/admin/reports", label: "Report Handling", key: "reports" }
 ];

@@ -105,7 +105,7 @@ const reportStatuses = new Set(["pending", "resolved"]);
 const ingestionRunStatuses = new Set(["pending", "running", "succeeded", "failed"]);
 const moderationReviewActions = new Set(["approve", "return", "hide", "ban"]);
 const verificationReviewActions = new Set(["approve", "reject", "return"]);
-const reportResolutionActions = new Set(["keep", "hide", "delete", "limit_account"]);
+const reportResolutionActions = new Set(["keep", "hide", "delete", "limit_account", "reject"]);
 const timelineNodeTypes = new Set(timelineEventDefinitions.map((definition) => definition.eventKey));
 const submissionStatusLabels = Object.freeze({
   draft: "Draft",

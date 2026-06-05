@@ -4,6 +4,7 @@
 - HTTP routing is centralized in `src/app.js`; `src/server.js` should stay limited to server startup concerns.
 - Server-rendered HTML belongs in `src/pages.js`, shared product metadata belongs in `src/lib/product.js`, and mobile-first styling belongs in `public/styles.css`.
 - Student-facing pages should render through the shared student shell helpers in `src/pages.js`; keep the four-tab bottom navigation data in `src/lib/product.js`, use page-type top bars, and hide bottom navigation only for task pages that retain a clear back entry.
+- Admin-facing HTML should render through the shared desktop admin shell helpers in `src/pages.js`; keep admin workflow navigation labels in `src/lib/product.js`, use queue tables plus right-side detail panels, and extend `scripts/browser-core-pages.mjs` admin desktop checks when changing admin UI.
 - `npm run build` writes production files to `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`.
 - Quality scripts in `scripts/` are intentionally dependency-free and should ignore Ralph run logs and PRD source files.
 - MVP-wide quality gates include `src/e2e.test.js`, `scripts/data-quality.mjs`, and `scripts/browser-core-pages.mjs`; run `npm test`, `npm run data-quality`, and `npm run browser-test` before marking end-to-end UI quality complete.

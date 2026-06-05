@@ -400,7 +400,7 @@ describe("web routes", () => {
     assert.doesNotMatch(submissionBody, /Student bottom navigation/);
   });
 
-  it("renders the admin placeholder route", async () => {
+  it("renders the admin desktop shell route", async () => {
     const reviewer = authService.createUserForTesting({
       phoneNumber: "+8613000000030",
       nickname: "Admin overview reviewer",
@@ -413,9 +413,23 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /Admin console placeholder/);
-    assert.match(body, /Official guide review/);
+    assert.match(body, /data-admin-shell="desktop"/);
+    assert.match(body, /Admin left navigation/);
+    assert.match(body, /Admin global status bar/);
+    assert.match(body, /Admin console/);
+    for (const label of [
+      "Data Ingestion",
+      "Guide Review",
+      "Timeline Management",
+      "Formula Management",
+      "Experience Review",
+      "Verification Review",
+      "Report Handling"
+    ]) {
+      assert.match(body, new RegExp(label));
+    }
     assert.match(body, /Admin overview reviewer/);
+    assert.doesNotMatch(body, /Student bottom navigation/);
   });
 
   it("returns the health API contract", async () => {
@@ -2326,11 +2340,16 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
+    assert.match(body, /data-admin-shell="desktop"/);
     assert.match(body, /Guide review queue/);
+    assert.match(body, /Guide review queue table/);
     assert.match(body, /South China University of Technology 2026 Draft Review Guide/);
     assert.match(body, /Southern University of Science and Technology 2026 Working Draft/);
-    assert.match(body, /Official source attribution/);
+    assert.match(body, /Missing fields/);
+    assert.match(body, /Student-visible preview/);
+    assert.match(body, /Official source preview or link/);
     assert.match(body, /Extracted fields/);
+    assert.match(body, /Field-level confirmation state/);
     assert.match(body, /Submit review/);
     assert.match(body, /Publish/);
     assert.match(body, /Return/);
@@ -2539,9 +2558,13 @@ describe("web routes", () => {
     const timelineBody = await timelineResponse.text();
 
     assert.equal(timelineResponse.status, 200);
+    assert.match(timelineBody, /data-admin-shell="desktop"/);
     assert.match(timelineBody, /Timeline overrides/);
-    assert.match(timelineBody, /Guide-generated event/);
-    assert.match(timelineBody, /Manual override/);
+    assert.match(timelineBody, /Timeline management generated nodes table/);
+    assert.match(timelineBody, /Date precision/);
+    assert.match(timelineBody, /Student status/);
+    assert.match(timelineBody, /Original generated data/);
+    assert.match(timelineBody, /Manual override state/);
     assert.match(timelineBody, /Override reason/);
     assert.match(timelineBody, /Save override/);
     assertNoPhoneFields(timelineBody);
@@ -2555,9 +2578,13 @@ describe("web routes", () => {
     const formulaBody = await formulaResponse.text();
 
     assert.equal(formulaResponse.status, 200);
+    assert.match(formulaBody, /data-admin-shell="desktop"/);
     assert.match(formulaBody, /Score formula drafts/);
-    assert.match(formulaBody, /Inputs schema and weights/);
-    assert.match(formulaBody, /Sample calculation tests/);
+    assert.match(formulaBody, /Formula editor/);
+    assert.match(formulaBody, /Formula management list table/);
+    assert.match(formulaBody, /Student-side preview/);
+    assert.match(formulaBody, /Formula configuration/);
+    assert.match(formulaBody, /Test sample area/);
     assert.match(formulaBody, /Publish formula/);
     assertNoPhoneFields(formulaBody);
   });
@@ -2928,10 +2955,16 @@ describe("web routes", () => {
     const pageBody = await pageResponse.text();
 
     assert.equal(pageResponse.status, 200);
+    assert.match(pageBody, /data-admin-shell="desktop"/);
     assert.match(pageBody, /Ingestion draft workflow/);
+    assert.match(pageBody, /Data ingestion task list/);
+    assert.match(pageBody, /Extraction confidence/);
+    assert.match(pageBody, /Created by/);
     assert.match(pageBody, /Source document candidates/);
     assert.match(pageBody, /Traceable extracted guide fields/);
-    assert.match(pageBody, /Hidden until manual publish/);
+    assert.match(pageBody, /Manual-confirmation items/);
+    assert.match(pageBody, /Draft-guide creation/);
+    assert.match(pageBody, /Hidden until manual guide review publishes it/);
     assertNoPhoneFields(pageBody);
 
     const rejectResponse = await fetch(`${baseUrl}/api/admin/ingestion-runs`, {
@@ -3022,9 +3055,14 @@ describe("web routes", () => {
     const htmlBody = await htmlResponse.text();
 
     assert.equal(htmlResponse.status, 200);
+    assert.match(htmlBody, /data-admin-shell="desktop"/);
     assert.match(htmlBody, /Experience moderation queue/);
+    assert.match(htmlBody, /Experience moderation pending queue/);
+    assert.match(htmlBody, /Student-side preview/);
     assert.match(htmlBody, /Sensitive content and privacy warnings/);
     assert.match(htmlBody, /Verification privacy warning/);
+    assert.match(htmlBody, /Blocked content boundaries/);
+    assert.match(htmlBody, /Limit account/);
     assertNoPhoneFields(htmlBody);
 
     const approveResponse = await fetch(`${baseUrl}/api/admin/experiences/${encodeURIComponent(experienceId)}/review`, {
@@ -3057,6 +3095,23 @@ describe("web routes", () => {
     assert.equal(verificationReview.material.storageKeyPresent, true);
     assert.equal(verificationReview.material.metadata.sourceAccount, "moderation-source-account");
     assert.doesNotMatch(JSON.stringify(verificationQueueBody), /private\/moderation\/admission-result/);
+
+    const verificationPageResponse = await fetch(`${baseUrl}/admin/verifications`, {
+      headers: {
+        accept: "text/html",
+        cookie: reviewerCookie
+      }
+    });
+    const verificationPageBody = await verificationPageResponse.text();
+
+    assert.equal(verificationPageResponse.status, 200);
+    assert.match(verificationPageBody, /data-admin-shell="desktop"/);
+    assert.match(verificationPageBody, /Verification material queue/);
+    assert.match(verificationPageBody, /Verification material queue table/);
+    assert.match(verificationPageBody, /Backend-only material preview/);
+    assert.match(verificationPageBody, /Student-side verification label preview/);
+    assert.match(verificationPageBody, /Reason required when refusing verification/);
+    assertNoPhoneFields(verificationPageBody);
 
     const verifyResponse = await fetch(
       `${baseUrl}/api/admin/verifications/${encodeURIComponent(verificationReview.material.id)}/review`,
@@ -3269,15 +3324,30 @@ describe("web routes", () => {
         description: "The target account should be limited."
       })
     });
+    const rejectReportResponse = await fetch(`${baseUrl}/api/reports`, {
+      method: "POST",
+      headers: {
+        cookie: reporterCookie,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        targetType: "experience",
+        targetId: seedIds.experiences.sysu2026,
+        reason: "Reject report",
+        description: "The report should be rejected with no target side effect."
+      })
+    });
     const keepReport = await keepReportResponse.json();
     const hideReport = await hideReportResponse.json();
     const deleteReport = await deleteReportResponse.json();
     const userReport = await userReportResponse.json();
+    const rejectReport = await rejectReportResponse.json();
 
     assert.equal(keepReportResponse.status, 201);
     assert.equal(hideReportResponse.status, 201);
     assert.equal(deleteReportResponse.status, 201);
     assert.equal(userReportResponse.status, 201);
+    assert.equal(rejectReportResponse.status, 201);
 
     const reportsPageResponse = await fetch(`${baseUrl}/admin/reports`, {
       headers: {
@@ -3288,9 +3358,14 @@ describe("web routes", () => {
     const reportsPageBody = await reportsPageResponse.text();
 
     assert.equal(reportsPageResponse.status, 200);
+    assert.match(reportsPageBody, /data-admin-shell="desktop"/);
     assert.match(reportsPageBody, /Report resolution queue/);
+    assert.match(reportsPageBody, /Report handling list table/);
+    assert.match(reportsPageBody, /Target preview/);
+    assert.match(reportsPageBody, /History and operator record/);
     assert.match(reportsPageBody, /Keep target/);
     assert.match(reportsPageBody, /Limit account/);
+    assert.match(reportsPageBody, /Reject report/);
     assertNoPhoneFields(reportsPageBody);
 
     const keepResolveResponse = await fetch(
@@ -3313,6 +3388,27 @@ describe("web routes", () => {
     assert.equal(keepResolveBody.status, "resolved");
     assert.equal(keepResolveBody.report.resolution.action, "keep");
     assert.equal(getExperienceById(seedIds.experiences.sysu2026)?.id, seedIds.experiences.sysu2026);
+
+    const rejectResolveResponse = await fetch(
+      `${baseUrl}/api/admin/reports/${encodeURIComponent(rejectReport.report.id)}/resolve`,
+      {
+        method: "POST",
+        headers: {
+          cookie: reviewerCookie,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "reject",
+          resolutionNote: "Report rejected after reviewer found no actionable issue."
+        })
+      }
+    );
+    const rejectResolveBody = await rejectResolveResponse.json();
+
+    assert.equal(rejectResolveResponse.status, 200);
+    assert.equal(rejectResolveBody.status, "resolved");
+    assert.equal(rejectResolveBody.report.resolution.action, "reject");
+    assert.equal(rejectResolveBody.sideEffect, null);
 
     const hideResolveResponse = await fetch(
       `${baseUrl}/api/admin/reports/${encodeURIComponent(hideReport.report.id)}/resolve`,
