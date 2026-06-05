@@ -484,6 +484,29 @@
       "priority": 28,
       "passes": true,
       "notes": "Added deterministic frontend PRD acceptance gates covering visual, interaction, accessibility, content, privacy, student, and admin requirements, plus a committed acceptance matrix and browser artifacts."
+    },
+    {
+      "id": "US-029",
+      "title": "Add complete test PRD readiness gates",
+      "description": "Turn docs/test-prd.md into deterministic local quality gates so a fresh PostgreSQL-backed checkout can be verified as ready to use after setup.",
+      "acceptanceCriteria": [
+        "Add a committed test PRD coverage matrix that maps every explicit case ID in docs/test-prd.md, including FE-*, ADM-*, and API-* cases, to an automated test, browser check, data-quality check, documented manual check, or explicit out-of-scope reason.",
+        "Add a dependency-free matrix completeness check that fails when docs/test-prd.md adds, removes, or renames a case ID without updating the committed matrix.",
+        "Add a PostgreSQL integration gate that runs when DATABASE_URL is set, applies the committed migrations against an isolated test database or schema, verifies required tables, constraints, statuses, and PostgreSQL full-text-search indexes, and leaves the database clean enough to rerun.",
+        "Document the local PostgreSQL setup using postgresql://postgres:postgres@127.0.0.1:5432/guangdong_comprehensive_evaluation and make any database-backed test command fail with a clear setup message instead of a low-level connection error.",
+        "Add API contract tests for public, logged-in user, score calculation, and admin endpoints covering success, unauthenticated, unauthorized role, invalid input, missing data, published-only visibility, and stable JSON error shapes required by docs/test-prd.md.",
+        "Add end-to-end regression checks for the official-guide publishing flow, generated timeline flow, experience submission to approval to public display flow, certification material flow, and report hiding or account-limiting flow, with audit operator and timestamp assertions.",
+        "Add privacy and security gates covering phone numbers, real names, source accounts, ID card numbers, exam candidate numbers, verification material URLs, reviewer-only material URLs, backend review notes, internal risk labels, and private reporter data across public APIs, anonymous pages, My page, and student-side admin previews.",
+        "Add responsive browser checks for student pages at 375x667, 390x844, 430x932, 768x1024, and 1440x900, and admin pages at 1280x720, 1440x900, and 1920x1080, including screenshot artifacts, no horizontal scroll, no overlapping text, stable bottom navigation, desktop student column limits, and stable admin table or detail-panel behavior.",
+        "Add accessibility checks for icon-button accessible names, text-visible statuses, nearby form error text, 44px touch targets, explicit input labels, and non-toast fallback error text on the prioritized pages in docs/test-prd.md.",
+        "Add performance smoke checks or a documented local benchmark command for the docs/test-prd.md targets, including home first-screen interactivity, school list, experience list, timeline, score calculation, and admin list APIs, with seeded data-volume baselines or a clearly documented reason for any manual-only measurement.",
+        "Add package scripts that expose the new gates with clear names, and document the full out-of-box verification sequence from fresh checkout through PostgreSQL setup, build, typecheck, lint, unit tests, API and route tests, data quality, browser tests, database integration tests, performance smoke, and release readiness checks.",
+        "Record deterministic test deliverables, including the test case matrix, automated test report command outputs, responsive screenshot location, privacy scan coverage, release readiness checklist, and any remaining manual verification items that cannot be made deterministic in the current dependency-free stack.",
+        "Run npm test, npm run data-quality, npm run browser-test, the new test PRD matrix check, the new PostgreSQL integration gate with DATABASE_URL, and the new release-readiness command successfully before marking this story complete."
+      ],
+      "priority": 29,
+      "passes": true,
+      "notes": "Added complete docs/test-prd.md readiness gates with a 113-case committed matrix, dependency-free matrix checker, PostgreSQL isolated-schema integration gate, release-readiness script, API/e2e/privacy/accessibility tests, expanded responsive browser screenshots, performance smoke command, and documented fresh-checkout verification sequence."
     }
   ]
 }

@@ -9,8 +9,10 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Admin-facing HTML should use the shared desktop admin shell helpers in `src/pages.js`; keep Data Ingestion/Guide Review/Timeline Management/Formula Management/Experience Review/Verification Review/Report Handling navigation in `src/lib/product.js`, and verify admin UI changes through the admin desktop section of `scripts/browser-core-pages.mjs`.
 - Quality scripts live in `scripts/` and intentionally avoid scanning Ralph run logs or source PRD docs.
 - MVP-wide quality gates live in `src/e2e.test.js`, `scripts/data-quality.mjs`, and `scripts/browser-core-pages.mjs`; run `npm test`, `npm run data-quality`, and `npm run browser-test` for end-to-end acceptance.
+- Complete test PRD readiness gates live in `src/test-prd-readiness.test.js`, `docs/test-prd-coverage-matrix.md`, and the dependency-free `test-prd:matrix`, `db:integration`, `perf:smoke`, and `release-readiness` scripts; update the matrix whenever `docs/test-prd.md` case IDs change.
 - `npm run build` creates `dist/src` and `dist/public`; `npm start` runs `dist/src/server.js`, and `dist/` is generated and ignored.
 - Core PostgreSQL schema migrations live in `src/db/migrations`; `src/db/schema.test.js` validates migration SQL statically without connecting to `DATABASE_URL`.
+- The PostgreSQL integration readiness gate uses `psql` against an isolated temporary schema from `DATABASE_URL`; partial unique indexes such as `admission_guides_one_current_per_scope` must be verified through `pg_indexes`, not `pg_constraint`.
 - Seed fixtures and student-facing published-only data access helpers live in `src/db` as plain JavaScript modules; use them before introducing database tooling.
 - Authentication/session helpers live in `src/auth.js`; `handleRequest` accepts an optional `{ authService }` test context, and public auth responses must use the public user shape so phone fields do not leak.
 - `/logout` and `/api/logout` destroy the current session through `authService.destroySession()` and set a clear-session cookie through `serializeClearSessionCookie()`; client-side student draft cleanup hooks onto the logout form.
@@ -39,6 +41,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - The redesigned student home should render through `renderStudentHome({ user, interactionStore, now, grade })`; it uses published `listGuides()`, `listTimelineNodes()`, and `listExperiences()` by default, while `homeData` is reserved for deterministic empty-state renderer tests.
 - HTML login-required student actions should pass `htmlLogin`, `returnTo`, and a bounded `pendingAction` into `requireActiveUser()`; `/login` POST continues favorite/useful/report/publish actions and redirects with a `toast` query handled by `public/student.js`.
 - Admin moderation queues should use `experienceSubmissionStore` review helpers for pending experiences and verification materials, `interactionStore` report resolution for audit state, `registerPublishedExperience()` for approved submission visibility, and `moderatePublishedExperience()` plus `authService.updateUserAccountStatus()` for report side effects.
+- Verification material metadata exposed by admin review helpers should stay reviewer-safe and summarized; do not render raw source accounts, real names, ID card numbers, candidate numbers, object-storage keys, or private material URLs in student-visible or public surfaces.
 - Frontend PRD acceptance gates live in `src/frontend-acceptance.test.js` with the committed traceability matrix in `docs/frontend-acceptance-matrix.md`; keep rendered browser layout gates in `scripts/browser-core-pages.mjs`.
 ---
 
@@ -1020,4 +1023,48 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Keep US-028 traceability in `docs/frontend-acceptance-matrix.md`; the matrix test intentionally fails if a criterion row or required column disappears.
   - Browser text-overlap gates should ignore intentional fixed bottom navigation labels, then check content leaf text with a threshold large enough to avoid adjacent line-box false positives.
   - For client-side school filter loading checks, deliberately delay one Playwright-routed request so the skeleton state is deterministic before the final response replaces the results section.
+---
+
+## Fri Jun  5 11:31:45 AM CST 2026 - US-029
+- What was implemented
+  - Added a complete `docs/test-prd.md` coverage matrix with 113 explicit FE, ADM, and API case IDs mapped to automated tests, browser checks, data-quality checks, performance smoke checks, documented manual checks, or explicit out-of-scope reasons.
+  - Added dependency-free readiness scripts for matrix completeness, isolated-schema PostgreSQL migration validation, performance smoke thresholds, and full release readiness orchestration.
+  - Added API contract, score-calculation, official guide publish/timeline override, experience moderation/verification/report, privacy/security, and accessibility readiness tests.
+  - Added PostgreSQL full-text search indexes for schools, guides, and experiences, then verified them statically and through the database integration gate.
+  - Expanded responsive browser verification to student 375x667, 390x844, 430x932, 768x1024, and 1440x900 plus admin 1280x720, 1440x900, and 1920x1080, with screenshot artifacts.
+  - Documented fresh-checkout PostgreSQL setup, full verification sequence, deterministic deliverables, and remaining manual-only external-service items.
+- Files changed
+  - `AGENTS.md`, `README.md`, `package.json`
+  - `docs/test-prd-coverage-matrix.md`, `docs/test-deliverables.md`
+  - `public/styles.css`
+  - `scripts/check-test-prd-matrix.mjs`, `scripts/postgres-integration.mjs`, `scripts/performance-smoke.mjs`, `scripts/release-readiness.mjs`, `scripts/browser-core-pages.mjs`
+  - `src/test-prd-readiness.test.js`, `src/app.test.js`, `src/pages.js`, `src/experience-submissions.js`
+  - `src/db/migrations/001_core_data_model.sql`, `src/db/schema.test.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `BROWSER_SCREENSHOT_DIR=/home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260605-110641/iteration-1 npm run browser-test` passed.
+  - `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/guangdong_comprehensive_evaluation BROWSER_SCREENSHOT_DIR=/home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260605-110641/iteration-1/release-readiness npm run release-readiness` passed.
+  - Release readiness ran and passed `npm run build`, `npm run typecheck`, `npm run lint`, `npm test` with 115 passing tests, `npm run data-quality`, `npm run test-prd:matrix`, `npm run browser-test`, `npm run db:integration`, and `npm run perf:smoke`.
+  - `npm run data-quality` reported annual guide coverage 3/3, 100.00% against the 95.00% target, with school-year guide coverage 6/9.
+  - `npm run test-prd:matrix` reported 113 case IDs mapped.
+  - `npm run db:integration` applied migrations in an isolated PostgreSQL schema and dropped it after verifying required tables, statuses, constraints/indexes, and full-text search indexes.
+  - `npm run perf:smoke` passed the 250ms warmed-request threshold for home first-screen HTML, school list, experience list, timeline, score calculation, and admin list APIs.
+  - `git diff --check` passed.
+- Acceptance matrix summary
+  - Matrix completeness maps to `docs/test-prd-coverage-matrix.md` and `scripts/check-test-prd-matrix.mjs`, which fail when explicit case IDs in `docs/test-prd.md` are not represented.
+  - PostgreSQL setup and database readiness map to `docs/test-deliverables.md`, `scripts/postgres-integration.mjs`, `src/db/migrations/001_core_data_model.sql`, and `src/db/schema.test.js`.
+  - API, score, guide/timeline, experience moderation, verification, report side effects, audit operator/time assertions, privacy/security, and accessibility readiness map to `src/test-prd-readiness.test.js` plus updated route tests.
+  - Responsive rendering, screenshot artifacts, no horizontal scroll, no overlapping text, stable bottom navigation, desktop student column limits, and admin table/detail-panel behavior map to the expanded `scripts/browser-core-pages.mjs` viewport matrix.
+  - Performance readiness maps to `scripts/performance-smoke.mjs` with seeded-data baselines and documented local targets.
+- Browser verification result, if this was a UI story
+  - Playwright Chromium passed student pages at 375x667, 390x844, 430x932, 768x1024, and 1440x900.
+  - Playwright Chromium passed admin pages at 1280x720, 1440x900, and 1920x1080.
+  - Browser coverage included timeline/calculator/experience/My flows, school list/detail interactions, home/login states, personal-center actions, desktop student frames, and admin workflows.
+  - Screenshots were saved under `scripts/ralph/runs/20260605-110641/iteration-1` and the release-readiness screenshots under `scripts/ralph/runs/20260605-110641/iteration-1/release-readiness`.
+- **Learnings for future iterations:**
+  - Keep `docs/test-prd-coverage-matrix.md` synchronized with `docs/test-prd.md`; `npm run test-prd:matrix` checks the explicit case ID set and required mapping columns.
+  - `npm run release-readiness` requires `DATABASE_URL` and runs the full local gate stack, including browser and PostgreSQL integration.
+  - `scripts/postgres-integration.mjs` uses `psql` and an isolated temporary schema; partial unique indexes need `pg_indexes` checks instead of `pg_constraint`.
+  - Admin verification metadata should remain a reviewer-safe summary; raw source accounts, real names, ID cards, candidate numbers, storage keys, and private URLs must not leak to public, My-page, anonymous, or student-visible preview surfaces.
+  - The expanded 375x667 browser gate catches fixed-nav obstructions; duplicated mobile action clusters and late primary CTAs should be adjusted in layout rather than suppressed from checks.
 ---

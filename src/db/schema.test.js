@@ -124,4 +124,24 @@ describe("core data model migration", () => {
     assert.match(usersTable, /role user_role not null default 'user'/);
     assert.match(usersTable, /account_status account_status not null default 'active'/);
   });
+
+  it("creates PostgreSQL full-text search indexes for MVP search targets", () => {
+    for (const indexName of [
+      "schools_search_idx",
+      "admission_guides_search_idx",
+      "source_documents_search_idx",
+      "experiences_search_idx"
+    ]) {
+      assert.match(
+        migrationSql,
+        new RegExp(`CREATE INDEX IF NOT EXISTS ${indexName}[\\s\\S]*USING gin`, "i"),
+        `Expected ${indexName} to use a GIN full-text search index`
+      );
+    }
+
+    assert.match(migrationSql, /to_tsvector\('simple', coalesce\(name, ''\)/i);
+    assert.match(migrationSql, /to_tsvector\('simple', coalesce\(guide_title, ''\)/i);
+    assert.match(migrationSql, /to_tsvector\('simple', coalesce\(major_group, ''\)/i);
+    assert.match(migrationSql, /source_documents USING gin \(search_vector\)/i);
+  });
 });

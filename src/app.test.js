@@ -3093,8 +3093,15 @@ describe("web routes", () => {
 
     assert.equal(verificationQueueResponse.status, 200);
     assert.equal(verificationReview.material.storageKeyPresent, true);
-    assert.equal(verificationReview.material.metadata.sourceAccount, "moderation-source-account");
-    assert.doesNotMatch(JSON.stringify(verificationQueueBody), /private\/moderation\/admission-result/);
+    assert.deepEqual(verificationReview.material.metadata, {
+      provided: true,
+      fieldCount: 2,
+      identitySignalPresent: true
+    });
+    assert.doesNotMatch(
+      JSON.stringify(verificationQueueBody),
+      /private\/moderation\/admission-result|moderation-source-account|Moderation Student Name/
+    );
 
     const verificationPageResponse = await fetch(`${baseUrl}/admin/verifications`, {
       headers: {
@@ -3112,6 +3119,7 @@ describe("web routes", () => {
     assert.match(verificationPageBody, /Student-side verification label preview/);
     assert.match(verificationPageBody, /Reason required when refusing verification/);
     assertNoPhoneFields(verificationPageBody);
+    assert.doesNotMatch(verificationPageBody, /moderation-source-account|Moderation Student Name|private\/moderation/);
 
     const verifyResponse = await fetch(
       `${baseUrl}/api/admin/verifications/${encodeURIComponent(verificationReview.material.id)}/review`,

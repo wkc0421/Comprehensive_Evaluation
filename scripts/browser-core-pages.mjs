@@ -64,7 +64,8 @@ core_pages = [
     (f"/experiences/{sysu_experience_id}", "experience-detail", True, "/experiences"),
     ("/me", "personal-logged-out", True, "/me"),
 ]
-widths = [375, 390, 430]
+student_viewports = [(375, 667), (390, 844), (430, 932), (768, 1024), (1440, 900)]
+admin_viewports = [(1280, 720), (1440, 900), (1920, 1080)]
 hidden_text = [
     "Draft Review Guide",
     "Working Draft",
@@ -169,9 +170,9 @@ async def verify_login_favorite_continuation(page):
     if toast_text != "Favorite saved":
         raise AssertionError(f"Favorite continuation toast was wrong: {toast_text}")
 
-async def verify_admin_desktop_page(browser, path, cookie, screenshot_name, required_text):
+async def verify_admin_desktop_page(browser, path, cookie, screenshot_name, required_text, viewport):
     context = await browser.new_context(
-        viewport={"width": 1280, "height": 940},
+        viewport={"width": viewport[0], "height": viewport[1]},
         extra_http_headers={"Cookie": cookie}
     )
     page = await context.new_page()
@@ -584,8 +585,9 @@ async def main():
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch()
 
-        for width in widths:
-            page = await browser.new_page(viewport={"width": width, "height": 940})
+        for width, height in student_viewports:
+            viewport_label = f"{width}x{height}"
+            page = await browser.new_page(viewport={"width": width, "height": height})
 
             for path, label, requires_nav, current_href in core_pages:
                 await page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
@@ -825,21 +827,20 @@ async def main():
                     if "phone otp" in body_lower or "phoneNumber" in metrics["bodyText"]:
                         raise AssertionError("Logged-out My guide rendered the phone login form instead of a guide card")
 
-                if width == 390:
-                    await page.screenshot(path=screenshot_dir / f"{label}-{width}.png", full_page=True)
+                await page.screenshot(path=screenshot_dir / f"{label}-{viewport_label}.png", full_page=True)
 
             await page.close()
 
-            home_page = await browser.new_page(viewport={"width": width, "height": 940})
+            home_page = await browser.new_page(viewport={"width": width, "height": height})
             for path, expected_grade, expected_tip in home_grade_states:
                 await verify_home_state(home_page, path, expected_grade, expected_tip)
                 if width == 390:
                     screenshot_name = path.split("=")[-1].replace("high_school_", "home-")
-                    await home_page.screenshot(path=screenshot_dir / f"{screenshot_name}-{width}.png", full_page=True)
+                    await home_page.screenshot(path=screenshot_dir / f"{screenshot_name}-{viewport_label}.png", full_page=True)
             await home_page.close()
 
             logged_context = await browser.new_context(
-                viewport={"width": width, "height": 940},
+                viewport={"width": width, "height": height},
                 extra_http_headers={"Cookie": logged_in_cookie}
             )
             logged_home = await logged_context.new_page()
@@ -851,35 +852,35 @@ async def main():
                 logged_in=True
             )
             if width == 390:
-                await logged_home.screenshot(path=screenshot_dir / f"home-logged-in-{width}.png", full_page=True)
+                await logged_home.screenshot(path=screenshot_dir / f"home-logged-in-{viewport_label}.png", full_page=True)
             await logged_context.close()
 
             personal_context = await browser.new_context(
-                viewport={"width": width, "height": 940},
+                viewport={"width": width, "height": height},
                 extra_http_headers={"Cookie": logged_in_cookie}
             )
             personal_page = await personal_context.new_page()
             await verify_logged_in_personal_center(personal_page)
             if width == 390:
-                await personal_page.screenshot(path=screenshot_dir / f"personal-center-logged-in-{width}.png", full_page=True)
+                await personal_page.screenshot(path=screenshot_dir / f"personal-center-logged-in-{viewport_label}.png", full_page=True)
             await personal_context.close()
 
-            school_filter_page = await browser.new_page(viewport={"width": width, "height": 940})
+            school_filter_page = await browser.new_page(viewport={"width": width, "height": height})
             await verify_school_filter_interactions(school_filter_page)
             if width == 390:
-                await school_filter_page.screenshot(path=screenshot_dir / f"schools-filter-retry-{width}.png", full_page=True)
+                await school_filter_page.screenshot(path=screenshot_dir / f"schools-filter-retry-{viewport_label}.png", full_page=True)
             await school_filter_page.close()
 
-            school_fallback_page = await browser.new_page(viewport={"width": width, "height": 940})
+            school_fallback_page = await browser.new_page(viewport={"width": width, "height": height})
             await verify_school_detail_fallback(school_fallback_page)
             if width == 390:
-                await school_fallback_page.screenshot(path=screenshot_dir / f"school-detail-historical-{width}.png", full_page=True)
+                await school_fallback_page.screenshot(path=screenshot_dir / f"school-detail-historical-{viewport_label}.png", full_page=True)
             await school_fallback_page.close()
 
-            timeline_page = await browser.new_page(viewport={"width": width, "height": 940})
+            timeline_page = await browser.new_page(viewport={"width": width, "height": height})
             await verify_timeline_interactions(timeline_page)
             if width == 390:
-                await timeline_page.screenshot(path=screenshot_dir / f"timeline-filtered-{width}.png", full_page=True)
+                await timeline_page.screenshot(path=screenshot_dir / f"timeline-filtered-{viewport_label}.png", full_page=True)
             await timeline_page.close()
 
         login_page = await browser.new_page(viewport={"width": 390, "height": 940})
@@ -915,7 +916,7 @@ async def main():
         await personal_action_page.screenshot(path=screenshot_dir / "personal-center-logout-guide-390.png", full_page=True)
         await personal_action_context.close()
 
-        desktop_page = await browser.new_page(viewport={"width": 1280, "height": 940})
+        desktop_page = await browser.new_page(viewport={"width": 1440, "height": 900})
         await desktop_page.goto(f"{base_url}/", wait_until="domcontentloaded")
         desktop_metrics = await desktop_page.evaluate("""() => {
             const frame = document.querySelector(".student-frame");
@@ -929,10 +930,10 @@ async def main():
             raise AssertionError(f"Desktop student frame is not centered: {desktop_metrics}")
         await desktop_page.close()
 
-        desktop_school_page = await browser.new_page(viewport={"width": 1280, "height": 940})
+        desktop_school_page = await browser.new_page(viewport={"width": 1440, "height": 900})
         for path, screenshot_name, required_text in [
-            ("/schools?year=2025&sort=name", "schools-desktop-1280.png", "School keyword"),
-            (f"/schools/{sysu_school_id}?year=2026", "school-detail-desktop-1280.png", "Official guide summary"),
+            ("/schools?year=2025&sort=name", "schools-desktop-1440x900.png", "School keyword"),
+            (f"/schools/{sysu_school_id}?year=2026", "school-detail-desktop-1440x900.png", "Official guide summary"),
         ]:
             await desktop_school_page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
             desktop_school_metrics = await desktop_school_page.evaluate("""() => {
@@ -955,52 +956,52 @@ async def main():
         await desktop_school_page.close()
 
         admin_pages = [
-            ("/admin", admin_data_cookie, "admin-overview-desktop-1280.png", [
+            ("/admin", admin_data_cookie, "admin-overview-desktop", [
                 "Desktop workflow overview",
                 "Review workflow rules",
                 "Data Ingestion",
                 "Report Handling",
             ]),
-            ("/admin/ingestion-runs", admin_data_cookie, "admin-ingestion-desktop-1280.png", [
+            ("/admin/ingestion-runs", admin_data_cookie, "admin-ingestion-desktop", [
                 "Data ingestion task list",
                 "Source document candidates",
                 "Traceable extracted guide fields",
                 "Manual-confirmation items",
                 "Draft-guide creation",
             ]),
-            ("/admin/guides", admin_data_cookie, "admin-guide-review-desktop-1280.png", [
+            ("/admin/guides", admin_data_cookie, "admin-guide-review-desktop", [
                 "Guide review queue table",
                 "Student-visible preview",
                 "Official source preview or link",
                 "Field-level confirmation state",
             ]),
-            ("/admin/timeline?year=2026", admin_data_cookie, "admin-timeline-desktop-1280.png", [
+            ("/admin/timeline?year=2026", admin_data_cookie, "admin-timeline-desktop", [
                 "Timeline management generated nodes table",
                 "Date precision",
                 "Student-side status",
                 "Manual override state",
             ]),
-            ("/admin/formulas", admin_data_cookie, "admin-formulas-desktop-1280.png", [
+            ("/admin/formulas", admin_data_cookie, "admin-formulas-desktop", [
                 "Formula editor",
                 "Formula management list table",
                 "Test sample area",
                 "Student-side preview",
                 "Official source and publication gate",
             ]),
-            ("/admin/experiences", admin_content_cookie, "admin-experiences-desktop-1280.png", [
+            ("/admin/experiences", admin_content_cookie, "admin-experiences-desktop", [
                 "Experience moderation pending queue",
                 "Sensitive content and privacy warnings",
                 "Student-side preview",
                 "Blocked content boundaries",
                 "Limit account",
             ]),
-            ("/admin/verifications", admin_content_cookie, "admin-verifications-desktop-1280.png", [
+            ("/admin/verifications", admin_content_cookie, "admin-verifications-desktop", [
                 "Verification material queue table",
                 "Backend-only material preview",
                 "Student-side verification label preview",
                 "Reason required when refusing verification",
             ]),
-            ("/admin/reports", admin_content_cookie, "admin-reports-desktop-1280.png", [
+            ("/admin/reports", admin_content_cookie, "admin-reports-desktop", [
                 "Report handling list table",
                 "Target preview",
                 "Report reason",
@@ -1008,13 +1009,21 @@ async def main():
                 "Reject report",
             ]),
         ]
-        for path, cookie, screenshot_name, required_text in admin_pages:
-            await verify_admin_desktop_page(browser, path, cookie, screenshot_name, required_text)
+        for admin_width, admin_height in admin_viewports:
+            for path, cookie, screenshot_label, required_text in admin_pages:
+                await verify_admin_desktop_page(
+                    browser,
+                    path,
+                    cookie,
+                    f"{screenshot_label}-{admin_width}x{admin_height}.png",
+                    required_text,
+                    (admin_width, admin_height)
+                )
 
         await browser.close()
 
 asyncio.run(main())
-print("Core browser verification passed at 375px, 390px, 430px, timeline/calculator/experience/My flows, school list/detail interactions, home/login states, personal-center actions, desktop student school frames, and admin desktop workflows")
+print("Core browser verification passed at student 375x667, 390x844, 430x932, 768x1024, 1440x900 and admin 1280x720, 1440x900, 1920x1080 with timeline/calculator/experience/My flows, school list/detail interactions, home/login states, personal-center actions, desktop student frames, and admin workflows")
 `;
 }
 

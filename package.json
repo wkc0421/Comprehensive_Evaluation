@@ -10,9 +10,13 @@
     "build": "node scripts/build.mjs",
     "typecheck": "node scripts/typecheck.mjs",
     "lint": "node scripts/lint.mjs",
-    "test": "node --test src/app.test.js src/auth.test.js src/lib/product.test.js src/db/schema.test.js src/db/data-access.test.js src/data-quality.test.js src/e2e.test.js src/frontend-acceptance.test.js",
+    "test": "node --test src/app.test.js src/auth.test.js src/lib/product.test.js src/db/schema.test.js src/db/data-access.test.js src/data-quality.test.js src/e2e.test.js src/frontend-acceptance.test.js src/test-prd-readiness.test.js",
     "data-quality": "node scripts/data-quality.mjs",
-    "browser-test": "node scripts/browser-core-pages.mjs"
+    "browser-test": "node scripts/browser-core-pages.mjs",
+    "test-prd:matrix": "node scripts/check-test-prd-matrix.mjs",
+    "db:integration": "node scripts/postgres-integration.mjs",
+    "perf:smoke": "node scripts/performance-smoke.mjs",
+    "release-readiness": "node scripts/release-readiness.mjs"
   },
   "engines": {
     "node": ">=18.19.0"

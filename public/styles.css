@@ -2066,6 +2066,12 @@ h1 {
   width: 100%;
 }
 
+@media (max-width: 719px) {
+  .student-frame .school-quick-actions {
+    display: none;
+  }
+}
+
 .action-note {
   display: inline-flex;
   min-height: 44px;

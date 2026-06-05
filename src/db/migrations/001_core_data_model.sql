@@ -311,7 +311,13 @@ CREATE INDEX IF NOT EXISTS experiences_public_listing_idx ON experiences (status
 CREATE INDEX IF NOT EXISTS interactions_user_action_idx ON interactions (user_id, action);
 CREATE INDEX IF NOT EXISTS reports_status_idx ON reports (status);
 CREATE INDEX IF NOT EXISTS source_documents_status_idx ON source_documents (status);
+CREATE INDEX IF NOT EXISTS schools_search_idx
+  ON schools USING gin (to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(normalized_name, '') || ' ' || coalesce(city, '') || ' ' || coalesce(school_type, '')));
+CREATE INDEX IF NOT EXISTS admission_guides_search_idx
+  ON admission_guides USING gin (to_tsvector('simple', coalesce(guide_title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(academic_test_requirements, '') || ' ' || coalesce(assessment_method, '') || ' ' || coalesce(admission_rule, '')));
 CREATE INDEX IF NOT EXISTS source_documents_search_idx ON source_documents USING gin (search_vector);
+CREATE INDEX IF NOT EXISTS experiences_search_idx
+  ON experiences USING gin (to_tsvector('simple', coalesce(major_group, '') || ' ' || coalesce(candidate_track, '') || ' ' || coalesce(stage, '') || ' ' || coalesce(process_summary, '') || ' ' || coalesce(preparation_summary, '') || ' ' || coalesce(advice, '')));
 CREATE INDEX IF NOT EXISTS ingestion_runs_status_idx ON ingestion_runs (status);
 
 COMMIT;

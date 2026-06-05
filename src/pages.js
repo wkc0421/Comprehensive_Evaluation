@@ -789,7 +789,7 @@ function renderTimelineFilters(filters) {
       <select name="schoolIds">${schoolOptions}</select>
     </label>
     <div class="filter-actions">
-      <button class="primary-action" type="submit">Apply</button>
+      <button class="secondary-action" type="submit">Apply</button>
       <a class="secondary-action" href="${filters.mine ? "/timeline?mine=true" : "/timeline"}">Reset</a>
     </div>
   </form>`;
@@ -4310,14 +4310,14 @@ export function renderPersonalCenterLoginGuidePage({ returnTo = "/me" } = {}) {
             <h2>Log in to use My page</h2>
             <p>Login enables school favorites, experience publishing, and review-status tracking.</p>
           </div>
+          <div class="form-actions">
+            <a class="primary-action" href="/login?returnTo=${escapeHtml(encodeURIComponent(safeReturnHref(returnTo)))}">Login</a>
+          </div>
           <ul class="tip-list">
             <li>Save Guangdong comprehensive evaluation schools for a personal timeline.</li>
             <li>Publish structured experiences after reviewer approval.</li>
             <li>Check submitted experience review status from this page.</li>
           </ul>
-          <div class="form-actions">
-            <a class="primary-action" href="/login?returnTo=${escapeHtml(encodeURIComponent(safeReturnHref(returnTo)))}">Login</a>
-          </div>
         </article>
       </section>`
   });

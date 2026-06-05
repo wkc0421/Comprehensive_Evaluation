@@ -545,12 +545,25 @@ export function publicExperienceSubmission(experience) {
   };
 }
 
+function reviewerSafeVerificationMetadata(metadata) {
+  const entries = Object.entries(metadata ?? {});
+  const serialized = JSON.stringify(metadata ?? {});
+  const identitySignalPresent = /sourceAccount|realName|idCard|candidateNumber|examCandidateNumber|身份证|\b\d{17}[\dXx]\b/i
+    .test(serialized);
+
+  return {
+    provided: entries.length > 0,
+    fieldCount: entries.length,
+    identitySignalPresent
+  };
+}
+
 function adminVerificationMaterial(material, experience) {
   return {
     id: material.id,
     experienceId: experience.id,
     materialType: material.materialType,
-    metadata: { ...material.metadata },
+    metadata: reviewerSafeVerificationMetadata(material.metadata),
     status: material.status,
     storageKeyPresent: Boolean(material.objectStorageKey),
     reviewAudit: (material.reviewAudit ?? []).map((entry) => ({ ...entry }))

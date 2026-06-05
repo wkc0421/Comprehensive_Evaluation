@@ -39,7 +39,11 @@ Mobile-first Node.js web application for Guangdong comprehensive evaluation admi
 - `npm run lint` runs dependency-free lint checks for whitespace, tabs, and JavaScript syntax.
 - `npm test` runs the Node.js test suite once.
 - `npm run data-quality` reports 2024 through 2026 Guangdong guide coverage and validates student-facing official data quality.
-- `npm run browser-test` runs Playwright browser overflow checks for core mobile pages when Python Playwright is available.
+- `npm run browser-test` runs Playwright browser checks for student pages at 375x667, 390x844, 430x932, 768x1024, and 1440x900, plus admin pages at 1280x720, 1440x900, and 1920x1080 when Python Playwright is available.
+- `npm run test-prd:matrix` verifies that `docs/test-prd-coverage-matrix.md` maps every explicit case ID in `docs/test-prd.md`.
+- `npm run db:integration` applies committed migrations to an isolated PostgreSQL schema when `DATABASE_URL` is set and verifies required tables, constraints, statuses, and full-text search indexes.
+- `npm run perf:smoke` runs local warmed-request performance smoke checks for the home page, public list APIs, score calculation, and admin list APIs.
+- `npm run release-readiness` runs the full release readiness sequence, including build, typecheck, lint, tests, data quality, matrix, browser, PostgreSQL integration, and performance smoke gates.
 
 ## Environment
 
@@ -68,3 +72,18 @@ PostgreSQL is the MVP database target. The first implementation should use migra
 MVP search should use PostgreSQL full-text search with generated `tsvector` columns or expression indexes. This keeps keyword search in the primary database for the initial scope and avoids introducing a separate search service before the content model stabilizes.
 
 Core schema migrations live in `src/db/migrations`. The current data model migration defines the PostgreSQL tables for users, schools, official guides, timelines, formulas, experiences, interactions, reports, source documents, and ingestion runs. Schema validation runs through `npm test` and reads the migration files locally without connecting to `DATABASE_URL`.
+
+For the database-backed readiness gate, use a local PostgreSQL database at:
+
+```bash
+postgresql://postgres:postgres@127.0.0.1:5432/guangdong_comprehensive_evaluation
+```
+
+Example local setup:
+
+```bash
+createdb "postgresql://postgres:postgres@127.0.0.1:5432/guangdong_comprehensive_evaluation"
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/guangdong_comprehensive_evaluation npm run db:integration
+```
+
+If `DATABASE_URL`, `psql`, or the database is missing, `npm run db:integration` fails with setup guidance instead of a low-level connection error. See `docs/test-deliverables.md` for the full out-of-box verification sequence and deterministic test artifacts.
