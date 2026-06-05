@@ -1333,6 +1333,47 @@ h1 {
   gap: 12px;
 }
 
+.timeline-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.timeline-tabs a {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+}
+
+.timeline-tabs a[aria-current="page"] {
+  border-color: var(--primary);
+  background: var(--color-tag-bg);
+  color: var(--primary-pressed);
+}
+
+.timeline-month-group,
+.timeline-month-list {
+  display: grid;
+  gap: 12px;
+}
+
+.timeline-month-group h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
 .experience-list {
   display: grid;
   gap: 12px;
@@ -1358,9 +1399,35 @@ h1 {
   box-shadow: var(--shadow-card);
 }
 
-.timeline-card h3 {
+.timeline-card h4 {
+  margin: 0;
   font-size: 1.05rem;
   line-height: 1.3;
+}
+
+.timeline-card h4 a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.timeline-empty-state {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.timeline-empty-state strong {
+  color: var(--text);
+}
+
+.timeline-empty-state p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
 }
 
 .experience-card h3 {
@@ -1400,6 +1467,11 @@ h1 {
 .status-ended {
   background: #f3f4f6;
   color: #4b5563;
+}
+
+.status-to_be_announced {
+  background: #fffbeb;
+  color: #92400e;
 }
 
 .site-badge {
@@ -1813,6 +1885,23 @@ h1 {
   font-weight: 700;
 }
 
+.score-error {
+  color: var(--color-danger) !important;
+}
+
+.score-error:empty {
+  display: none;
+}
+
+.score-entry-form button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.score-entry-form button[data-loading="true"] {
+  opacity: 0.78;
+}
+
 .calculator-feedback {
   border-radius: 8px;
   background: #fef2f2;
@@ -1855,6 +1944,13 @@ h1 {
 .calculator-result h3 {
   font-size: 1rem;
   line-height: 1.35;
+}
+
+.result-formula-name {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.94rem;
+  font-weight: 800;
 }
 
 .result-breakdown {

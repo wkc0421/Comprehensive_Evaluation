@@ -25,6 +25,8 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
 - Public timelines should use `listTimelineNodes()` and `buildSiteTimelineReminders()` from `src/db/data-access.js`; they keep `/timeline`, `/api/timeline`, status calculation, required generated event keys, unknown-date handling, published-only visibility, and site-only reminder indicators aligned.
 - Public score calculation should use `calculateScore()` from `src/db/data-access.js`; it keeps formula visibility, input normalization, validation errors, contribution breakdowns, source links, and disclaimer text aligned for `/score/calculate`, `/api/score/calculate`, and future calculator pages.
 - Public score calculator UI should use `renderScoreCalculatorPage()` with `listSchoolGuideCards()` and `getSchoolDetail()` for published school/year/formula loading, while `public/calculator.js` posts final calculations to `/api/score/calculate`; when `detail.formula` is null, hide the score-entry form and show the unavailable state.
+- Public timeline UI filters expose `nodeType` in URLs/forms, then map it to `listTimelineNodes({ eventKey })`; unknown-date nodes keep the API status contract but render as a text-visible "To be announced" status in HTML.
+- Public calculator disclaimer copy should preserve the standard "not an admission probability" warning without adding ranking-prediction, recommendation, guaranteed-admission, or application-decision language.
 - Public experience browsing should use `listExperiences()` from `src/db/data-access.js`; it keeps `/experiences`, `/api/experiences`, filters, newest/useful/verified sorting, and published-only visibility aligned while pending submissions remain outside public browse results.
 - Structured experience submissions should use `src/experience-submissions.js` for required-field normalization, pending_review defaults, private verification metadata storage, and sanitized public or anonymous output; `handleRequest` accepts an injectable `experienceSubmissionStore` for route tests.
 - Student interaction state should use `src/interactions.js`; `handleRequest` accepts an injectable `interactionStore` for route tests covering school/experience favorites, useful-once experience votes, and pending reports without exposing phone fields or private reporter data.
@@ -365,6 +367,7 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Loaded the selected published school-year formula through published school guide/detail helpers and hid the score-entry form for school years without a clear published formula.
   - Added dependency-free client-side score validation and result rendering backed by `/api/score/calculate`, including contribution breakdown, formula explanation, official source, and the non-probability disclaimer.
 - Files changed
+  - `AGENTS.md`
   - `public/calculator.js`, `public/styles.css`
   - `src/app.js`, `src/app.test.js`, `src/pages.js`
   - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
@@ -794,4 +797,45 @@ Started: Thu Jun  4 12:37:07 AM CST 2026
   - Public school abbreviation search is now part of the seed/data-access/public JSON shape; keep guide and school keyword matching aligned when adding school metadata.
   - For browser-only student fallbacks, preserve API published-only contracts and add explicit page labels instead of changing shared public data helpers.
   - School list JS should continue replacing server-rendered sections so no-JS GET behavior, route tests, and browser interactions share one renderer.
+---
+
+## Fri Jun  5 08:04:05 AM CST 2026 - Ralph runner
+- Iteration: 2
+- Story: US-023
+- Status: story_failure
+- Logs: /home/wkc/projects/Comprehensive_Evaluation/scripts/ralph/runs/20260605-073123/iteration-2
+---
+
+## Fri Jun  5 08:14:49 AM CST 2026 - US-024
+- What was implemented
+  - Redesigned the timeline page with All Nodes/My Favorites tabs, year and node-type filters, month-grouped sections, linked node cards, text-visible status badges, source guide year, login guide behavior, and a logged-in no-favorites empty state.
+  - Redesigned the score calculator interaction with source-backed formula status, weight and max-score notes, official source basis link, generated score inputs, inline field errors, disabled missing-input submit, loading state, source-backed unavailable handling, result scrolling, and updated non-probability disclaimer copy.
+  - Extended route and browser verification for timeline statuses and favorites states plus calculator invalid, valid, no-formula, loading, scrolling, source attribution, and product-boundary copy.
+- Files changed
+  - `public/calculator.js`, `public/styles.css`
+  - `scripts/browser-core-pages.mjs`
+  - `src/app.js`, `src/app.test.js`, `src/db/data-access.js`, `src/pages.js`
+  - `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results
+  - `node --test src/app.test.js` passed
+  - `npm test` passed
+  - `npm run data-quality` passed and reported annual guide coverage 3/3, 100.00% against the 95.00% target, with school-year guide coverage 6/9 for the seed fixture
+  - `npm run build` passed
+  - `npm run typecheck` passed
+  - `npm run lint` passed
+  - `BROWSER_SCREENSHOT_DIR=scripts/ralph/runs/20260605-073123/iteration-3 npm run browser-test` passed
+  - `git diff --check` passed
+- Acceptance matrix summary
+  - Timeline tabs, filters, month grouping, card facts, source guide year, and school-detail click-through map to `src/app.js`, `src/pages.js`, `public/styles.css`, route tests, and browser checks.
+  - Timeline status text/color, unauthenticated My Favorites login guide, logged-in no-favorites state, and node-type filtering map to timeline renderer/result state plus route and browser checks, with active status verified through a fixed active-date route server.
+  - Calculator formula context, official basis link, generated inputs, no-source/no-formula unavailable state, inline invalid input, missing-input disabled submit, loading state, valid result with formula name, result scrolling, and source attribution map to `src/pages.js`, `public/calculator.js`, `src/db/data-access.js`, route tests, and Playwright flow checks.
+  - Product-boundary checks cover no ranking-prediction, recommended-application, or guaranteed-admission copy while preserving the required "not an admission probability" disclaimer.
+- Browser verification result, if this was a UI story
+  - Playwright Chromium passed for core pages at 375px, 390px, and 430px, including `/timeline?year=2026` and `/calculator?schoolId=00000000-0000-4000-8000-000000000001&year=2026`, with no horizontal overflow or bottom-nav obstruction.
+  - Browser checks verified unauthenticated My Favorites login guide, logged-in no-favorites timeline empty state, timeline node-type filtering, no-formula calculator state, invalid input inline error, missing-input disabled submit, school-change score clearing, loading state, result scrolling, result source attribution, and non-probability disclaimer.
+  - Screenshots were saved to `scripts/ralph/runs/20260605-073123/iteration-3/timeline-390.png`, `timeline-filtered-390.png`, `calculator-390.png`, `calculator-flow-390.png`, and `calculator-unavailable-390.png`.
+- **Learnings for future iterations:**
+  - Keep the public timeline URL/form vocabulary as `nodeType`; convert it at the route boundary to the data helper's `eventKey` filter so API/page contracts remain understandable to students.
+  - The HTML timeline can render unknown dates as a "To be announced" status label without changing the underlying `not_started` API status used by existing timeline helpers.
+  - Calculator result copy comes from `calculateScore()`; update shared disclaimer text there so API, page, e2e, and browser assertions stay aligned.
 ---

@@ -4,7 +4,8 @@ import {
   listExperiences,
   listGuides,
   listSchoolGuideCards,
-  listTimelineNodes
+  listTimelineNodes,
+  timelineEventDefinitions
 } from "./db/data-access.js";
 import {
   adminNavigation,
@@ -674,6 +675,12 @@ function renderTimelineFilters(filters) {
   const schoolsById = new Map(
     listSchoolGuideCards({ sort: "name" }).map((card) => [card.school.id, card.school])
   );
+  const nodeTypeOptions = [
+    renderOption("", "All node types", filters.nodeType ?? ""),
+    ...timelineEventDefinitions.map((definition) => (
+      renderOption(definition.eventKey, definition.title, filters.nodeType)
+    ))
+  ].join("");
   const yearOptions = [
     renderOption("", "All years", filters.year ?? ""),
     ...years.map((year) => renderOption(year, year, filters.year))
@@ -682,11 +689,17 @@ function renderTimelineFilters(filters) {
     renderOption("", "All schools", selectedSchoolId),
     ...[...schoolsById.values()].map((school) => renderOption(school.id, school.name, selectedSchoolId))
   ].join("");
+  const mineInput = filters.mine ? `<input type="hidden" name="mine" value="true">` : "";
 
   return `<form class="filter-panel timeline-filter-panel" method="get" action="/timeline" aria-label="Timeline filters">
+    ${mineInput}
     <label class="filter-field">
       <span>Year</span>
       <select name="year">${yearOptions}</select>
+    </label>
+    <label class="filter-field">
+      <span>Node type</span>
+      <select name="nodeType">${nodeTypeOptions}</select>
     </label>
     <label class="filter-field wide-field">
       <span>School</span>
@@ -694,9 +707,51 @@ function renderTimelineFilters(filters) {
     </label>
     <div class="filter-actions">
       <button class="primary-action" type="submit">Apply</button>
-      <a class="secondary-action" href="/timeline">Reset</a>
+      <a class="secondary-action" href="${filters.mine ? "/timeline?mine=true" : "/timeline"}">Reset</a>
     </div>
   </form>`;
+}
+
+function timelineHref(filters, overrides = {}) {
+  const next = {
+    year: filters.year,
+    schoolIds: filters.schoolIds ?? [],
+    mine: filters.mine,
+    nodeType: filters.nodeType,
+    ...overrides
+  };
+  const params = new URLSearchParams();
+
+  if (next.mine) {
+    params.set("mine", "true");
+  }
+
+  if (next.year) {
+    params.set("year", String(next.year));
+  }
+
+  if (next.nodeType) {
+    params.set("nodeType", next.nodeType);
+  }
+
+  if (next.schoolIds?.length) {
+    params.set("schoolIds", next.schoolIds.join(","));
+  }
+
+  const query = params.toString();
+  return query ? `/timeline?${query}` : "/timeline";
+}
+
+function renderTimelineTabs(filters) {
+  const allHref = timelineHref(filters, { mine: false });
+  const mineHref = timelineHref(filters, { mine: true });
+  const allCurrent = filters.mine ? "" : ` aria-current="page"`;
+  const mineCurrent = filters.mine ? ` aria-current="page"` : "";
+
+  return `<nav class="timeline-tabs" aria-label="Timeline scope">
+    <a href="${escapeHtml(allHref)}"${allCurrent}>All Nodes</a>
+    <a href="${escapeHtml(mineHref)}"${mineCurrent}>My Favorites</a>
+  </nav>`;
 }
 
 function formatTimelineWindow(node) {
@@ -711,26 +766,99 @@ function formatTimelineWindow(node) {
   return formatDate(node.endsAt ?? node.startsAt);
 }
 
-function renderTimelineNodeCards(nodes, reminders) {
-  if (nodes.length === 0) {
-    return `<p class="empty-state">No published timeline nodes match these filters.</p>`;
+function timelineDisplayStatus(node) {
+  if (!node.isDateKnown) {
+    return {
+      className: "status-to_be_announced",
+      label: "To be announced"
+    };
   }
 
-  const reminderEventIds = new Set(reminders.map((reminder) => reminder.eventId));
+  return {
+    className: `status-${node.status}`,
+    label: humanizeToken(node.status)
+  };
+}
 
-  return nodes
+function timelineMonthLabel(node) {
+  const dateValue = node.startsAt ?? node.endsAt;
+
+  if (!dateValue) {
+    return "To be announced";
+  }
+
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return "To be announced";
+  }
+
+  return date.toLocaleString("en", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC"
+  });
+}
+
+function groupTimelineNodesByMonth(nodes) {
+  const groups = [];
+  const groupsByLabel = new Map();
+
+  for (const node of nodes) {
+    const label = timelineMonthLabel(node);
+    const group = groupsByLabel.get(label) ?? { label, nodes: [] };
+    group.nodes.push(node);
+
+    if (!groupsByLabel.has(label)) {
+      groupsByLabel.set(label, group);
+      groups.push(group);
+    }
+  }
+
+  return groups;
+}
+
+function renderTimelineEmptyState(timeline) {
+  if (timeline.mine && timeline.favorites.length === 0) {
+    return `<div class="timeline-empty-state">
+      <strong>Collect schools to build My Favorites.</strong>
+      <p>Favorite schools from the school list or detail pages, then return here for a school-focused timeline.</p>
+      <a class="secondary-action" href="/schools">Browse schools</a>
+    </div>`;
+  }
+
+  if (timeline.mine) {
+    return `<p class="empty-state">No favorite-school timeline nodes match these filters.</p>`;
+  }
+
+  return `<p class="empty-state">No published timeline nodes match these filters.</p>`;
+}
+
+function renderTimelineNodeCards(timeline) {
+  if (timeline.events.length === 0) {
+    return renderTimelineEmptyState(timeline);
+  }
+
+  const reminderEventIds = new Set(timeline.reminders.map((reminder) => reminder.eventId));
+
+  return groupTimelineNodesByMonth(timeline.events)
+    .map((group) => `<section class="timeline-month-group" aria-label="${escapeHtml(group.label)}">
+      <h3>${escapeHtml(group.label)}</h3>
+      <div class="timeline-month-list">${group.nodes
     .map((node) => {
       const reminderBadge = reminderEventIds.has(node.id)
         ? `<span class="site-badge">Site reminder</span>`
         : "";
+      const displayStatus = timelineDisplayStatus(node);
+      const detailHref = `/schools/${escapeHtml(encodeURIComponent(node.school.id))}?year=${escapeHtml(node.guide.admissionYear)}`;
 
       return `<article class="timeline-card">
         <div class="badge-row">
           <span class="badge">${escapeHtml(node.guide.admissionYear)}</span>
-          <span class="status-badge status-${escapeHtml(node.status)}">${escapeHtml(humanizeToken(node.status))}</span>
+          <span class="status-badge ${escapeHtml(displayStatus.className)}">${escapeHtml(displayStatus.label)}</span>
           ${reminderBadge}
         </div>
-        <h3>${escapeHtml(node.title)}</h3>
+        <h4><a href="${detailHref}">${escapeHtml(node.title)}</a></h4>
         <dl class="detail-list split-details">
           <div>
             <dt>School</dt>
@@ -741,16 +869,19 @@ function renderTimelineNodeCards(nodes, reminders) {
             <dd>${escapeHtml(formatTimelineWindow(node))}</dd>
           </div>
           <div>
-            <dt>Timeline node</dt>
+            <dt>Node type</dt>
             <dd>${escapeHtml(humanizeToken(node.eventKey))}</dd>
           </div>
           <div>
-            <dt>Guide</dt>
-            <dd>${escapeHtml(node.guide.guideTitle)}</dd>
+            <dt>Source guide year</dt>
+            <dd>${escapeHtml(node.guide.admissionYear)}</dd>
           </div>
         </dl>
+        <a class="text-link" href="${detailHref}">Open related school detail</a>
       </article>`;
     })
+    .join("")}</div>
+    </section>`)
     .join("");
 }
 
@@ -1211,6 +1342,7 @@ export function renderTimelinePage(timeline) {
         <p class="eyebrow">Published admissions dates</p>
         <h1 id="timeline-title">${timeline.mine ? "My timeline" : "Guangdong timeline"}</h1>
         <p class="lead">Track official comprehensive evaluation guide publication, application windows, review nodes, assessments, volunteer application, and admission result publication.</p>
+        ${renderTimelineTabs(timeline.filters)}
       </section>
 
       <section class="section" id="timeline-filters" aria-label="Timeline filters">
@@ -1222,7 +1354,7 @@ export function renderTimelinePage(timeline) {
           <h2 id="timeline-results-title">${escapeHtml(timeline.count)} ${escapeHtml(pluralize(timeline.count, "timeline node"))}</h2>
           <p class="section-kicker">${escapeHtml(timeline.reminders.length)} site-only ${escapeHtml(pluralize(timeline.reminders.length, "reminder"))}</p>
         </div>
-        <div class="timeline-list">${renderTimelineNodeCards(timeline.events, timeline.reminders)}</div>
+        <div class="timeline-list">${renderTimelineNodeCards(timeline)}</div>
       </section>`
   });
 }
@@ -1775,9 +1907,18 @@ function renderCalculatorInput(input) {
       data-score-label="${escapeHtml(input.label)}"
       data-max-score="${escapeHtml(input.maxScore)}"
       data-weight="${escapeHtml(input.weight)}"
-      aria-describedby="${escapeHtml(inputId)}-hint">
+      aria-describedby="${escapeHtml(inputId)}-hint ${escapeHtml(inputId)}-error">
     <small id="${escapeHtml(inputId)}-hint">0 to ${escapeHtml(input.maxScore)} - ${escapeHtml(percentageLabel(input.weight))}</small>
+    <small class="score-error" id="${escapeHtml(inputId)}-error" data-score-error-for="${escapeHtml(input.key)}" aria-live="polite"></small>
   </label>`;
+}
+
+function renderFormulaWeightNotes(formula) {
+  const inputs = formula.formulaConfig.inputs
+    .map((input) => `${input.label}: ${percentageLabel(input.weight)} weight, max ${input.maxScore}`)
+    .join("; ");
+
+  return `Weights and max scores: ${inputs}. Output scale: ${formula.formulaConfig.outputMaxScore}.`;
 }
 
 function renderCalculatorFormulaForm(detail) {
@@ -1788,10 +1929,15 @@ function renderCalculatorFormulaForm(detail) {
     </div>`;
   }
 
-  if (!detail.formula) {
+  if (!detail.formula || !detail.formula.officialSourceUrl) {
+    const title = detail.formula ? "No source-backed formula" : "No clear published formula";
+    const copy = detail.formula
+      ? "Calculation form is hidden because the published score formula does not yet have an official source basis."
+      : `Calculation form is hidden because no clear published score formula is available for ${detail.school.name} ${detail.selectedYear}.`;
+
     return `<div class="calculator-unavailable" id="score-input-unavailable">
-      <h3>No clear published formula</h3>
-      <p>Calculation form is hidden because no clear published score formula is available for ${escapeHtml(detail.school.name)} ${escapeHtml(detail.selectedYear)}.</p>
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(copy)}</p>
       ${renderDetailLink(detail.guide.officialSourceUrl, "Published guide")}
     </div>`;
   }
@@ -1801,14 +1947,16 @@ function renderCalculatorFormulaForm(detail) {
   return `<form class="score-entry-form" id="score-input-form" novalidate data-school-id="${escapeHtml(detail.school.id)}" data-year="${escapeHtml(detail.selectedYear)}">
     <div class="formula-summary">
       <div>
+        <span class="soft-badge">Source-backed formula</span>
         <h3>${escapeHtml(detail.formula.formulaName)}</h3>
         <p>${escapeHtml(detail.formula.explanation)}</p>
+        <p>${escapeHtml(renderFormulaWeightNotes(detail.formula))}</p>
       </div>
-      <a class="text-link" href="${escapeHtml(detail.formula.officialSourceUrl)}" rel="noopener">Official source</a>
+      <a class="text-link" href="${escapeHtml(detail.formula.officialSourceUrl)}" target="_blank" rel="noopener">Official source basis</a>
     </div>
     <div class="score-fields">${inputs}</div>
     <div class="calculator-feedback" id="calculator-feedback" role="alert" aria-live="polite"></div>
-    <button class="primary-action" type="submit">Calculate score</button>
+    <button class="primary-action" type="submit" data-calculate-score="true" disabled>Calculate score</button>
   </form>`;
 }
 

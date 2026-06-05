@@ -3130,7 +3130,7 @@ export function calculateScore(input = {}) {
     breakdown: calculation.breakdown,
     explanation: formula.explanation,
     officialSourceUrl: formula.officialSourceUrl,
-    disclaimer: "This calculation follows published formula fields for reference only and is not an admission probability or ranking prediction."
+    disclaimer: "This calculation follows published formula fields for reference only and is not an admission probability."
   };
 }
 

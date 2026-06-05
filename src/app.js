@@ -32,6 +32,7 @@ import {
   publishAdminGuide,
   returnAdminGuide,
   submitAdminGuideReview,
+  timelineEventDefinitions,
   upsertAdminFormulaDraft
 } from "./db/data-access.js";
 import {
@@ -100,6 +101,7 @@ const ingestionRunStatuses = new Set(["pending", "running", "succeeded", "failed
 const moderationReviewActions = new Set(["approve", "return", "hide", "ban"]);
 const verificationReviewActions = new Set(["approve", "reject", "return"]);
 const reportResolutionActions = new Set(["keep", "hide", "delete", "limit_account"]);
+const timelineNodeTypes = new Set(timelineEventDefinitions.map((definition) => definition.eventKey));
 const submissionStatusLabels = Object.freeze({
   draft: "Draft",
   pending_review: "Pending Review",
@@ -423,10 +425,17 @@ function parseSchoolIdsParam(url) {
 }
 
 function parseTimelineFilters(url) {
+  const nodeType = optionalStringParam(url, "nodeType") ?? optionalStringParam(url, "eventKey");
+
+  if (nodeType && !timelineNodeTypes.has(nodeType)) {
+    throw new RequestError("invalid_node_type", "Timeline node type is not supported.");
+  }
+
   return {
     year: optionalYearParam(url),
     schoolIds: parseSchoolIdsParam(url),
-    mine: optionalBooleanParam(url, "mine")
+    mine: optionalBooleanParam(url, "mine"),
+    nodeType
   };
 }
 
@@ -1304,6 +1313,7 @@ function buildTimelineResult({ filters, user, interactionStore, now }) {
     : listTimelineNodes({
         year: filters.year,
         schoolIds,
+        eventKey: filters.nodeType,
         referenceDate: currentReferenceDate(now)
       });
   const reminders = buildSiteTimelineReminders(events);
@@ -1313,7 +1323,8 @@ function buildTimelineResult({ filters, user, interactionStore, now }) {
     filters: {
       year: filters.year,
       schoolIds: filters.schoolIds,
-      mine: filters.mine
+      mine: filters.mine,
+      nodeType: filters.nodeType
     },
     favorites: filters.mine && user
       ? interactionStore.listFavorites({ userId: user.id, targetType: "school" }).map(favoriteJson)

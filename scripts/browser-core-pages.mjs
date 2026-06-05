@@ -48,6 +48,7 @@ screenshot_dir = Path(os.environ["BROWSER_SCREENSHOT_DIR"])
 sysu_school_id = os.environ["SYSU_SCHOOL_ID"]
 scut_school_id = os.environ["SCUT_SCHOOL_ID"]
 logged_in_cookie = os.environ["LOGGED_IN_COOKIE"]
+no_favorite_cookie = os.environ["NO_FAVORITE_COOKIE"]
 
 core_pages = [
     ("/", "home", True, "/"),
@@ -233,6 +234,101 @@ async def verify_school_detail_fallback(page):
     if await page.locator("a[href^='/calculator?schoolId=']").count() != 0:
         raise AssertionError("No-formula fallback detail exposed a score calculator link")
 
+async def verify_timeline_interactions(page):
+    await page.goto(f"{base_url}/timeline?mine=true&year=2026", wait_until="domcontentloaded")
+    await page.locator("#login-title").wait_for()
+    login_text = await page.locator("body").inner_text()
+    if "Log in" not in login_text:
+        raise AssertionError("Unauthenticated My Favorites timeline did not show the login guide")
+
+    try:
+        await page.set_extra_http_headers({"Cookie": no_favorite_cookie})
+        await page.goto(f"{base_url}/timeline?mine=true&year=2026", wait_until="domcontentloaded")
+        no_fav_text = await page.locator("body").inner_text()
+        if "Collect schools to build My Favorites" not in no_fav_text or "Browse schools" not in no_fav_text:
+            raise AssertionError("Logged-in no-favorites timeline empty state was missing")
+    finally:
+        await page.set_extra_http_headers({})
+
+    await page.goto(f"{base_url}/timeline?year=2026&nodeType=application_deadline", wait_until="domcontentloaded")
+    filtered_text = await page.locator(".timeline-list").inner_text()
+    if "Application deadline" not in filtered_text:
+        raise AssertionError("Timeline node-type filter did not show application deadlines")
+    if "Preliminary review result" in filtered_text:
+        raise AssertionError("Timeline node-type filter still showed another node type")
+
+async def verify_calculator_flow(page):
+    await page.goto(f"{base_url}/calculator?schoolId={sysu_school_id}&year=2026", wait_until="domcontentloaded")
+    await page.locator("#score-input-form").wait_for()
+    body_text = await page.locator("body").inner_text()
+    for expected in ["Source-backed formula", "Weights and max scores", "Official source basis"]:
+        if expected not in body_text:
+            raise AssertionError(f"Calculator missing source-backed context: {expected}")
+
+    calculate = page.locator("[data-calculate-score='true']")
+    if not await calculate.is_disabled():
+        raise AssertionError("Calculator submit should start disabled while required scores are missing")
+
+    await page.locator("#score-gaokao").fill("800")
+    error_text = await page.locator("[data-score-error-for='gaokao']").inner_text()
+    if "between 0 and 750" not in error_text:
+        raise AssertionError(f"Out-of-range score did not render inline error: {error_text}")
+    if not await calculate.is_disabled():
+        raise AssertionError("Calculator submit should stay disabled for invalid scores")
+
+    await page.locator("#score-gaokao").fill("650")
+    await page.locator("#score-schoolAssessment").fill("90")
+    await page.locator("#score-academicLevel").fill("95")
+    if await calculate.is_disabled():
+        raise AssertionError("Calculator submit stayed disabled after all scores became valid")
+
+    await page.locator("#calculator-school").select_option(scut_school_id)
+    cleared_values = await page.evaluate("""() => Array.from(document.querySelectorAll("[data-score-key]"))
+        .map((field) => field.value)""")
+    if any(cleared_values):
+        raise AssertionError(f"Changing school did not clear entered scores: {cleared_values}")
+    if not await calculate.is_disabled():
+        raise AssertionError("Changing school should disable calculation until scores are re-entered")
+
+    await page.goto(f"{base_url}/calculator?schoolId={sysu_school_id}&year=2026", wait_until="domcontentloaded")
+    await page.locator("#score-input-form").wait_for()
+    await page.locator("#score-gaokao").fill("650")
+    await page.locator("#score-schoolAssessment").fill("90")
+    await page.locator("#score-academicLevel").fill("95")
+    await page.evaluate("() => window.scrollTo(0, 0)")
+
+    async def slow_score(route):
+        await asyncio.sleep(0.15)
+        await route.continue_()
+
+    await page.route("**/api/score/calculate", slow_score)
+    before_scroll = await page.evaluate("() => window.scrollY")
+    await page.locator("[data-calculate-score='true']").click()
+    await page.wait_for_function("""() => document.querySelector("[data-calculate-score='true']")?.textContent === "Calculating..." """)
+    await page.locator(".result-score").wait_for()
+    await page.wait_for_function("before => window.scrollY > before", arg=before_scroll)
+    await page.unroute("**/api/score/calculate", slow_score)
+    after_scroll = await page.evaluate("() => window.scrollY")
+    result_text = await page.locator("#calculator-result").inner_text()
+    result_lower = result_text.lower()
+
+    if after_scroll <= before_scroll:
+        raise AssertionError(f"Calculator result did not scroll into view: before {before_scroll}, after {after_scroll}")
+    for expected in ["Comprehensive score", "60/30/10 comprehensive score", "Contribution breakdown", "Official source", "not an admission probability"]:
+        if expected.lower() not in result_lower:
+            raise AssertionError(f"Calculator result missing {expected}: {result_text}")
+    for blocked in ["ranking prediction", "recommended application", "guaranteed admission"]:
+        if blocked in result_lower:
+            raise AssertionError(f"Calculator result exposed blocked copy: {blocked}")
+
+async def verify_calculator_unavailable(page):
+    await page.goto(f"{base_url}/calculator?schoolId={scut_school_id}&year=2025", wait_until="domcontentloaded")
+    body_text = await page.locator("body").inner_text()
+    if "No clear published formula" not in body_text or "Calculation form is hidden" not in body_text:
+        raise AssertionError("No-formula calculator unavailable state was missing")
+    if await page.locator("#score-input-form").count() != 0:
+        raise AssertionError("No-formula calculator exposed the score entry form")
+
 async def main():
     screenshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -379,6 +475,32 @@ async def main():
                             f"{metrics['visiblePrimaryActionTexts']}"
                         )
 
+                if label == "timeline":
+                    body_lower = metrics["bodyText"].lower()
+                    required_timeline_text = [
+                        "All Nodes",
+                        "My Favorites",
+                        "Node type",
+                        "Source guide year",
+                        "To be announced",
+                        "Due Soon",
+                        "Ended",
+                    ]
+                    for expected in required_timeline_text:
+                        if expected.lower() not in body_lower:
+                            raise AssertionError(f"Timeline at {width}px missing {expected}")
+
+                if label == "calculator":
+                    body_lower = metrics["bodyText"].lower()
+                    required_calculator_text = [
+                        "Source-backed formula",
+                        "Weights and max scores",
+                        "Official source basis",
+                    ]
+                    for expected in required_calculator_text:
+                        if expected.lower() not in body_lower:
+                            raise AssertionError(f"Calculator at {width}px missing {expected}")
+
                 if width == 390:
                     await page.screenshot(path=screenshot_dir / f"{label}-{width}.png", full_page=True)
 
@@ -420,10 +542,26 @@ async def main():
                 await school_fallback_page.screenshot(path=screenshot_dir / f"school-detail-historical-{width}.png", full_page=True)
             await school_fallback_page.close()
 
+            timeline_page = await browser.new_page(viewport={"width": width, "height": 940})
+            await verify_timeline_interactions(timeline_page)
+            if width == 390:
+                await timeline_page.screenshot(path=screenshot_dir / f"timeline-filtered-{width}.png", full_page=True)
+            await timeline_page.close()
+
         login_page = await browser.new_page(viewport={"width": 390, "height": 940})
         await verify_login_favorite_continuation(login_page)
         await login_page.screenshot(path=screenshot_dir / "login-favorite-continuation-390.png", full_page=True)
         await login_page.close()
+
+        calculator_flow_page = await browser.new_page(viewport={"width": 390, "height": 640})
+        await verify_calculator_flow(calculator_flow_page)
+        await calculator_flow_page.screenshot(path=screenshot_dir / "calculator-flow-390.png", full_page=True)
+        await calculator_flow_page.close()
+
+        calculator_unavailable_page = await browser.new_page(viewport={"width": 390, "height": 940})
+        await verify_calculator_unavailable(calculator_unavailable_page)
+        await calculator_unavailable_page.screenshot(path=screenshot_dir / "calculator-unavailable-390.png", full_page=True)
+        await calculator_unavailable_page.close()
 
         desktop_page = await browser.new_page(viewport={"width": 1280, "height": 940})
         await desktop_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -467,7 +605,7 @@ async def main():
         await browser.close()
 
 asyncio.run(main())
-print("Core browser verification passed at 375px, 390px, 430px, school list/detail interactions, home/login states, and desktop student school frames")
+print("Core browser verification passed at 375px, 390px, 430px, timeline/calculator flows, school list/detail interactions, home/login states, and desktop student school frames")
 `;
 }
 
@@ -492,6 +630,14 @@ function startServer() {
   });
   const loggedInCookie = authService.serializeSessionCookie(
     authService.createSessionForUser(loggedInUser.id)
+  ).split(";")[0];
+  const noFavoriteUser = authService.createUserForTesting({
+    phoneNumber: "+8613900002401",
+    nickname: "No favorite browser student",
+    grade: "high_school_g3"
+  });
+  const noFavoriteCookie = authService.serializeSessionCookie(
+    authService.createSessionForUser(noFavoriteUser.id)
   ).split(";")[0];
 
   interactionStore.addFavorite({
@@ -518,7 +664,8 @@ function startServer() {
       resolve({
         server,
         baseUrl: `http://127.0.0.1:${address.port}`,
-        loggedInCookie
+        loggedInCookie,
+        noFavoriteCookie
       });
     });
   });
@@ -537,7 +684,7 @@ async function closeServer(server) {
   });
 }
 
-async function runBrowserVerification({ python, baseUrl, loggedInCookie }) {
+async function runBrowserVerification({ python, baseUrl, loggedInCookie, noFavoriteCookie }) {
   await new Promise((resolve, reject) => {
     const child = spawn(python, ["-c", pythonBrowserScript()], {
       env: {
@@ -546,7 +693,8 @@ async function runBrowserVerification({ python, baseUrl, loggedInCookie }) {
         BROWSER_SCREENSHOT_DIR: screenshotDir,
         SYSU_SCHOOL_ID: seedIds.schools.sysu,
         SCUT_SCHOOL_ID: seedIds.schools.scut,
-        LOGGED_IN_COOKIE: loggedInCookie
+        LOGGED_IN_COOKIE: loggedInCookie,
+        NO_FAVORITE_COOKIE: noFavoriteCookie
       },
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -572,11 +720,11 @@ async function runBrowserVerification({ python, baseUrl, loggedInCookie }) {
 }
 
 const python = findPlaywrightPython();
-const { server, baseUrl, loggedInCookie } = await startServer();
+const { server, baseUrl, loggedInCookie, noFavoriteCookie } = await startServer();
 
 try {
   await mkdir(screenshotDir, { recursive: true });
-  await runBrowserVerification({ python, baseUrl, loggedInCookie });
+  await runBrowserVerification({ python, baseUrl, loggedInCookie, noFavoriteCookie });
 } finally {
   await closeServer(server);
 }

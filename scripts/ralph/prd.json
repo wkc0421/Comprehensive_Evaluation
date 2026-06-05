@@ -404,8 +404,8 @@
         "Route tests and browser automation cover all timeline states, no-favorites state, no-formula calculator state, invalid input, valid calculation, result scrolling, and source attribution."
       ],
       "priority": 24,
-      "passes": false,
-      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+      "passes": true,
+      "notes": "Redesigned timeline tabs, filters, month groups, status presentation, linked node cards, My Favorites login and no-favorites states, and calculator source-backed formula, validation, loading, no-formula, result scrolling, and non-probability flows with route and browser coverage."
     },
     {
       "id": "US-025",

@@ -7,6 +7,7 @@
   const scoreForm = document.getElementById("score-input-form");
   const feedback = document.getElementById("calculator-feedback");
   const resultPanel = document.getElementById("calculator-result");
+  const calculateButton = scoreForm?.querySelector("[data-calculate-score='true']");
 
   function parseOptions() {
     if (!optionsNode) {
@@ -80,43 +81,97 @@
     feedback.dataset.state = state;
   }
 
+  function scoreFields() {
+    return scoreForm ? [...scoreForm.querySelectorAll("[data-score-key]")] : [];
+  }
+
+  function scoreErrorNode(field) {
+    return scoreForm?.querySelector(`[data-score-error-for="${field.dataset.scoreKey}"]`) ?? null;
+  }
+
+  function setFieldError(field, message) {
+    field.setCustomValidity(message);
+    const errorNode = scoreErrorNode(field);
+
+    if (errorNode) {
+      errorNode.textContent = message;
+    }
+  }
+
+  function validateScoreField(field, { requireValue = false } = {}) {
+    const label = field.dataset.scoreLabel;
+    const maxScore = Number(field.dataset.maxScore);
+    const rawValue = field.value.trim();
+
+    if (rawValue.length === 0) {
+      const message = `${label} is required.`;
+      setFieldError(field, requireValue ? message : "");
+      return { valid: !requireValue, score: null, message };
+    }
+
+    const value = Number(rawValue);
+
+    if (!Number.isFinite(value)) {
+      const message = `${label} must be a number.`;
+      setFieldError(field, message);
+      return { valid: false, score: null, message };
+    }
+
+    if (value < 0 || value > maxScore) {
+      const message = `${label} must be between 0 and ${maxScore}.`;
+      setFieldError(field, message);
+      return { valid: false, score: null, message };
+    }
+
+    setFieldError(field, "");
+    return { valid: true, score: value, message: "" };
+  }
+
   function validateScores() {
     const scores = {};
-    const fields = [...scoreForm.querySelectorAll("[data-score-key]")];
 
-    for (const field of fields) {
-      const label = field.dataset.scoreLabel;
-      const maxScore = Number(field.dataset.maxScore);
-      const rawValue = field.value.trim();
-      field.setCustomValidity("");
+    for (const field of scoreFields()) {
+      const result = validateScoreField(field, { requireValue: true });
 
-      if (rawValue.length === 0) {
-        const message = `${label} is required.`;
-        field.setCustomValidity(message);
-        field.reportValidity();
-        throw new Error(message);
+      if (!result.valid) {
+        throw new Error(result.message);
       }
 
-      const value = Number(rawValue);
-
-      if (!Number.isFinite(value)) {
-        const message = `${label} must be a number.`;
-        field.setCustomValidity(message);
-        field.reportValidity();
-        throw new Error(message);
-      }
-
-      if (value < 0 || value > maxScore) {
-        const message = `${label} must be between 0 and ${maxScore}.`;
-        field.setCustomValidity(message);
-        field.reportValidity();
-        throw new Error(message);
-      }
-
-      scores[field.dataset.scoreKey] = value;
+      scores[field.dataset.scoreKey] = result.score;
     }
 
     return scores;
+  }
+
+  function refreshSubmitState() {
+    if (!calculateButton) {
+      return;
+    }
+
+    const fields = scoreFields();
+    const canSubmit = fields.length > 0 && fields.every((field) => validateScoreField(field).valid && field.value.trim());
+    calculateButton.disabled = !canSubmit;
+  }
+
+  function resetResultPanel() {
+    if (!resultPanel) {
+      return;
+    }
+
+    clearNode(resultPanel);
+    resultPanel.dataset.empty = "true";
+    appendText(resultPanel, "p", "Result will appear after calculation.", "inline-empty");
+  }
+
+  function clearCalculationState() {
+    for (const field of scoreFields()) {
+      field.value = "";
+      setFieldError(field, "");
+    }
+
+    setFeedback("");
+    resetResultPanel();
+    refreshSubmitState();
   }
 
   function renderBreakdownItem(item) {
@@ -146,6 +201,7 @@
     appendText(scoreBlock, "strong", `${data.totalScore} / ${data.outputMaxScore}`);
     resultPanel.appendChild(scoreBlock);
 
+    appendText(resultPanel, "p", data.formulaName, "result-formula-name");
     appendText(resultPanel, "h3", "Contribution breakdown");
     const breakdownList = document.createElement("ul");
     breakdownList.className = "result-breakdown";
@@ -162,6 +218,7 @@
     resultPanel.appendChild(sourceLink);
 
     appendText(resultPanel, "p", data.disclaimer, "result-disclaimer");
+    resultPanel.scrollIntoView({ block: "start", behavior: "smooth" });
   }
 
   async function calculateScore() {
@@ -172,6 +229,11 @@
     };
 
     setFeedback("Calculating...", "loading");
+    if (calculateButton) {
+      calculateButton.disabled = true;
+      calculateButton.dataset.loading = "true";
+      calculateButton.textContent = "Calculating...";
+    }
 
     const response = await fetch("/api/score/calculate", {
       method: "POST",
@@ -189,14 +251,20 @@
   }
 
   if (schoolSelect && yearSelect) {
-    schoolSelect.addEventListener("change", refreshYearOptions);
+    schoolSelect.addEventListener("change", () => {
+      refreshYearOptions();
+      clearCalculationState();
+    });
+    yearSelect.addEventListener("change", clearCalculationState);
   }
 
   if (scoreForm) {
     scoreForm.addEventListener("input", (event) => {
       if (event.target.matches("[data-score-key]")) {
-        event.target.setCustomValidity("");
+        validateScoreField(event.target);
         setFeedback("");
+        resetResultPanel();
+        refreshSubmitState();
       }
     });
 
@@ -205,7 +273,15 @@
 
       calculateScore().catch((error) => {
         setFeedback(error.message);
+      }).finally(() => {
+        if (calculateButton) {
+          calculateButton.dataset.loading = "false";
+          calculateButton.textContent = "Calculate score";
+        }
+        refreshSubmitState();
       });
     });
+
+    refreshSubmitState();
   }
 })();

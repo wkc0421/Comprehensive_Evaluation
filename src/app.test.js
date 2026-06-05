@@ -781,12 +781,17 @@ describe("web routes", () => {
     assert.match(body, /View results/);
     assert.match(body, /Sun Yat-sen University/);
     assert.match(body, /60\/30\/10 comprehensive score/);
+    assert.match(body, /Source-backed formula/);
+    assert.match(body, /Weights and max scores/);
     assert.match(body, /name="scores\[gaokao\]"/);
     assert.match(body, /name="scores\[schoolAssessment\]"/);
     assert.match(body, /name="scores\[academicLevel\]"/);
-    assert.match(body, /Official source/);
+    assert.match(body, /Official source basis/);
+    assert.match(body, /data-score-error-for="gaokao"/);
+    assert.match(body, /data-calculate-score="true" disabled/);
     assert.match(body, /calculator\.js/);
     assert.doesNotMatch(body, /Draft Review Guide|Working Draft/);
+    assert.doesNotMatch(body, /ranking prediction|recommended application|guaranteed admission/i);
   });
 
   it("hides the score calculation form when no clear published formula exists", async () => {
@@ -1057,12 +1062,101 @@ describe("web routes", () => {
 
     assert.equal(response.status, 200);
     assert.match(body, /Guangdong timeline/);
+    assert.match(body, /All Nodes/);
+    assert.match(body, /My Favorites/);
+    assert.match(body, /Node type/);
+    assert.match(body, /April 2026/);
     assert.match(body, /Preliminary review result/);
     assert.match(body, /To be announced/);
     assert.match(body, /Due Soon/);
+    assert.match(body, /Ended/);
+    assert.match(body, /Not Started/);
     assert.match(body, /Site reminder/);
+    assert.match(body, /Source guide year/);
+    assert.match(body, new RegExp(`/schools/${escapeRegExp(seedIds.schools.sysu)}\\?year=2026`));
     assert.doesNotMatch(body, /Application deadline under review/);
     assert.doesNotMatch(body, /1970/);
+  });
+
+  it("filters timeline nodes by type and renders the favorites empty state", async () => {
+    const filteredResponse = await fetch(`${baseUrl}/api/timeline?year=2026&nodeType=application_deadline`);
+    const filteredBody = await filteredResponse.json();
+
+    assert.equal(filteredResponse.status, 200);
+    assert.ok(filteredBody.events.length > 0);
+    assert.ok(filteredBody.events.every((event) => event.eventKey === "application_deadline"));
+    assert.equal(filteredBody.filters.nodeType, "application_deadline");
+
+    const loginGuideResponse = await fetch(`${baseUrl}/timeline?mine=true&year=2026`, {
+      headers: { accept: "text/html" }
+    });
+    const loginGuideBody = await loginGuideResponse.text();
+
+    assert.equal(loginGuideResponse.status, 401);
+    assert.match(loginGuideBody, /Log in/);
+    assert.match(loginGuideBody, /returnTo/);
+
+    const user = authService.createUserForTesting({
+      phoneNumber: "+8613800002400",
+      nickname: "No favorite timeline",
+      grade: "high_school_g3"
+    });
+    const cookie = authService.serializeSessionCookie(authService.createSessionForUser(user.id)).split(";")[0];
+    const emptyMineResponse = await fetch(`${baseUrl}/timeline?mine=true&year=2026`, {
+      headers: {
+        accept: "text/html",
+        cookie
+      }
+    });
+    const emptyMineBody = await emptyMineResponse.text();
+
+    assert.equal(emptyMineResponse.status, 200);
+    assert.match(emptyMineBody, /My timeline/);
+    assert.match(emptyMineBody, /Collect schools to build My Favorites/);
+    assert.match(emptyMineBody, /Browse schools/);
+  });
+
+  it("renders active timeline status when the official date window is active", async () => {
+    const activeNow = () => new Date("2026-06-14T02:00:00.000Z");
+    const activeServer = createServer((request, response) => {
+      handleRequest(request, response, {
+        authService,
+        experienceSubmissionStore,
+        interactionStore,
+        now: activeNow
+      }).catch((error) => {
+        response.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: error.message }));
+      });
+    });
+    const activeBaseUrl = await new Promise((resolve) => {
+      activeServer.listen(0, "127.0.0.1", () => {
+        const address = activeServer.address();
+        resolve(`http://127.0.0.1:${address.port}`);
+      });
+    });
+
+    try {
+      const response = await fetch(`${activeBaseUrl}/timeline?year=2026&nodeType=school_assessment`, {
+        headers: { accept: "text/html" }
+      });
+      const body = await response.text();
+
+      assert.equal(response.status, 200);
+      assert.match(body, /School assessment/);
+      assert.match(body, /Active/);
+    } finally {
+      await new Promise((resolve, reject) => {
+        activeServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
   });
 
   it("logs in with a phone OTP session without returning phone data", async () => {
