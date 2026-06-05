@@ -385,8 +385,8 @@
         "Mobile and desktop browser verification covers the school list and detail layouts, including 375px, 390px, and 430px widths."
       ],
       "priority": 23,
-      "passes": false,
-      "notes": "Added from docs/frontend-prd.md v0.1; implementation pending."
+      "passes": true,
+      "notes": "Redesigned school list and detail pages with abbreviation search, AJAX filters with empty/retry states, favorite controls, PRD-ordered detail cards, historical fallback labeling, no-formula calculator hiding, bottom action bar, route tests, and mobile/desktop browser verification."
     },
     {
       "id": "US-024",

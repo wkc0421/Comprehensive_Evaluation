@@ -5,6 +5,7 @@
  * @typedef {object} SchoolSeed
  * @property {string} id
  * @property {string} name
+ * @property {string} abbreviation
  * @property {string} normalizedName
  * @property {"guangdong"} provinceScope
  * @property {string} city
@@ -152,6 +153,7 @@ const schools = [
   {
     id: seedIds.schools.sysu,
     name: "Sun Yat-sen University",
+    abbreviation: "SYSU",
     normalizedName: "sun-yat-sen-university",
     provinceScope: "guangdong",
     city: "Guangzhou",
@@ -163,6 +165,7 @@ const schools = [
   {
     id: seedIds.schools.scut,
     name: "South China University of Technology",
+    abbreviation: "SCUT",
     normalizedName: "south-china-university-of-technology",
     provinceScope: "guangdong",
     city: "Guangzhou",
@@ -174,6 +177,7 @@ const schools = [
   {
     id: seedIds.schools.sustech,
     name: "Southern University of Science and Technology",
+    abbreviation: "SUSTech",
     normalizedName: "southern-university-of-science-and-technology",
     provinceScope: "guangdong",
     city: "Shenzhen",

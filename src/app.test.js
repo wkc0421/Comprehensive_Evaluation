@@ -445,6 +445,16 @@ describe("web routes", () => {
     assert.ok(body.schools[0].keyTimelineNodes.some((node) => node.eventKey === "application_deadline"));
   });
 
+  it("supports school list keyword search by public abbreviation", async () => {
+    const response = await fetch(`${baseUrl}/api/schools?year=2026&keyword=SYSU`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.count, 1);
+    assert.equal(body.schools[0].school.id, seedIds.schools.sysu);
+    assert.equal(body.schools[0].school.abbreviation, "SYSU");
+  });
+
   it("keeps draft and pending review guides hidden from school list visitors", async () => {
     const response = await fetch(`${baseUrl}/api/schools?year=2026&sort=name`);
     const body = await response.json();
@@ -503,15 +513,25 @@ describe("web routes", () => {
     const body = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(body, /School list/);
+    assert.match(body, /<h1 id="school-list-title">Schools<\/h1>/);
+    assert.match(body, /data-school-filter-form="true"/);
+    assert.match(body, /data-school-results="true"/);
+    assert.match(body, /placeholder="Search school"/);
     assert.match(body, /School keyword/);
     assert.match(body, /Guide status/);
     assert.match(body, /Application status/);
     assert.match(body, /School type/);
     assert.match(body, /Application deadline/);
-    assert.match(body, /Key timeline nodes/);
-    assert.match(body, /Formula not available/);
-    assert.match(body, /published experience/);
+    assert.match(body, /Year: 2025/);
+    assert.match(body, /SCUT/);
+    assert.match(body, /Published/);
+    assert.match(body, /Key timeline/);
+    assert.match(body, /No formula/);
+    assert.match(body, /1 experience/);
+    assert.match(body, /aria-label="Favorite school"/);
+    assert.match(body, /returnTo" value="\/schools\?year=2025&amp;sort=name"/);
+    assert.match(body, /data-school-list-status="true"/);
+    assert.match(body, /Clear filters/);
     assert.doesNotMatch(body, /Draft Review Guide/);
     assert.doesNotMatch(body, /Working Draft/);
   });
@@ -615,23 +635,72 @@ describe("web routes", () => {
 
     assert.equal(response.status, 200);
     assert.match(body, /South China University of Technology/);
-    assert.match(body, /School base information/);
-    assert.match(body, /Guide summary/);
-    assert.match(body, /Official source/);
+    assert.match(body, /SCUT/);
+    assert.match(body, /Published/);
+    assert.match(body, /School quick actions/);
+    assert.match(body, /Official guide/);
     assert.match(body, /Application link/);
-    assert.match(body, /Timeline/);
-    assert.match(body, /Score formula entry/);
-    assert.match(body, /Score formula pending supplement/);
+    assert.match(body, /target="_blank" rel="noopener">Application link/);
+    assert.match(body, /class="school-bottom-action-bar"/);
+    assert.match(body, /Key timeline/);
+    assert.match(body, /Official guide summary/);
+    assert.match(body, /Score formula/);
+    assert.match(body, /No published formula\. Score calculation waits for official clarification\./);
+    assert.doesNotMatch(body, new RegExp(`/calculator\\?schoolId=${escapeRegExp(seedIds.schools.scut)}&amp;year=2025`));
+    assert.match(body, /Admission requirements/);
+    assert.match(body, /Registration conditions/);
+    assert.match(body, /Official not specified/);
+    assert.match(body, /Assessment and admission/);
+    assert.match(body, /Fees and consultation/);
     assert.match(body, /Majors/);
     assert.match(body, /Subject requirements/);
     assert.match(body, /Academic test requirements/);
     assert.match(body, /Assessment method/);
     assert.match(body, /Admission rule/);
-    assert.match(body, /Fees and contact/);
     assert.match(body, /Featured experiences/);
     assert.match(body, /Questions emphasized engineering interest/);
+    assert.match(body, /To be announced/);
     assert.doesNotMatch(body, /Draft Review Guide/);
     assert.doesNotMatch(body, /Working Draft/);
+  });
+
+  it("renders school detail historical fallback and formula quick actions for browsers", async () => {
+    const fallbackResponse = await fetch(`${baseUrl}/schools/${seedIds.schools.scut}?year=2026`, {
+      headers: { accept: "text/html" }
+    });
+    const fallbackBody = await fallbackResponse.text();
+
+    assert.equal(fallbackResponse.status, 200);
+    assert.match(fallbackBody, /Historical reference/);
+    assert.match(fallbackBody, /No published 2026 guide is visible yet\. Showing 2025 as historical reference\./);
+    assert.match(fallbackBody, /South China University of Technology 2025 Guangdong Comprehensive Evaluation Guide/);
+    assert.doesNotMatch(fallbackBody, /Draft Review Guide/);
+    assert.doesNotMatch(fallbackBody, /\/calculator\?schoolId=/);
+
+    const formulaResponse = await fetch(`${baseUrl}/schools/${seedIds.schools.sysu}?year=2026`, {
+      headers: { accept: "text/html" }
+    });
+    const formulaBody = await formulaResponse.text();
+
+    assert.equal(formulaResponse.status, 200);
+    assert.match(formulaBody, /Expand official summary/);
+    assert.match(formulaBody, /Score calculator/);
+    assert.match(formulaBody, new RegExp(`/calculator\\?schoolId=${escapeRegExp(seedIds.schools.sysu)}&amp;year=2026`));
+    assert.equal(countOccurrences(formulaBody, `class="primary-action"`), 1);
+    assert.ok(
+      formulaBody.indexOf("Key timeline") <
+        formulaBody.indexOf("Official guide summary") &&
+        formulaBody.indexOf("Official guide summary") <
+        formulaBody.indexOf("Score formula") &&
+        formulaBody.indexOf("Score formula") <
+        formulaBody.indexOf("Admission requirements") &&
+        formulaBody.indexOf("Admission requirements") <
+        formulaBody.indexOf("Assessment and admission") &&
+        formulaBody.indexOf("Assessment and admission") <
+        formulaBody.indexOf("Fees and consultation") &&
+        formulaBody.indexOf("Fees and consultation") <
+        formulaBody.indexOf("Featured experiences")
+    );
   });
 
   it("calculates public score formulas through the POST score API", async () => {

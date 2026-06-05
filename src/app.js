@@ -574,6 +574,7 @@ function schoolCardJson(card) {
     school: {
       id: card.school.id,
       name: card.school.name,
+      abbreviation: card.school.abbreviation,
       provinceScope: card.school.provinceScope,
       city: card.school.city,
       schoolType: card.school.schoolType,
@@ -624,6 +625,7 @@ function schoolDetailJson(detail) {
     school: {
       id: detail.school.id,
       name: detail.school.name,
+      abbreviation: detail.school.abbreviation,
       provinceScope: detail.school.provinceScope,
       city: detail.school.city,
       schoolType: detail.school.schoolType,
@@ -685,6 +687,7 @@ function guideDetailJson(detail) {
     school: {
       id: detail.school.id,
       name: detail.school.name,
+      abbreviation: detail.school.abbreviation,
       provinceScope: detail.school.provinceScope,
       city: detail.school.city,
       schoolType: detail.school.schoolType,
@@ -1138,6 +1141,7 @@ function schoolSummaryJson(school) {
   return {
     id: school.id,
     name: school.name,
+    abbreviation: school.abbreviation,
     provinceScope: school.provinceScope,
     city: school.city,
     schoolType: school.schoolType,
@@ -3264,13 +3268,27 @@ export async function handleRequest(request, response, context = {}) {
 
   if (schoolId && request.method === "GET") {
     try {
-      const detail = getSchoolDetail({
+      const requestedYear = optionalYearParam(url);
+      const wantsJson = shouldSendSchoolDetailJson(request, url);
+      let detail = getSchoolDetail({
         schoolId,
-        year: optionalYearParam(url)
+        year: requestedYear
       });
 
+      if (!detail && !wantsJson && requestedYear) {
+        const fallbackDetail = getSchoolDetail({ schoolId });
+
+        if (fallbackDetail && fallbackDetail.selectedYear < requestedYear) {
+          detail = {
+            ...fallbackDetail,
+            requestedYear,
+            historicalReference: true
+          };
+        }
+      }
+
       if (!detail) {
-        if (shouldSendSchoolDetailJson(request, url)) {
+        if (wantsJson) {
           sendError(response, 404, "not_found", "No published school guide was found for this school and year.");
           return;
         }
@@ -3279,7 +3297,18 @@ export async function handleRequest(request, response, context = {}) {
         return;
       }
 
-      if (shouldSendSchoolDetailJson(request, url)) {
+      if (!wantsJson && !detail.historicalReference) {
+        const referenceYear = currentReferenceDate(context.now).getUTCFullYear();
+
+        if (!requestedYear && detail.selectedYear < referenceYear) {
+          detail = {
+            ...detail,
+            historicalReference: true
+          };
+        }
+      }
+
+      if (wantsJson) {
         sendJson(response, 200, schoolDetailJson(detail));
         return;
       }

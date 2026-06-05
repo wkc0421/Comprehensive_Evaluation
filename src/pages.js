@@ -238,12 +238,7 @@ function renderIconLink({ href, label, icon }) {
 }
 
 function renderFavoriteSchoolAction(schoolId, returnTo = "/schools") {
-  return `<form class="top-action-form" method="post" action="/favorites" aria-label="Favorite school action">
-    <input type="hidden" name="targetType" value="school">
-    <input type="hidden" name="targetId" value="${escapeHtml(schoolId)}">
-    <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
-    <button class="icon-button" type="submit" aria-label="Favorite school">${renderIcon("heart")}</button>
-  </form>`;
+  return renderFavoriteSchoolForm(schoolId, returnTo);
 }
 
 function renderStudentTopBar({
@@ -430,6 +425,54 @@ function renderOption(value, label, currentValue) {
   return `<option value="${escapeHtml(value)}"${selectedAttribute(currentValue, value)}>${escapeHtml(label)}</option>`;
 }
 
+function schoolAbbreviation(school) {
+  if (school?.abbreviation) {
+    return school.abbreviation;
+  }
+
+  return String(school?.name ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
+}
+
+function queryStringFromFilters(filters, allowedKeys) {
+  const params = new URLSearchParams();
+
+  for (const key of allowedKeys) {
+    const value = filters[key];
+
+    if (value !== undefined && value !== null && String(value).length > 0) {
+      params.set(key, String(value));
+    }
+  }
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+function schoolListHref(filters = {}) {
+  return `/schools${queryStringFromFilters(filters, [
+    "year",
+    "keyword",
+    "status",
+    "applicationStatus",
+    "schoolType",
+    "sort"
+  ])}`;
+}
+
+function renderFavoriteSchoolForm(schoolId, returnTo, className = "top-action-form") {
+  return `<form class="${escapeHtml(className)}" method="post" action="/favorites" aria-label="Favorite school action">
+    <input type="hidden" name="targetType" value="school">
+    <input type="hidden" name="targetId" value="${escapeHtml(schoolId)}">
+    <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
+    <button class="icon-button" type="submit" aria-label="Favorite school">${renderIcon("heart")}</button>
+  </form>`;
+}
+
 function renderSchoolFilters(filters, allCards) {
   const years = uniqueSorted(allCards.map((card) => card.guide.admissionYear)).sort((left, right) => right - left);
   const applicationStatuses = uniqueSorted(allCards.map((card) => card.guide.applicationStatus));
@@ -440,11 +483,10 @@ function renderSchoolFilters(filters, allCards) {
     ...years.map((year) => renderOption(year, year, filters.year))
   ].join("");
   const statusOptions = [
-    renderOption("", "Any visible status", filters.status ?? ""),
+    renderOption("", "All guide statuses", filters.status ?? ""),
     renderOption("published", "Published", filters.status),
-    renderOption("pending_review", "Pending review", filters.status),
-    renderOption("draft", "Draft", filters.status),
-    renderOption("archived", "Archived", filters.status)
+    renderOption("pending_review", "Waiting publication", filters.status),
+    renderOption("archived", "Historical reference", filters.status)
   ].join("");
   const applicationStatusOptions = [
     renderOption("", "All application statuses", filters.applicationStatus ?? ""),
@@ -460,41 +502,70 @@ function renderSchoolFilters(filters, allCards) {
     renderOption("name", "School name", filters.sort)
   ].join("");
 
-  return `<form class="filter-panel" method="get" action="/schools" aria-label="School filters">
-    <label class="filter-field">
-      <span>Year</span>
-      <select name="year">${yearOptions}</select>
-    </label>
-    <label class="filter-field wide-field">
+  return `<form class="school-filter-panel" method="get" action="/schools" aria-label="School filters" data-school-filter-form="true">
+    <label class="filter-field school-search-field">
       <span>School keyword</span>
-      <input name="keyword" value="${escapeHtml(filters.keyword ?? "")}" autocomplete="off">
+      <input type="search" name="keyword" value="${escapeHtml(filters.keyword ?? "")}" placeholder="Search school" autocomplete="off">
     </label>
-    <label class="filter-field">
-      <span>Guide status</span>
-      <select name="status">${statusOptions}</select>
-    </label>
-    <label class="filter-field">
-      <span>Application status</span>
-      <select name="applicationStatus">${applicationStatusOptions}</select>
-    </label>
-    <label class="filter-field">
-      <span>School type</span>
-      <select name="schoolType">${schoolTypeOptions}</select>
-    </label>
-    <label class="filter-field">
-      <span>Sort</span>
-      <select name="sort">${sortOptions}</select>
-    </label>
+    <div class="school-filter-row" aria-label="Visible school filters">
+      <label class="filter-field">
+        <span>Year</span>
+        <select name="year">${yearOptions}</select>
+      </label>
+      <label class="filter-field">
+        <span>Guide status</span>
+        <select name="status">${statusOptions}</select>
+      </label>
+      <label class="filter-field">
+        <span>Application status</span>
+        <select name="applicationStatus">${applicationStatusOptions}</select>
+      </label>
+      <label class="filter-field">
+        <span>School type</span>
+        <select name="schoolType">${schoolTypeOptions}</select>
+      </label>
+      <label class="filter-field">
+        <span>Sort</span>
+        <select name="sort">${sortOptions}</select>
+      </label>
+    </div>
     <div class="filter-actions">
       <button class="primary-action" type="submit">Apply</button>
-      <a class="secondary-action" href="/schools">Reset</a>
+      <a class="secondary-action" href="/schools" data-school-clear-filters="true">Clear</a>
     </div>
   </form>`;
 }
 
+function selectedSchoolFilterEntries(filters) {
+  const entries = [
+    ["Year", filters.year],
+    ["Keyword", filters.keyword],
+    ["Guide status", filters.status && humanizeToken(filters.status)],
+    ["Application status", filters.applicationStatus && humanizeToken(filters.applicationStatus)],
+    ["School type", filters.schoolType && humanizeToken(filters.schoolType)]
+  ];
+
+  return entries.filter(([, value]) => value !== undefined && value !== null && String(value).length > 0);
+}
+
+function renderSelectedSchoolFilters(filters) {
+  const selected = selectedSchoolFilterEntries(filters);
+
+  if (selected.length === 0) {
+    return `<p class="filter-summary">Showing all published school guide cards.</p>`;
+  }
+
+  return `<div class="selected-filters" aria-label="Selected school filters">
+    ${selected
+      .map(([label, value]) => `<span class="filter-chip">${escapeHtml(label)}: ${escapeHtml(value)}</span>`)
+      .join("")}
+    <a class="text-link" href="/schools" data-school-clear-filters="true">Clear filters</a>
+  </div>`;
+}
+
 function renderSchoolTimelineNodes(nodes) {
   if (nodes.length === 0) {
-    return `<p class="inline-empty">Timeline pending supplement</p>`;
+    return `<p class="inline-empty">Timeline ${escapeHtml(pendingSupplementText.toLowerCase())}</p>`;
   }
 
   return `<ul class="school-timeline">${nodes
@@ -505,59 +576,95 @@ function renderSchoolTimelineNodes(nodes) {
     .join("")}</ul>`;
 }
 
-function renderFormulaLabel(formula) {
-  if (!formula.available) {
-    return "Formula not available";
+function renderFormulaTag(formula) {
+  if (!formula?.available) {
+    return "No formula";
   }
 
-  return `${humanizeToken(formula.formulaType)} - ${formula.formulaName}`;
+  const formulaName = String(formula.formulaName ?? "").toLowerCase();
+
+  if (formulaName.includes("60/30/10")) {
+    return "631";
+  }
+
+  if (formulaName.includes("85/15")) {
+    return "85/15";
+  }
+
+  if (formula.formulaType === "custom") {
+    return "Custom";
+  }
+
+  return "Custom";
 }
 
 function renderExperienceAvailability(experiences) {
-  if (!experiences.exists) {
-    return "No published experiences yet";
-  }
-
-  return `${experiences.count} published ${pluralize(experiences.count, "experience")}`;
+  return `${experiences.count} ${pluralize(experiences.count, "experience")}`;
 }
 
-function renderSchoolCards(cards) {
+function renderSchoolEmptyState(filters) {
+  const hasFilters = selectedSchoolFilterEntries(filters).length > 0;
+  const clearAction = hasFilters
+    ? `<a class="secondary-action" href="/schools" data-school-clear-filters="true">Clear filters</a>`
+    : "";
+
+  return `<div class="empty-state school-empty-state">
+    <strong>No matching schools</strong>
+    <p>No schools match these filters. Try switching year or status.</p>
+    ${clearAction}
+  </div>`;
+}
+
+function renderSchoolCards(cards, filters) {
   if (cards.length === 0) {
-    return `<p class="empty-state">No published guide cards match these filters.</p>`;
+    return renderSchoolEmptyState(filters);
   }
 
+  const returnTo = schoolListHref(filters);
+
   return cards
-    .map((card) => `<article class="school-card">
-      <div class="badge-row">
-        <span class="badge">${escapeHtml(card.guide.admissionYear)}</span>
-        <span class="soft-badge">${escapeHtml(humanizeToken(card.guide.applicationStatus))}</span>
-        <span class="muted-badge">${escapeHtml(humanizeToken(card.school.schoolType))}</span>
-      </div>
-      <h3><a href="/schools/${escapeHtml(encodeURIComponent(card.school.id))}?year=${escapeHtml(card.guide.admissionYear)}">${escapeHtml(card.school.name)}</a></h3>
-      <p>${escapeHtml(card.guide.summary)}</p>
-      <dl class="detail-list split-details">
-        <div>
-          <dt>Application status</dt>
-          <dd>${escapeHtml(humanizeToken(card.guide.applicationStatus))}</dd>
+    .map((card) => {
+      const detailHref = `/schools/${escapeHtml(encodeURIComponent(card.school.id))}?year=${escapeHtml(card.guide.admissionYear)}`;
+
+      return `<article class="school-card">
+        <div class="school-card-top">
+          <div class="school-title-group">
+            <div class="badge-row">
+              <span class="badge">${escapeHtml(card.guide.admissionYear)}</span>
+              <span class="soft-badge">${escapeHtml(humanizeToken(card.guide.status))}</span>
+              <span class="muted-badge">${escapeHtml(schoolAbbreviation(card.school))}</span>
+            </div>
+            <h3><a href="${detailHref}">${escapeHtml(card.school.name)}</a></h3>
+            <p class="school-abbrev">${escapeHtml(schoolAbbreviation(card.school))} · ${escapeHtml(humanizeToken(card.school.schoolType))}</p>
+          </div>
+          ${renderFavoriteSchoolForm(card.school.id, returnTo, "school-card-favorite")}
         </div>
-        <div>
-          <dt>Application deadline</dt>
-          <dd>${escapeHtml(formatDate(card.guide.applicationDeadlineAt))}</dd>
+        <dl class="school-card-facts">
+          <div>
+            <dt>Deadline</dt>
+            <dd>${escapeHtml(formatDate(card.guide.applicationDeadlineAt))}</dd>
+          </div>
+          <div>
+            <dt>Formula</dt>
+            <dd>${escapeHtml(renderFormulaTag(card.formula))}</dd>
+          </div>
+          <div>
+            <dt>Experiences</dt>
+            <dd>${escapeHtml(renderExperienceAvailability(card.experiences))}</dd>
+          </div>
+          <div>
+            <dt>Application</dt>
+            <dd>${escapeHtml(humanizeToken(card.guide.applicationStatus))}</dd>
+          </div>
+        </dl>
+        <p>${escapeHtml(card.guide.summary)}</p>
+        <div class="timeline-block">
+          <h4>Key timeline</h4>
+          ${renderSchoolTimelineNodes(card.keyTimelineNodes)}
         </div>
-        <div>
-          <dt>Formula</dt>
-          <dd>${escapeHtml(renderFormulaLabel(card.formula))}</dd>
-        </div>
-        <div>
-          <dt>Experiences</dt>
-          <dd>${escapeHtml(renderExperienceAvailability(card.experiences))}</dd>
-        </div>
-      </dl>
-      <div class="timeline-block">
-        <h4>Key timeline nodes</h4>
-        ${renderSchoolTimelineNodes(card.keyTimelineNodes)}
-      </div>
-    </article>`)
+        <a class="text-link school-card-link" href="${detailHref}">View school detail</a>
+      </article>`;
+    })
     .join("");
 }
 
@@ -652,7 +759,7 @@ function renderDetailLink(url, label) {
     return `<span class="inline-empty">${escapeHtml(missingOfficialText)}</span>`;
   }
 
-  return `<a class="text-link" href="${escapeHtml(url)}" rel="noopener">${escapeHtml(label)}</a>`;
+  return `<a class="text-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
 }
 
 function renderYearSwitcher(detail) {
@@ -719,28 +826,109 @@ function renderContactSummary(contact) {
   ].join("; ");
 }
 
-function renderDetailTimeline(nodes) {
-  if (nodes.length === 0) {
-    return `<p class="empty-state">Timeline ${escapeHtml(pendingSupplementText.toLowerCase())}</p>`;
+const detailTimelineOrder = [
+  ["application_start", "Application start"],
+  ["application_deadline", "Application deadline"],
+  ["preliminary_review_result", "Preliminary review result"],
+  ["school_assessment", "School assessment"],
+  ["shortlist_publication", "Shortlist publication"]
+];
+
+function dateForDetailTimeline(eventKey, guide, nodes) {
+  if (eventKey === "application_start") {
+    return guide.applicationStartAt;
   }
 
-  return `<ul class="detail-timeline">${nodes
-    .map((node) => `<li>
-      <span>${escapeHtml(humanizeToken(node.eventKey))}</span>
-      <strong>${escapeHtml(node.title)}</strong>
-      <em>${escapeHtml(formatDate(node.endsAt ?? node.startsAt))}</em>
-    </li>`)
-    .join("")}</ul>`;
+  if (eventKey === "application_deadline") {
+    return guide.applicationDeadlineAt;
+  }
+
+  const node = nodes.find((timelineNode) => timelineNode.eventKey === eventKey);
+  return node?.endsAt ?? node?.startsAt ?? null;
 }
 
-function renderFormulaDetail(formula) {
+function renderDetailTimelineCard(detail) {
+  return `<article class="detail-panel" data-detail-card="key-timeline">
+    <div class="section-heading"><h2>Key timeline</h2></div>
+    <ul class="detail-timeline">${detailTimelineOrder
+      .map(([eventKey, label]) => `<li>
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(formatDate(dateForDetailTimeline(eventKey, detail.guide, detail.timeline)))}</strong>
+      </li>`)
+      .join("")}</ul>
+  </article>`;
+}
+
+function sourceDateForGuide(guide) {
+  return guide.sourcePublishedAt ?? guide.sourceUpdatedAt ?? guide.publishedAt ?? guide.updatedAt;
+}
+
+function guideStatusTag(detail) {
+  return detail.historicalReference ? "Historical reference" : humanizeToken(detail.guide.status);
+}
+
+function renderHistoricalReferenceNotice(detail) {
+  if (!detail.historicalReference) {
+    return "";
+  }
+
+  const requestedYear = detail.requestedYear ?? "current year";
+  return `<p class="reference-notice">No published ${escapeHtml(requestedYear)} guide is visible yet. Showing ${escapeHtml(detail.selectedYear)} as historical reference.</p>`;
+}
+
+function renderCollapsibleText(value, label, fallback = missingOfficialText) {
+  const text = displayValue(value, fallback);
+
+  if (text === fallback) {
+    return `<p class="inline-empty">${escapeHtml(text)}</p>`;
+  }
+
+  if (text.length <= 72) {
+    return `<p>${escapeHtml(text)}</p>`;
+  }
+
+  const preview = `${text.slice(0, 72).trim()}...`;
+
+  return `<div class="collapsible-text">
+    <p>${escapeHtml(preview)}</p>
+    <details>
+      <summary>Expand ${escapeHtml(label)}</summary>
+      <p>${escapeHtml(text)}</p>
+    </details>
+  </div>`;
+}
+
+function renderOfficialGuideSummaryCard(detail) {
+  const guide = detail.guide;
+
+  return `<article class="detail-panel" data-detail-card="official-guide-summary">
+    <div class="section-heading"><h2>Official guide summary</h2></div>
+    ${renderHistoricalReferenceNotice(detail)}
+    <h3>${escapeHtml(displayValue(guide.guideTitle, pendingSupplementText))}</h3>
+    ${renderCollapsibleText(guide.summary, "official summary", pendingSupplementText)}
+    ${renderDetailRows([
+      { label: "Source type", value: humanizeToken(displayValue(guide.sourceType)) },
+      { label: "Source date", value: formatDate(sourceDateForGuide(guide)) },
+      { label: "Official guide", html: renderDetailLink(guide.officialSourceUrl, "Open official guide") },
+      { label: "Version", value: `Version ${guide.version}` }
+    ])}
+  </article>`;
+}
+
+function formulaWeightSummary(formula) {
+  return formula.formulaConfig.inputs
+    .map((input) => `${input.label} ${Math.round(input.weight * 100)}%`)
+    .join(" + ");
+}
+
+function renderFormulaDetail(detail) {
+  const formula = detail.formula;
+
   if (!formula) {
-    return `<div class="detail-panel" id="formula">
-      <div class="section-heading">
-        <h2>Score formula entry</h2>
-      </div>
-      <p class="empty-state">Score formula ${escapeHtml(pendingSupplementText.toLowerCase())}</p>
-    </div>`;
+    return `<article class="detail-panel" id="formula" data-detail-card="score-formula">
+      <div class="section-heading"><h2>Score formula</h2></div>
+      <p class="empty-state">No published formula. Score calculation waits for official clarification.</p>
+    </article>`;
   }
 
   const inputs = formula.formulaConfig.inputs
@@ -750,16 +938,53 @@ function renderFormulaDetail(formula) {
       <em>Max ${escapeHtml(input.maxScore)}</em>
     </li>`)
     .join("");
+  const calculatorHref = detailCalculatorHref(detail);
 
-  return `<div class="detail-panel" id="formula">
+  return `<article class="detail-panel" id="formula" data-detail-card="score-formula">
     <div class="section-heading">
-      <h2>Score formula entry</h2>
+      <h2>Score formula</h2>
       ${renderDetailLink(formula.officialSourceUrl, "Formula source")}
     </div>
     <h3>${escapeHtml(formula.formulaName)}</h3>
-    <p>${escapeHtml(formula.explanation)}</p>
+    <p>${escapeHtml(formulaWeightSummary(formula))}</p>
+    ${renderCollapsibleText(formula.explanation, "formula explanation")}
     <ul class="formula-inputs">${inputs}</ul>
-  </div>`;
+    <a class="text-link" href="${escapeHtml(calculatorHref)}">Open score calculator</a>
+  </article>`;
+}
+
+function renderAdmissionRequirementsCard(guide) {
+  return `<article class="detail-panel" data-detail-card="admission-requirements">
+    <div class="section-heading"><h2>Admission requirements</h2></div>
+    ${renderDetailRows([
+      { label: "Registration conditions", value: missingOfficialText },
+      { label: "Academic test requirements", html: renderCollapsibleText(guide.academicTestRequirements, "academic test requirements") },
+      { label: "Subject requirements", html: renderTextList(guide.subjectRequirements) },
+      { label: "Majors", html: renderMajorList(guide.majors) }
+    ])}
+  </article>`;
+}
+
+function renderAssessmentAdmissionCard(guide) {
+  return `<article class="detail-panel" data-detail-card="assessment-admission">
+    <div class="section-heading"><h2>Assessment and admission</h2></div>
+    ${renderDetailRows([
+      { label: "Assessment method", html: renderCollapsibleText(guide.assessmentMethod, "assessment method") },
+      { label: "Shortlist rule", value: missingOfficialText },
+      { label: "Admission rule", html: renderCollapsibleText(guide.admissionRule, "admission rule") },
+      { label: "Volunteer batch", value: missingOfficialText }
+    ])}
+  </article>`;
+}
+
+function renderFeesConsultationCard(guide) {
+  return `<article class="detail-panel" data-detail-card="fees-consultation">
+    <div class="section-heading"><h2>Fees and consultation</h2></div>
+    ${renderDetailRows([
+      { label: "Fees", value: renderFeeSummary(guide.fees) },
+      { label: "Contact", value: renderContactSummary(guide.contact) }
+    ])}
+  </article>`;
 }
 
 function renderExperienceDetailCards(experiences) {
@@ -784,17 +1009,126 @@ function renderExperienceDetailCards(experiences) {
     .join("");
 }
 
-export function renderSchoolDetailPage(detail) {
-  const guide = detail.guide;
-  const applicationWindow =
-    `${formatDate(guide.applicationStartAt)} to ${formatDate(guide.applicationDeadlineAt)}`;
+function isApplicationOpen(guide) {
+  return guide.applicationStatus === "open";
+}
 
+function renderActionAnchor({ href, label, primary = false, external = false }) {
+  const className = primary ? "primary-action" : "secondary-action";
+  const target = external ? ` target="_blank" rel="noopener"` : "";
+
+  return `<a class="${className}" href="${escapeHtml(href)}"${target}>${escapeHtml(label)}</a>`;
+}
+
+function detailCalculatorHref(detail) {
+  return `/calculator?schoolId=${encodeURIComponent(detail.school.id)}&year=${detail.selectedYear}`;
+}
+
+function detailExperiencesHref(detail) {
+  return `/experiences?schoolId=${encodeURIComponent(detail.school.id)}&year=${detail.selectedYear}`;
+}
+
+function detailSubmissionHref(detail) {
+  return `/experiences/new?schoolId=${encodeURIComponent(detail.school.id)}&year=${detail.selectedYear}`;
+}
+
+function renderSchoolQuickActions(detail) {
+  const guide = detail.guide;
+  const primaryAction = guide.applicationUrl && isApplicationOpen(guide)
+    ? "application"
+    : detail.formula
+      ? "calculator"
+      : "";
+  const actions = [
+    guide.officialSourceUrl
+      ? renderActionAnchor({
+          href: guide.officialSourceUrl,
+          label: "Official guide",
+          external: true
+        })
+      : `<span class="action-note">${escapeHtml(missingOfficialText)}</span>`
+  ];
+
+  if (guide.applicationUrl) {
+    actions.push(renderActionAnchor({
+      href: guide.applicationUrl,
+      label: "Application link",
+      primary: primaryAction === "application",
+      external: true
+    }));
+  }
+
+  if (detail.formula) {
+    actions.push(renderActionAnchor({
+      href: detailCalculatorHref(detail),
+      label: "Score calculator",
+      primary: primaryAction === "calculator"
+    }));
+  } else {
+    actions.push(`<span class="action-note">Score calculation waits for official clarification.</span>`);
+  }
+
+  actions.push(renderActionAnchor({
+    href: detailExperiencesHref(detail),
+    label: "Experiences"
+  }));
+
+  return `<div class="actions detail-actions school-quick-actions" aria-label="School quick actions">${actions.join("")}</div>`;
+}
+
+function renderSchoolBottomActionBar(detail) {
+  const actions = [];
+
+  if (detail.guide.applicationUrl) {
+    actions.push(renderActionAnchor({
+      href: detail.guide.applicationUrl,
+      label: "Apply",
+      external: true
+    }));
+  }
+
+  if (detail.formula) {
+    actions.push(renderActionAnchor({
+      href: detailCalculatorHref(detail),
+      label: "Calculate"
+    }));
+  }
+
+  actions.push(renderActionAnchor({
+    href: detailSubmissionHref(detail),
+    label: "Submit experience"
+  }));
+
+  return `<section class="school-bottom-action-bar" aria-label="School bottom actions">${actions.join("")}</section>`;
+}
+
+function renderSchoolHeaderCard(detail) {
+  const schoolLocation = displayValue(detail.school.city);
+  const returnTo = `/schools/${encodeURIComponent(detail.school.id)}?year=${detail.selectedYear}`;
+
+  return `<section class="school-detail-header-card" aria-labelledby="school-detail-title">
+    <div class="school-detail-header-copy">
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(detail.selectedYear)}</span>
+        <span class="soft-badge">${escapeHtml(guideStatusTag(detail))}</span>
+        <span class="muted-badge">${escapeHtml(schoolAbbreviation(detail.school))}</span>
+      </div>
+      <h1 id="school-detail-title">${escapeHtml(detail.school.name)}</h1>
+      <p>${escapeHtml(schoolLocation)} · ${escapeHtml(humanizeToken(detail.school.schoolType))}</p>
+    </div>
+    ${renderFavoriteSchoolForm(detail.school.id, returnTo, "school-detail-favorite")}
+    ${renderYearSwitcher(detail)}
+    ${renderSchoolQuickActions(detail)}
+  </section>`;
+}
+
+export function renderSchoolDetailPage(detail) {
   return renderStudentPage({
     title: `${detail.school.name} ${detail.selectedYear} | ${productName}`,
     currentKey: "schools",
     topBar: renderStudentTopBar({
       type: "detail",
-      title: detail.school.name,
+      title: schoolAbbreviation(detail.school),
       backHref: "/schools",
       backLabel: "Back to schools",
       actionHtml: renderFavoriteSchoolAction(
@@ -803,95 +1137,23 @@ export function renderSchoolDetailPage(detail) {
       )
     }),
     content: `
-      <section class="page-heading detail-heading" aria-labelledby="school-detail-title">
-        <p class="eyebrow">${escapeHtml(detail.selectedYear)} published guide</p>
-        <h1 id="school-detail-title">${escapeHtml(detail.school.name)}</h1>
-        <p class="lead">${escapeHtml(guide.summary)}</p>
-        <div class="actions detail-actions" aria-label="Official links">
-          ${renderDetailLink(guide.officialSourceUrl, "Official source")}
-          ${renderDetailLink(guide.applicationUrl, "Application link")}
-          <a class="secondary-action" href="/schools">All schools</a>
-        </div>
-      </section>
+      ${renderSchoolHeaderCard(detail)}
+      ${renderSchoolBottomActionBar(detail)}
 
-      <section class="section" aria-label="Available admission years">
-        ${renderYearSwitcher(detail)}
-      </section>
-
-      <section class="section detail-grid" aria-label="School official detail">
-        <div class="detail-panel">
-          <div class="section-heading"><h2>School base information</h2></div>
-          ${renderDetailRows([
-            { label: "City", value: displayValue(detail.school.city) },
-            { label: "School type", value: humanizeToken(displayValue(detail.school.schoolType)) },
-            { label: "Province scope", value: humanizeToken(displayValue(detail.school.provinceScope)) },
-            { label: "Official website", html: renderDetailLink(detail.school.officialWebsiteUrl, "Admissions website") },
-            { label: "Application status", value: humanizeToken(displayValue(guide.applicationStatus)) },
-            { label: "Application window", value: applicationWindow },
-            { label: "Guide published", value: formatDate(guide.publishedAt) },
-            { label: "Guide updated", value: formatDate(guide.updatedAt) }
-          ])}
-        </div>
-
-        <div class="detail-panel">
-          <div class="section-heading"><h2>Guide summary</h2></div>
-          <h3>${escapeHtml(displayValue(guide.guideTitle, pendingSupplementText))}</h3>
-          <p>${escapeHtml(displayValue(guide.summary, pendingSupplementText))}</p>
-          ${renderDetailRows([
-            { label: "Official source", html: renderDetailLink(guide.officialSourceUrl, "Open source") },
-            { label: "Application link", html: renderDetailLink(guide.applicationUrl, "Open application") },
-            { label: "Version", value: `Version ${guide.version}` }
-          ])}
-        </div>
-      </section>
-
-      <section class="section detail-grid" aria-label="Guide requirements">
-        <div class="detail-panel">
-          <div class="section-heading"><h2>Majors</h2></div>
-          ${renderMajorList(guide.majors)}
-        </div>
-
-        <div class="detail-panel">
-          <div class="section-heading"><h2>Subject requirements</h2></div>
-          ${renderTextList(guide.subjectRequirements)}
-        </div>
-
-        <div class="detail-panel">
-          <div class="section-heading"><h2>Academic test requirements</h2></div>
-          <p>${escapeHtml(displayValue(guide.academicTestRequirements))}</p>
-        </div>
-
-        <div class="detail-panel">
-          <div class="section-heading"><h2>Assessment method</h2></div>
-          <p>${escapeHtml(displayValue(guide.assessmentMethod))}</p>
-        </div>
-
-        <div class="detail-panel">
-          <div class="section-heading"><h2>Admission rule</h2></div>
-          <p>${escapeHtml(displayValue(guide.admissionRule))}</p>
-        </div>
-
-        <div class="detail-panel">
-          <div class="section-heading"><h2>Fees and contact</h2></div>
-          ${renderDetailRows([
-            { label: "Fees", value: renderFeeSummary(guide.fees) },
-            { label: "Contact", value: renderContactSummary(guide.contact) }
-          ])}
-        </div>
-      </section>
-
-      <section class="section detail-grid" aria-label="Timeline and formula">
-        <div class="detail-panel">
-          <div class="section-heading"><h2>Timeline</h2></div>
-          ${renderDetailTimeline(detail.timeline)}
-        </div>
-        ${renderFormulaDetail(detail.formula)}
+      <section class="section detail-card-stack" aria-label="School official detail">
+        ${renderDetailTimelineCard(detail)}
+        ${renderOfficialGuideSummaryCard(detail)}
+        ${renderFormulaDetail(detail)}
+        ${renderAdmissionRequirementsCard(detail.guide)}
+        ${renderAssessmentAdmissionCard(detail.guide)}
+        ${renderFeesConsultationCard(detail.guide)}
       </section>
 
       <section class="section" aria-labelledby="featured-experiences-title">
         <div class="section-heading">
           <h2 id="featured-experiences-title">Featured experiences</h2>
           <p class="section-kicker">Published structured assessment references</p>
+          <a class="text-link" href="${escapeHtml(detailExperiencesHref(detail))}">View all</a>
         </div>
         <div class="card-grid">${renderExperienceDetailCards(detail.featuredExperiences)}</div>
       </section>`
@@ -914,20 +1176,22 @@ export function renderSchoolListPage(filters = {}) {
     content: `
       <section class="page-heading" aria-labelledby="school-list-title">
         <p class="eyebrow">Published school guides</p>
-        <h1 id="school-list-title">School list</h1>
-        <p class="lead">Browse Guangdong comprehensive evaluation schools with current guide cards, timeline nodes, formula availability, and published experience signals.</p>
+        <h1 id="school-list-title">Schools</h1>
+        <p class="lead">Search schools by name or abbreviation, then scan guide status, deadlines, formulas, and published experiences.</p>
       </section>
 
-      <section class="section" id="school-filters" aria-label="School list filters">
+      <section class="section" id="school-filters" aria-label="School list filters" data-school-filters-container="true">
         ${renderSchoolFilters(filters, allCards)}
+        ${renderSelectedSchoolFilters(filters)}
+        <div class="school-list-status" role="status" aria-live="polite" hidden data-school-list-status="true"></div>
       </section>
 
-      <section class="section" aria-labelledby="school-results-title">
+      <section class="section" aria-labelledby="school-results-title" data-school-results-section="true">
         <div class="section-heading">
-          <h2 id="school-results-title">${escapeHtml(cards.length)} published ${escapeHtml(pluralize(cards.length, "guide card"))}</h2>
+          <h2 id="school-results-title">${escapeHtml(cards.length)} ${escapeHtml(pluralize(cards.length, "school"))}</h2>
           <p class="section-kicker">Draft and review-only guide data is hidden from visitors</p>
         </div>
-        <div class="school-list">${renderSchoolCards(cards)}</div>
+        <div class="school-list" data-school-results="true">${renderSchoolCards(cards, filters)}</div>
       </section>`
   });
 }

@@ -46,6 +46,7 @@ from playwright.async_api import async_playwright
 base_url = os.environ["BASE_URL"].rstrip("/")
 screenshot_dir = Path(os.environ["BROWSER_SCREENSHOT_DIR"])
 sysu_school_id = os.environ["SYSU_SCHOOL_ID"]
+scut_school_id = os.environ["SCUT_SCHOOL_ID"]
 logged_in_cookie = os.environ["LOGGED_IN_COOKIE"]
 
 core_pages = [
@@ -133,7 +134,7 @@ async def verify_home_state(page, path, expected_grade, expected_tip, *, logged_
 
 async def verify_login_favorite_continuation(page):
     await page.goto(f"{base_url}/schools/{sysu_school_id}?year=2026", wait_until="domcontentloaded")
-    await page.locator("button[aria-label='Favorite school']").click()
+    await page.locator(".student-top-bar button[aria-label='Favorite school']").click()
     await page.locator("#login-title").wait_for()
 
     submit = page.locator("[data-login-submit='true']")
@@ -160,6 +161,77 @@ async def verify_login_favorite_continuation(page):
     toast_text = await page.locator("[data-student-toast='true']").inner_text()
     if toast_text != "Favorite saved":
         raise AssertionError(f"Favorite continuation toast was wrong: {toast_text}")
+
+async def ajax_count(page):
+    return await page.evaluate("() => window.__schoolFilterAjaxCount || 0")
+
+async def wait_for_ajax_count(page, previous_count):
+    await page.wait_for_function("previous => (window.__schoolFilterAjaxCount || 0) > previous", arg=previous_count)
+
+async def verify_school_filter_interactions(page):
+    await page.goto(f"{base_url}/schools?year=2025&sort=name", wait_until="domcontentloaded")
+    await page.locator("[data-school-filter-form='true']").wait_for()
+
+    if await page.locator("input[placeholder='Search school']").count() != 1:
+        raise AssertionError("School list search placeholder is missing")
+
+    await page.evaluate("() => { window.__schoolFilterMarker = 'kept'; }")
+    previous_count = await ajax_count(page)
+    await page.locator("select[name='year']").select_option("2026")
+    await wait_for_ajax_count(page, previous_count)
+    marker = await page.evaluate("() => window.__schoolFilterMarker")
+    if marker != "kept":
+        raise AssertionError("School filter change caused a full page navigation")
+    body_text = await page.locator("body").inner_text()
+    if "Year: 2026" not in body_text or "Sun Yat-sen University" not in body_text:
+        raise AssertionError(f"School AJAX year filter did not preserve visible state: {body_text}")
+
+    previous_count = await ajax_count(page)
+    await page.locator("[data-school-clear-filters='true']").first.click()
+    await wait_for_ajax_count(page, previous_count)
+    body_text = await page.locator("body").inner_text()
+    if "Showing all published school guide cards." not in body_text:
+        raise AssertionError("School clear filters did not restore the all-published summary")
+
+    await page.locator("input[name='keyword']").fill("NoSuchSchool")
+    previous_count = await ajax_count(page)
+    await page.locator("[data-school-filter-form='true'] .primary-action").click()
+    await wait_for_ajax_count(page, previous_count)
+    body_text = await page.locator("body").inner_text()
+    if "No schools match these filters." not in body_text or "Clear filters" not in body_text:
+        raise AssertionError("School empty state did not include clear-filter guidance")
+
+    async def fail_school_request(route):
+        await route.fulfill(status=503, content_type="text/html", body="failed")
+
+    await page.route("**/schools?*keyword=BrowserFail*", fail_school_request)
+    await page.locator("input[name='keyword']").fill("BrowserFail")
+    await page.locator("[data-school-filter-form='true'] .primary-action").click()
+    await page.locator("[data-school-filter-retry='true']").wait_for()
+    error_text = await page.locator("[data-school-list-status='true']").inner_text()
+    if "Could not load schools." not in error_text or "Retry" not in error_text:
+        raise AssertionError(f"School failed-loading state was wrong: {error_text}")
+
+    await page.unroute("**/schools?*keyword=BrowserFail*", fail_school_request)
+    previous_count = await ajax_count(page)
+    await page.locator("[data-school-filter-retry='true']").click()
+    await wait_for_ajax_count(page, previous_count)
+    body_text = await page.locator("body").inner_text()
+    if "No schools match these filters." not in body_text:
+        raise AssertionError("School retry did not reload the requested filters")
+
+async def verify_school_detail_fallback(page):
+    await page.goto(f"{base_url}/schools/{scut_school_id}?year=2026", wait_until="domcontentloaded")
+    await page.locator("#school-detail-title").wait_for()
+    body_text = await page.locator("body").inner_text()
+    if "Historical reference" not in body_text:
+        raise AssertionError("School detail fallback is missing historical reference label")
+    if "No published 2026 guide is visible yet. Showing 2025 as historical reference." not in body_text:
+        raise AssertionError("School detail fallback does not explain the unpublished requested year")
+    if "Draft Review Guide" in body_text:
+        raise AssertionError("School detail fallback exposed pending-review guide text")
+    if await page.locator("a[href^='/calculator?schoolId=']").count() != 0:
+        raise AssertionError("No-formula fallback detail exposed a score calculator link")
 
 async def main():
     screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -228,6 +300,7 @@ async def main():
                         activeHref: activeLink ? activeLink.getAttribute("href") : null,
                         smallTargets,
                         obstructedPrimaryActions,
+                        visiblePrimaryActionTexts: visiblePrimaryActions.map((element) => element.textContent.trim()),
                         clippedLongNames,
                         requiresNav,
                         currentHref
@@ -270,6 +343,42 @@ async def main():
                         f"{metrics['clippedLongNames']}"
                     )
 
+                if label == "schools":
+                    body_lower = metrics["bodyText"].lower()
+                    required_school_text = [
+                        "School keyword",
+                        "Guide status",
+                        "Application status",
+                        "School type",
+                        "SCUT",
+                        "No formula",
+                        "1 experience",
+                        "Key timeline",
+                    ]
+                    for expected in required_school_text:
+                        if expected.lower() not in body_lower:
+                            raise AssertionError(f"Schools page at {width}px missing {expected}")
+
+                if label == "school-detail":
+                    body_lower = metrics["bodyText"].lower()
+                    required_detail_text = [
+                        "Official guide summary",
+                        "Score formula",
+                        "Admission requirements",
+                        "Assessment and admission",
+                        "Fees and consultation",
+                        "Featured experiences",
+                        "Submit experience",
+                    ]
+                    for expected in required_detail_text:
+                        if expected.lower() not in body_lower:
+                            raise AssertionError(f"School detail at {width}px missing {expected}")
+                    if len(metrics["visiblePrimaryActionTexts"]) > 1:
+                        raise AssertionError(
+                            f"School detail at {width}px has more than one primary action in view: "
+                            f"{metrics['visiblePrimaryActionTexts']}"
+                        )
+
                 if width == 390:
                     await page.screenshot(path=screenshot_dir / f"{label}-{width}.png", full_page=True)
 
@@ -299,6 +408,18 @@ async def main():
                 await logged_home.screenshot(path=screenshot_dir / f"home-logged-in-{width}.png", full_page=True)
             await logged_context.close()
 
+            school_filter_page = await browser.new_page(viewport={"width": width, "height": 940})
+            await verify_school_filter_interactions(school_filter_page)
+            if width == 390:
+                await school_filter_page.screenshot(path=screenshot_dir / f"schools-filter-retry-{width}.png", full_page=True)
+            await school_filter_page.close()
+
+            school_fallback_page = await browser.new_page(viewport={"width": width, "height": 940})
+            await verify_school_detail_fallback(school_fallback_page)
+            if width == 390:
+                await school_fallback_page.screenshot(path=screenshot_dir / f"school-detail-historical-{width}.png", full_page=True)
+            await school_fallback_page.close()
+
         login_page = await browser.new_page(viewport={"width": 390, "height": 940})
         await verify_login_favorite_continuation(login_page)
         await login_page.screenshot(path=screenshot_dir / "login-favorite-continuation-390.png", full_page=True)
@@ -318,10 +439,35 @@ async def main():
             raise AssertionError(f"Desktop student frame is not centered: {desktop_metrics}")
         await desktop_page.close()
 
+        desktop_school_page = await browser.new_page(viewport={"width": 1280, "height": 940})
+        for path, screenshot_name, required_text in [
+            ("/schools?year=2025&sort=name", "schools-desktop-1280.png", "School keyword"),
+            (f"/schools/{sysu_school_id}?year=2026", "school-detail-desktop-1280.png", "Official guide summary"),
+        ]:
+            await desktop_school_page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
+            desktop_school_metrics = await desktop_school_page.evaluate("""() => {
+                const frame = document.querySelector(".student-frame");
+                const frameRect = frame.getBoundingClientRect();
+                return {
+                    frameWidth: frameRect.width,
+                    scrollWidth: document.documentElement.scrollWidth,
+                    clientWidth: document.documentElement.clientWidth,
+                    bodyText: document.body.innerText
+                };
+            }""")
+            if desktop_school_metrics["frameWidth"] < 430 or desktop_school_metrics["frameWidth"] > 520:
+                raise AssertionError(f"Desktop school frame width is outside 430-520px: {desktop_school_metrics}")
+            if desktop_school_metrics["scrollWidth"] > desktop_school_metrics["clientWidth"]:
+                raise AssertionError(f"Desktop school page overflows horizontally: {desktop_school_metrics}")
+            if required_text.lower() not in desktop_school_metrics["bodyText"].lower():
+                raise AssertionError(f"Desktop school page missing {required_text}")
+            await desktop_school_page.screenshot(path=screenshot_dir / screenshot_name, full_page=True)
+        await desktop_school_page.close()
+
         await browser.close()
 
 asyncio.run(main())
-print("Core browser verification passed at 375px, 390px, 430px, home/login states, and desktop student frame width")
+print("Core browser verification passed at 375px, 390px, 430px, school list/detail interactions, home/login states, and desktop student school frames")
 `;
 }
 
@@ -399,6 +545,7 @@ async function runBrowserVerification({ python, baseUrl, loggedInCookie }) {
         BASE_URL: baseUrl,
         BROWSER_SCREENSHOT_DIR: screenshotDir,
         SYSU_SCHOOL_ID: seedIds.schools.sysu,
+        SCUT_SCHOOL_ID: seedIds.schools.scut,
         LOGGED_IN_COOKIE: loggedInCookie
       },
       stdio: ["ignore", "pipe", "pipe"]

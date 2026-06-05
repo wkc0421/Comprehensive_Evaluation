@@ -1905,6 +1905,7 @@ function guideKeywordMatches(guide, keyword) {
 
   return [
     school?.name,
+    school?.abbreviation,
     school?.normalizedName,
     school?.city,
     guide.guideTitle,
@@ -1924,6 +1925,7 @@ function schoolGuideKeywordMatches(card, keyword) {
 
   return [
     card.school.name,
+    card.school.abbreviation,
     card.school.normalizedName,
     card.school.city,
     card.school.schoolType,
@@ -2018,7 +2020,7 @@ export function listSchools(filters = {}) {
         return true;
       }
 
-      return [school.name, school.normalizedName, school.city, school.schoolType]
+      return [school.name, school.abbreviation, school.normalizedName, school.city, school.schoolType]
         .some((value) => value.toLowerCase().includes(keyword));
     })
     .sort(compareSchoolNames);
