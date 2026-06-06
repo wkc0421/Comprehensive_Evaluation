@@ -1,7 +1,7 @@
 {
   "project": "Guangdong Comprehensive Evaluation MVP",
   "branchName": "ralph/guangdong-comprehensive-evaluation-mvp",
-  "description": "Build a mobile-first web platform for Guangdong comprehensive evaluation admissions guides, timelines, score calculation, structured interview experiences, and audited admin workflows.",
+  "description": "Build a mobile-first and computer-web platform for Guangdong comprehensive evaluation admissions guides, timelines, score calculation, structured interview experiences, and audited admin workflows.",
   "userStories": [
     {
       "id": "US-001",
@@ -341,7 +341,7 @@
         "Student main pages use a stable four-tab bottom navigation for Home, Schools, Experiences, and My, with current state shown by primary color icon and text, safe-area padding, and at least 44px touch targets.",
         "Student task pages such as login, experience submission, and calculator result detail can hide the bottom navigation but must retain a clear back entry.",
         "Student top bars follow page type rules: the home page shows product name and grade switch, list pages show page title with search or filter entry, detail pages show back entry, short title, and favorite action where relevant, and form pages show back entry, page title, and save or submit state.",
-        "Student desktop layout above 768px centers the content in a 430px to 520px column while admin pages keep a full desktop layout.",
+        "For the mobile-first frontend PRD stage, student desktop fallback above 768px centers the mobile experience in a 430px to 520px column while admin pages keep a full desktop layout; the later computer-web PRD story supersedes this fallback for true desktop viewports.",
         "Implementation keeps the current dependency-free Node.js ESM foundation and does not introduce a frontend framework, build dependency, or external icon package; icons use existing inline HTML, CSS, or SVG patterns with accessible names.",
         "Shared cards, status tags, empty states, loading states, buttons, toasts, and icon buttons follow the frontend PRD rules: no nested cards, card radius no more than 8px, shallow status colors, accessible icon names, and no decorative large illustrations or gradient backgrounds.",
         "Browser verification at 375px, 390px, and 430px proves no horizontal scroll, bottom navigation does not cover primary actions, and long school or major names wrap or truncate cleanly."
@@ -497,7 +497,7 @@
         "Add API contract tests for public, logged-in user, score calculation, and admin endpoints covering success, unauthenticated, unauthorized role, invalid input, missing data, published-only visibility, and stable JSON error shapes required by docs/test-prd.md.",
         "Add end-to-end regression checks for the official-guide publishing flow, generated timeline flow, experience submission to approval to public display flow, certification material flow, and report hiding or account-limiting flow, with audit operator and timestamp assertions.",
         "Add privacy and security gates covering phone numbers, real names, source accounts, ID card numbers, exam candidate numbers, verification material URLs, reviewer-only material URLs, backend review notes, internal risk labels, and private reporter data across public APIs, anonymous pages, My page, and student-side admin previews.",
-        "Add responsive browser checks for student pages at 375x667, 390x844, 430x932, 768x1024, and 1440x900, and admin pages at 1280x720, 1440x900, and 1920x1080, including screenshot artifacts, no horizontal scroll, no overlapping text, stable bottom navigation, desktop student column limits, and stable admin table or detail-panel behavior.",
+        "Add responsive browser checks for student pages at 375x667, 390x844, 430x932, 768x1024, and 1440x900, and admin pages at 1280x720, 1440x900, and 1920x1080, including screenshot artifacts, no horizontal scroll, no overlapping text, stable bottom navigation on mobile-width pages, mobile-column limits below the computer-web breakpoint, computer-web layouts at desktop widths, and stable admin table or detail-panel behavior.",
         "Add accessibility checks for icon-button accessible names, text-visible statuses, nearby form error text, 44px touch targets, explicit input labels, and non-toast fallback error text on the prioritized pages in docs/test-prd.md.",
         "Add performance smoke checks or a documented local benchmark command for the docs/test-prd.md targets, including home first-screen interactivity, school list, experience list, timeline, score calculation, and admin list APIs, with seeded data-volume baselines or a clearly documented reason for any manual-only measurement.",
         "Add package scripts that expose the new gates with clear names, and document the full out-of-box verification sequence from fresh checkout through PostgreSQL setup, build, typecheck, lint, unit tests, API and route tests, data quality, browser tests, database integration tests, performance smoke, and release readiness checks.",
@@ -507,6 +507,68 @@
       "priority": 29,
       "passes": true,
       "notes": "Added complete docs/test-prd.md readiness gates with a 113-case committed matrix, dependency-free matrix checker, PostgreSQL isolated-schema integration gate, release-readiness script, API/e2e/privacy/accessibility tests, expanded responsive browser screenshots, performance smoke command, and documented fresh-checkout verification sequence."
+    },
+    {
+      "id": "US-030",
+      "title": "Implement the student computer web experience",
+      "description": "Apply docs/frontend-desktop-prd.md to the student-facing computer web routes while preserving the mobile-first experience below 768px.",
+      "acceptanceCriteria": [
+        "Student computer web routes use a desktop top navigation with product name, Home, Schools, Timeline, Score Calculator, Experiences, My, search entry, year shortcut, and login state; at 768px to 1023px search and year shortcuts may collapse, but core navigation remains reachable without horizontal scrolling.",
+        "Student desktop pages at 1024px, 1280px, 1440px, and 1920px use the desktop PRD layout instead of the previous narrow mobile column fallback; page content is bounded, centered where appropriate, and does not stretch long text beyond readable line widths.",
+        "The desktop home page keeps the first screen task-focused with core task entries, recent timeline nodes, latest guides or experiences, and grade preparation context without becoming a marketing page or portal feed.",
+        "The desktop school list uses a left filter area, result toolbar, search by school name or abbreviation, sorting, result count, and table or compact-list results that preserve published-only visibility and login-required favorite continuation.",
+        "The desktop school detail page uses a summary header, main content sections, and a right-side information or action panel for official guide, application link, score calculator, and experiences while preserving single-primary-action behavior and no-formula calculator hiding.",
+        "The desktop timeline page supports year, node type, status, and all-or-my-favorites filtering, month-grouped nodes, a nearest-14-days reminder area, login gating for My Favorites, and to-be-announced rendering for unknown dates.",
+        "The desktop score calculator uses separated selection, formula explanation, input, and result regions; invalid scores show inline errors, school or year changes clear inputs, no-formula states hide the form, and results keep the not-admission-probability disclaimer.",
+        "The desktop experience list, detail, submission, and My pages use the desktop PRD layouts with visible filters, privacy-safe cards and detail actions, structured submission groups, right-side submit summary, seven-day local drafts, and student-safe personal aggregates.",
+        "All student desktop behavior reuses the existing routes, safe returnTo login flow, published-only data helpers, and interaction stores, and preserves server-rendered GET fallbacks for core querying, filtering, and detail reading without JavaScript.",
+        "Student desktop pages do not introduce admission probability, ranking prediction, guaranteed admission, paid consulting, open comments, private messaging, or unpublicized original-question claims.",
+        "Browser checks cover student pages at 1024px, 1280px, 1440px, and 1920px, verify no horizontal scrolling, no incoherent text overlap, readable long names and sources, and correct mobile PRD behavior below 768px."
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": "New desktop-web PRD work from docs/frontend-desktop-prd.md. This story supersedes the earlier student desktop narrow-column fallback for true computer web viewports while retaining the mobile-first implementation below 768px."
+    },
+    {
+      "id": "US-031",
+      "title": "Implement the admin computer web PRD",
+      "description": "Apply docs/frontend-desktop-prd.md to admin computer web workflows and make clear that MVP admin work is desktop-first rather than mobile-admin focused.",
+      "acceptanceCriteria": [
+        "Admin computer web uses a desktop shell with left navigation, top status bar, queue table main region, and right-side detail panel or drawer; it does not use the student bottom navigation or student narrow content container.",
+        "Admin navigation uses the existing workflow labels from src/lib/product.js, including 总览, AI 入库, 简章审核, 时间线管理, 公式管理, 面经审核, 认证审核, and 举报处理.",
+        "Admin pages require the appropriate reviewer or admin role; unauthenticated or unauthorized access never renders backend queues, certification material details, report data, internal notes, or private reviewer state.",
+        "Data ingestion supports creating runs by year, school, and keyword, lists run status, source count, confidence, creator, and time, and shows source candidates, priority, extracted fields, confidence, manual-confirmation items, and draft-guide creation in the detail panel.",
+        "Guide review shows queue fields for school, year, status, source type, missing-field count, and update time, plus structured fields, official source preview or link, field-level confirmation state, student preview, and audited publish, return, supplement, and archive actions.",
+        "Timeline management shows generated nodes with school, year, node type, date, date precision, source, manual override state, and student-side status; manual overrides require a reason and preserve original generated values.",
+        "Formula management provides a formula list, editor, sample-test area, and student preview; formula publication requires an official source link and at least one passing sample calculation.",
+        "Experience moderation shows pending queue entries, sensitive and privacy warnings, verification metadata summaries, student-side preview, and approve, return, hide, or limit-account actions while blocking PRD-prohibited content.",
+        "Verification review keeps raw material access backend-only, shows only metadata summaries and student-side certification-label preview, and requires a reason for refusal or supplement requests.",
+        "Report handling shows report queue, target preview, reason, history, target-account risk summary, student-visible state preview, and keep, hide, delete-display, limit-account, or reject actions with operator, time, and reason recorded.",
+        "Admin student-side previews never expose reviewer notes, raw certification materials, phone numbers, real names, source accounts, private user IDs, private material URLs, private reporter data, or object-storage paths.",
+        "Admin browser checks cover 1280px, 1440px, and 1920px with no overlapping left navigation, queue tables, detail panels, or action bars; below 1024px the MVP may show a use-computer prompt instead of a full mobile admin workflow."
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": "New desktop-web PRD work from docs/frontend-desktop-prd.md. The existing mobile frontend PRD already treated admin as desktop-first; this story makes the dedicated computer web admin scope and mobile-admin boundary explicit."
+    },
+    {
+      "id": "US-032",
+      "title": "Add computer web PRD acceptance gates",
+      "description": "Add deterministic checks and documentation that verify docs/frontend-desktop-prd.md for student and admin computer web behavior.",
+      "acceptanceCriteria": [
+        "Update frontend acceptance documentation so docs/frontend-desktop-prd.md maps to implementation surfaces, automated checks, negative product-boundary checks, and screenshot artifacts.",
+        "Update browser-core page checks to cover student desktop pages at 1024px, 1280px, 1440px, and 1920px, including top navigation behavior, desktop list and detail layouts, desktop calculator regions, desktop submission summary, and no horizontal scrolling or text overlap.",
+        "Update admin desktop browser checks to cover 1280px, 1440px, and 1920px for the left navigation, top status bar, queue tables, right-side detail panels, student previews, and action bars.",
+        "Add or update static frontend acceptance tests so the previous student desktop 430px to 520px fallback is not treated as the expected layout for true computer web viewports, while mobile behavior below 768px remains covered.",
+        "Add negative checks preventing desktop pages and admin student previews from showing admission probability, ranking prediction, guaranteed admission, paid consulting, open comments, private messaging, third-party sources labeled official, raw certification materials, reviewer notes, private reporter data, or private storage paths.",
+        "Add accessibility checks for desktop top navigation, admin left navigation, table row actions, icon-button accessible names, keyboard focus states, label associations, inline errors, and non-toast fallback error text.",
+        "Add checks that unauthorized admin access and mobile-width admin access do not expose backend queue data, certification material details, report records, or private reviewer state.",
+        "Keep docs/test-prd.md, docs/test-prd-coverage-matrix.md, docs/frontend-acceptance-matrix.md, and any release-readiness documentation synchronized with the new computer web PRD scope.",
+        "Run npm test, npm run data-quality, npm run browser-test, npm run test-prd:matrix, and npm run release-readiness successfully before marking the computer web PRD complete."
+      ],
+      "priority": 32,
+      "passes": false,
+      "notes": "New acceptance-gate work for docs/frontend-desktop-prd.md. These gates should validate both the student computer web PRD and admin computer web PRD while preserving existing mobile-first requirements."
     }
   ]
 }
